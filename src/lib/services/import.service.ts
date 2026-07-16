@@ -49,6 +49,15 @@ function parseOrderDate(value: unknown): string {
   return new Date().toISOString();
 }
 
+function parseOptionalDate(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
+  if (typeof value === "string" && value.trim()) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return null;
+}
+
 /**
  * Executes the full excel/csv import pipeline: groups rows into orders
  * (a smartstore export has one row per product line, so multiple rows can
@@ -97,14 +106,29 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       }
 
       const first = rows[0];
-      const name = cellToString(getMapped(first, mapping, "recipient_name"));
       const rawPhone = cellToString(getMapped(first, mapping, "phone")) || null;
       const rawAddress = cellToString(getMapped(first, mapping, "address")) || null;
       const deliveryMemo = cellToString(getMapped(first, mapping, "delivery_memo")) || null;
       const orderDate = parseOrderDate(getMapped(first, mapping, "order_date"));
+      const orderStatus = cellToString(getMapped(first, mapping, "order_status"));
+      const zipcode = cellToString(getMapped(first, mapping, "zipcode")) || null;
+      const courier = cellToString(getMapped(first, mapping, "courier")) || null;
+      const trackingNumber = cellToString(getMapped(first, mapping, "tracking_number")) || null;
+      const salesChannel = cellToString(getMapped(first, mapping, "sales_channel")) || null;
+      const buyerName = cellToString(getMapped(first, mapping, "buyer_name")) || null;
+      const buyerId = cellToString(getMapped(first, mapping, "buyer_id")) || null;
+      const shippedAt = parseOptionalDate(getMapped(first, mapping, "shipped_at"));
 
-      if (!name) {
-        errors.push({ row: 0, reason: `[${orderNumber}] 수령인/주문자명이 비어 있습니다.`, raw: first });
+      // Some Smartstore export permission levels mask both 수취인명 and
+      // 구매자명 for privacy, leaving only phone/address/buyer_id. Fall back
+      // through what's actually available rather than failing the row —
+      // phone+address is enough to identify a customer; the admin can fill
+      // in a real name later from the customer detail screen.
+      const rawRecipientName = cellToString(getMapped(first, mapping, "recipient_name"));
+      const name = rawRecipientName || buyerName || (buyerId ? `구매자(${buyerId})` : "") || "이름 미확인";
+
+      if (!rawPhone && !rawAddress) {
+        errors.push({ row: 0, reason: `[${orderNumber}] 전화번호와 주소가 모두 비어 있어 고객을 식별할 수 없습니다.`, raw: first });
         continue;
       }
 
@@ -113,11 +137,15 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       else existingCustomers += 1;
 
       const items = rows.map((row) => ({
+        product_order_number: cellToString(getMapped(row, mapping, "product_order_number")) || null,
+        product_code: cellToString(getMapped(row, mapping, "product_code")) || null,
         product_name: cellToString(getMapped(row, mapping, "product_name")) || "상품",
         option_name: cellToString(getMapped(row, mapping, "option_name")) || null,
         quantity: parseNumber(getMapped(row, mapping, "quantity")) || 1,
         unit_price: parseNumber(getMapped(row, mapping, "unit_price")),
         amount: parseNumber(getMapped(row, mapping, "amount")),
+        // Preserve every original column for this row, not just the mapped subset.
+        extra: row,
       }));
       const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
 
@@ -126,11 +154,19 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
           customer_id: customer.id,
           order_number: orderNumber,
           order_date: orderDate,
+          status: orderStatus,
           total_amount: totalAmount,
           recipient_name: name,
           phone_snapshot: formatPhoneNumber(rawPhone),
           address_snapshot: cleanAddress(rawAddress),
+          zipcode,
           delivery_memo: deliveryMemo,
+          courier,
+          tracking_number: trackingNumber,
+          sales_channel: salesChannel,
+          buyer_name: buyerName,
+          buyer_id: buyerId,
+          shipped_at: shippedAt,
           import_id: importRecord.id,
           owner_username: ownerUsername,
         },

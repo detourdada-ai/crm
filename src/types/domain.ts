@@ -31,7 +31,9 @@ export interface Customer {
   updated_at: ISODateString;
 }
 
-export type OrderStatus = "pending" | "confirmed" | "shipped" | "completed" | "cancelled";
+// Freeform: Smartstore's own status text (배송중/구매확정/취소 등) is stored
+// verbatim rather than translated into a fixed enum — see schema.sql.
+export type OrderStatus = string;
 
 export interface Order {
   id: UUID;
@@ -44,7 +46,14 @@ export interface Order {
   recipient_name: string;
   phone_snapshot: string | null;
   address_snapshot: string | null;
+  zipcode: string | null;
   delivery_memo: string | null;
+  courier: string | null;
+  tracking_number: string | null;
+  sales_channel: string | null;
+  buyer_name: string | null;
+  buyer_id: string | null;
+  shipped_at: ISODateString | null;
   import_id: UUID | null;
   owner_username: string;
   created_at: ISODateString;
@@ -54,11 +63,16 @@ export interface Order {
 export interface OrderItem {
   id: UUID;
   order_id: UUID;
+  product_order_number: string | null;
+  product_code: string | null;
   product_name: string;
   option_name: string | null;
   quantity: number;
   unit_price: number;
   amount: number;
+  // Full original excel row (header -> value), preserved so nothing from
+  // the source file is lost even where we don't model a column explicitly.
+  extra: Record<string, unknown>;
   created_at: ISODateString;
 }
 

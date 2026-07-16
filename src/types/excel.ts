@@ -9,7 +9,17 @@ export type MappableField =
   | "recipient_name"
   | "phone"
   | "address"
+  | "zipcode"
   | "delivery_memo"
+  | "order_status"
+  | "courier"
+  | "tracking_number"
+  | "sales_channel"
+  | "buyer_name"
+  | "buyer_id"
+  | "shipped_at"
+  | "product_order_number"
+  | "product_code"
   | "product_name"
   | "option_name"
   | "quantity"
@@ -18,11 +28,21 @@ export type MappableField =
 
 export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boolean }[] = [
   { key: "order_number", label: "주문번호", required: true },
-  { key: "order_date", label: "주문일시", required: true },
-  { key: "recipient_name", label: "수령인/주문자명", required: true },
-  { key: "phone", label: "전화번호", required: true },
-  { key: "address", label: "주소", required: true },
+  { key: "order_date", label: "주문일시(결제일)", required: true },
+  { key: "recipient_name", label: "수취인명", required: true },
+  { key: "phone", label: "수취인 연락처", required: true },
+  { key: "address", label: "배송지 주소", required: true },
+  { key: "zipcode", label: "우편번호", required: false },
   { key: "delivery_memo", label: "배송메모", required: false },
+  { key: "order_status", label: "주문상태", required: false },
+  { key: "courier", label: "택배사", required: false },
+  { key: "tracking_number", label: "송장번호", required: false },
+  { key: "sales_channel", label: "판매채널", required: false },
+  { key: "buyer_name", label: "구매자명", required: false },
+  { key: "buyer_id", label: "구매자ID", required: false },
+  { key: "shipped_at", label: "배송완료일", required: false },
+  { key: "product_order_number", label: "상품주문번호", required: false },
+  { key: "product_code", label: "상품번호/코드", required: false },
   { key: "product_name", label: "상품명", required: true },
   { key: "option_name", label: "옵션명", required: false },
   { key: "quantity", label: "수량", required: true },

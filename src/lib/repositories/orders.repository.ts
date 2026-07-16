@@ -11,21 +11,37 @@ export interface OrderInsert {
   recipient_name: string;
   phone_snapshot?: string | null;
   address_snapshot?: string | null;
+  zipcode?: string | null;
   delivery_memo?: string | null;
+  courier?: string | null;
+  tracking_number?: string | null;
+  sales_channel?: string | null;
+  buyer_name?: string | null;
+  buyer_id?: string | null;
+  shipped_at?: string | null;
   import_id?: string | null;
   owner_username: string;
 }
 
 export interface OrderItemInsert {
   order_id: string;
+  product_order_number?: string | null;
+  product_code?: string | null;
   product_name: string;
   option_name?: string | null;
   quantity: number;
   unit_price: number;
   amount: number;
+  extra?: Record<string, unknown>;
 }
 
 export const ordersRepository = {
+  async findById(id: string): Promise<Order | null> {
+    const { data, error } = await getSupabaseAdmin().from("orders").select("*").eq("id", id).maybeSingle();
+    if (error) throw error;
+    return data as Order | null;
+  },
+
   async findByOrderNumber(orderNumber: string): Promise<Order | null> {
     const { data, error } = await getSupabaseAdmin()
       .from("orders")

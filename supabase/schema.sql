@@ -107,13 +107,24 @@ create table if not exists orders (
   customer_id uuid not null references customers (id) on delete restrict,
   order_number text not null,
   order_date timestamptz not null,
-  status text not null default 'confirmed' check (status in ('pending', 'confirmed', 'shipped', 'completed', 'cancelled')),
+  -- Freeform text, not an enum: Smartstore's own status strings (배송중,
+  -- 구매확정, 취소 등) are stored verbatim rather than translated into a
+  -- fixed set, since the real export has more distinct values than a
+  -- 5-state enum can represent.
+  status text not null default '',
   total_amount numeric(12, 2) not null default 0,
   -- snapshot fields: captured at import time, immutable afterwards
   recipient_name text not null,
   phone_snapshot text,
   address_snapshot text,
+  zipcode text,
   delivery_memo text,
+  courier text,
+  tracking_number text,
+  sales_channel text,
+  buyer_name text,
+  buyer_id text,
+  shipped_at timestamptz,
   import_id uuid references imports (id) on delete set null,
   owner_username text not null default 'admin',
   created_at timestamptz not null default now(),
@@ -137,11 +148,18 @@ create trigger trg_orders_updated_at
 create table if not exists order_items (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references orders (id) on delete cascade,
+  product_order_number text,
+  product_code text,
   product_name text not null,
   option_name text,
   quantity integer not null default 1,
   unit_price numeric(12, 2) not null default 0,
   amount numeric(12, 2) not null default 0,
+  -- Full original excel row (header -> value) for this line, so every
+  -- column from the source file is preserved even though only a curated
+  -- subset gets its own typed column above. Shown in the order detail
+  -- screen's "원본 데이터" section.
+  extra jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 

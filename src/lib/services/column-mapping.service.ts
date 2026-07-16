@@ -5,18 +5,16 @@ import { MAPPABLE_FIELDS, type ColumnMapping, type ColumnMappingResult, type Map
  * ("주문번호" vs "주문번호(ID)" vs "OrderNo"). Rather than hardcode one
  * header set, we recognize a list of known aliases per field and fall back
  * to a manual mapping UI for anything we can't confidently resolve.
+ *
+ * IMPORTANT: "주문번호" (parent order, shared by every product line in the
+ * same order) and "상품주문번호" (a single product line's own id) are
+ * DIFFERENT columns in the real "배송현황관리" export — don't alias one to
+ * the other or multi-item orders won't group correctly. Same story for
+ * "수취인명" (delivery recipient) vs "구매자명" (buyer) — a gift order can
+ * have two different people here.
  */
 const FIELD_ALIASES: Record<MappableField, string[]> = {
-  order_number: [
-    "주문번호",
-    "주문번호id",
-    "상품주문번호",
-    "주문id",
-    "orderno",
-    "orderid",
-    "order",
-    "ordernumber",
-  ],
+  order_number: ["주문번호", "주문번호id", "주문id", "orderno", "orderid", "ordernumber"],
   order_date: ["주문일시", "주문일자", "주문날짜", "주문일", "결제일시", "결제일", "orderdate", "date"],
   recipient_name: [
     "수취인명",
@@ -27,12 +25,9 @@ const FIELD_ALIASES: Record<MappableField, string[]> = {
     "받는분",
     "주문자명",
     "주문자",
-    "구매자명",
-    "구매자",
     "recipient",
     "receivername",
     "customername",
-    "buyername",
   ],
   phone: [
     "수취인전화번호",
@@ -50,6 +45,7 @@ const FIELD_ALIASES: Record<MappableField, string[]> = {
     "tel",
   ],
   address: [
+    "배송지",
     "수취인주소",
     "수령인주소",
     "배송지주소",
@@ -59,6 +55,7 @@ const FIELD_ALIASES: Record<MappableField, string[]> = {
     "shippingaddress",
     "deliveryaddress",
   ],
+  zipcode: ["우편번호", "zipcode", "postcode", "postalcode"],
   delivery_memo: [
     "배송메모",
     "배송메세지",
@@ -70,11 +67,21 @@ const FIELD_ALIASES: Record<MappableField, string[]> = {
     "deliverymemo",
     "note",
   ],
-  product_name: ["상품명", "품목명", "제품명", "productname", "product", "itemname"],
+  order_status: ["주문상태", "orderstatus", "status"],
+  courier: ["택배사", "courier", "carrier"],
+  tracking_number: ["송장번호", "운송장번호", "trackingnumber", "invoicenumber"],
+  sales_channel: ["판매채널", "channel", "saleschannel"],
+  buyer_name: ["구매자명", "구매자", "buyername", "buyer"],
+  buyer_id: ["구매자id", "구매자아이디", "buyerid"],
+  shipped_at: ["배송완료일", "배송일", "shippedat", "deliverydate"],
+  product_order_number: ["상품주문번호", "productorderno", "productorderid"],
+  product_code: ["상품번호", "판매자상품코드", "productcode", "productno", "sku"],
+  product_name: ["상품명", "품목명", "제품명", "productname", "itemname"],
   option_name: ["옵션", "옵션명", "옵션정보", "구매옵션", "option", "optionname"],
   quantity: ["수량", "주문수량", "구매수량", "qty", "quantity"],
-  unit_price: ["단가", "옵션가", "상품단가", "판매단가", "unitprice", "price"],
+  unit_price: ["상품가격", "단가", "옵션가", "상품단가", "판매단가", "unitprice", "price"],
   amount: [
+    "최종상품별총주문금액",
     "정산금액",
     "결제금액",
     "총금액",

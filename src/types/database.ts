@@ -51,7 +51,14 @@ export interface Database {
           recipient_name: string;
           phone_snapshot: string | null;
           address_snapshot: string | null;
+          zipcode: string | null;
           delivery_memo: string | null;
+          courier: string | null;
+          tracking_number: string | null;
+          sales_channel: string | null;
+          buyer_name: string | null;
+          buyer_id: string | null;
+          shipped_at: string | null;
           import_id: string | null;
           owner_username: string;
           created_at: string;
@@ -67,7 +74,14 @@ export interface Database {
           recipient_name: string;
           phone_snapshot?: string | null;
           address_snapshot?: string | null;
+          zipcode?: string | null;
           delivery_memo?: string | null;
+          courier?: string | null;
+          tracking_number?: string | null;
+          sales_channel?: string | null;
+          buyer_name?: string | null;
+          buyer_id?: string | null;
+          shipped_at?: string | null;
           import_id?: string | null;
           owner_username?: string;
           created_at?: string;
@@ -80,21 +94,27 @@ export interface Database {
         Row: {
           id: string;
           order_id: string;
+          product_order_number: string | null;
+          product_code: string | null;
           product_name: string;
           option_name: string | null;
           quantity: number;
           unit_price: number;
           amount: number;
+          extra: Record<string, unknown>;
           created_at: string;
         };
         Insert: {
           id?: string;
           order_id: string;
+          product_order_number?: string | null;
+          product_code?: string | null;
           product_name: string;
           option_name?: string | null;
           quantity?: number;
           unit_price?: number;
           amount?: number;
+          extra?: Record<string, unknown>;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["order_items"]["Insert"]>;

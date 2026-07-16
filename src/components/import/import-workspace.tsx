@@ -14,7 +14,14 @@ import { Button } from "@/components/ui/button";
 
 type Stage =
   | { step: "idle" }
-  | { step: "mapping"; fileName: string; parsed: ParsedSheet; mapping: ColumnMapping; unmapped: MappableField[] }
+  | {
+      step: "mapping";
+      fileName: string;
+      parsed: ParsedSheet;
+      mapping: ColumnMapping;
+      unmapped: MappableField[];
+      unrecognizedHeaders: string[];
+    }
   | { step: "done"; summary: ImportSummary };
 
 export function ImportWorkspace() {
@@ -38,6 +45,7 @@ export function ImportWorkspace() {
         parsed: result.parsed,
         mapping: result.mapping,
         unmapped: result.unmapped,
+        unrecognizedHeaders: result.unrecognizedHeaders,
       });
     });
   }
@@ -78,6 +86,7 @@ export function ImportWorkspace() {
             parsed={stage.parsed}
             initialMapping={stage.mapping}
             initialUnmapped={stage.unmapped}
+            unrecognizedHeaders={stage.unrecognizedHeaders}
             onConfirm={handleConfirm}
             isSubmitting={isConfirming}
           />

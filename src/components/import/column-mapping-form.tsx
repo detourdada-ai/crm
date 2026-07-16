@@ -14,12 +14,14 @@ export function ColumnMappingForm({
   parsed,
   initialMapping,
   initialUnmapped,
+  unrecognizedHeaders,
   onConfirm,
   isSubmitting,
 }: {
   parsed: ParsedSheet;
   initialMapping: ColumnMapping;
   initialUnmapped: MappableField[];
+  unrecognizedHeaders: string[];
   onConfirm: (mapping: ColumnMapping) => void;
   isSubmitting: boolean;
 }) {
@@ -82,6 +84,22 @@ export function ColumnMappingForm({
           ))}
         </TableBody>
       </Table>
+
+      {unrecognizedHeaders.length > 0 ? (
+        <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <p className="mb-1.5 font-medium text-foreground">
+            아래 {unrecognizedHeaders.length}개 컬럼은 CRM 항목과 매핑되지 않지만, 삭제되지 않고 각 주문상품의
+            원본 데이터로 그대로 저장됩니다 (주문 상세 화면의 &ldquo;엑셀 원본 데이터&rdquo;에서 확인 가능).
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {unrecognizedHeaders.map((header) => (
+              <Badge key={header} variant="outline">
+                {header}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex items-center justify-between">
         <div className="flex flex-wrap gap-1">

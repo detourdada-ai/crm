@@ -34,13 +34,21 @@ export function OrderTable({
       <TableBody>
         {orders.map((order) => (
           <TableRow key={order.id}>
-            <TableCell className="font-medium">{order.order_number}</TableCell>
+            <TableCell className="font-medium">
+              <Link href={`/orders/${order.id}`} className="text-primary hover:underline">
+                {order.order_number}
+              </Link>
+            </TableCell>
             <TableCell>{formatDateTime(order.order_date)}</TableCell>
             <TableCell>{order.recipient_name}</TableCell>
             <TableCell className="max-w-xs truncate">{order.address_snapshot ?? "-"}</TableCell>
             <TableCell className="text-right">{formatCurrency(Number(order.total_amount))}</TableCell>
             <TableCell>
-              <Badge variant="secondary">{ORDER_STATUS_LABELS[order.status] ?? order.status}</Badge>
+              {order.status ? (
+                <Badge variant="secondary">{ORDER_STATUS_LABELS[order.status] ?? order.status}</Badge>
+              ) : (
+                "-"
+              )}
             </TableCell>
             {showCustomerLink ? (
               <TableCell>
