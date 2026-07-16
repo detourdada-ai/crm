@@ -26,6 +26,7 @@ export interface Customer {
   address_normalized: string | null;
   memo: string | null;
   tags: string[];
+  owner_username: string; // account that owns/manages this customer; "admin" sees all
   created_at: ISODateString;
   updated_at: ISODateString;
 }
@@ -45,6 +46,7 @@ export interface Order {
   address_snapshot: string | null;
   delivery_memo: string | null;
   import_id: UUID | null;
+  owner_username: string;
   created_at: ISODateString;
   updated_at: ISODateString;
 }
@@ -82,6 +84,7 @@ export interface ImportRecord {
   duplicate_candidates: number;
   column_mapping: Record<string, string> | null;
   error_log: ImportRowError[] | null;
+  owner_username: string;
   created_at: ISODateString;
 }
 
@@ -100,6 +103,7 @@ export interface DuplicateCandidate {
   confidence: DuplicateConfidence;
   reason: string;
   status: DuplicateStatus;
+  owner_username: string;
   created_at: ISODateString;
   resolved_at: ISODateString | null;
 }

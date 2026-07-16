@@ -64,9 +64,9 @@ npm run dev
 
 ## 인증/보안 설계
 
-- Sprint 1 요구사항에 따라 Supabase Auth 대신 **임시 하드코딩 로그인**(`admin` / `1234`, 환경 변수로 오버라이드
-  가능)을 사용합니다. 로그인에 성공하면 서버에서 HMAC 서명된 세션 쿠키를 발급합니다
-  (`src/lib/auth/session.ts`, `src/lib/auth/current-session.ts`).
+- Sprint 1 요구사항에 따라 Supabase Auth 대신 **임시 하드코딩 계정**(`src/lib/auth/credentials.ts`의
+  `ACCOUNTS` 배열, 비밀번호는 환경 변수로 오버라이드 가능)을 사용합니다. 로그인에 성공하면 서버에서
+  `{username, role}`을 담은 HMAC 서명 세션 쿠키를 발급합니다 (`session.ts`, `current-session.ts`).
 - `src/proxy.ts`(Next.js 16의 `middleware` 후속 규약)가 모든 요청에서 세션 쿠키를 검증해 `/login`을 제외한
   모든 경로를 보호합니다.
 - Supabase 쪽은 모든 테이블에 RLS를 켜두었지만 anon/authenticated 정책은 두지 않았습니다. 서버(Server
@@ -75,6 +75,20 @@ npm run dev
 - **향후 Supabase Auth로 전환**하려면 `src/lib/auth/credentials.ts` + `session.ts` 자리에 Supabase Auth
   세션 확인 로직을 넣고, `proxy.ts`와 각 페이지의 `requireSession()` 호출부는 그대로 두면 됩니다. 인증
   로직이 한 곳에 모여 있도록 의도적으로 분리해뒀습니다.
+
+### 계정 및 데이터 범위 (다중 사용자)
+
+- 계정: `admin`(관리자) / `user1`~`user5`(담당자), 비밀번호는 모두 기본 `1234`(환경 변수
+  `ADMIN_PASSWORD`, `USER1_PASSWORD` … `USER5_PASSWORD`로 개별 변경 가능).
+- `customers`/`orders`/`imports`/`duplicate_candidates`에 `owner_username` 컬럼이 있습니다. 담당자
+  계정은 본인이 업로드/등록한 데이터만 조회·수정·병합할 수 있고, `admin`은 전체를 조회할 수 있습니다
+  (`src/lib/auth/current-session.ts`의 `ownerScopeFor()` — `admin`이면 `undefined`를 반환해 필터를
+  걸지 않습니다).
+- 동일인 탐지도 계정별 고객 풀 내에서만 이뤄집니다(다른 담당자의 고객과는 비교하지 않음). 병합/보류/
+  거부도 본인 소유 후보이거나 `admin`일 때만 허용됩니다 (`merge.service.ts`의 `assertCanActOn`).
+- 이미 스키마를 적용한 Supabase 프로젝트가 있다면
+  [`supabase/migrations/0002_add_owner_username.sql`](supabase/migrations/0002_add_owner_username.sql)을
+  SQL Editor에서 실행해 컬럼을 추가하세요 (기존 행은 모두 `owner_username = 'admin'`으로 채워집니다).
 
 ## 폴더 구조
 

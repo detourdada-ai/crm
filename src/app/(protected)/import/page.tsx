@@ -2,9 +2,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ImportWorkspace } from "@/components/import/import-workspace";
 import { ImportHistoryTable } from "@/components/import/import-history-table";
 import { listRecentImportsAction } from "@/actions/import";
+import { requireSession } from "@/lib/auth/current-session";
 
 export default async function ImportPage() {
-  const imports = await listRecentImportsAction();
+  const [session, imports] = await Promise.all([requireSession(), listRecentImportsAction()]);
 
   return (
     <div className="space-y-6">
@@ -23,7 +24,7 @@ export default async function ImportPage() {
           <CardDescription>최근 업로드 20건</CardDescription>
         </CardHeader>
         <CardContent>
-          <ImportHistoryTable imports={imports} />
+          <ImportHistoryTable imports={imports} showOwner={session.role === "admin"} />
         </CardContent>
       </Card>
     </div>

@@ -1,7 +1,9 @@
 "use server";
 
 import { getDashboardStats, type DashboardStats } from "@/lib/services/dashboard.service";
+import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 
 export async function getDashboardStatsAction(): Promise<DashboardStats> {
-  return getDashboardStats();
+  const session = await requireSession();
+  return getDashboardStats(ownerScopeFor(session));
 }

@@ -13,6 +13,7 @@ export interface RunImportInput {
   fileName: string;
   parsed: ParsedSheet;
   mapping: ColumnMapping;
+  ownerUsername: string;
 }
 
 export interface RunImportResult {
@@ -61,11 +62,12 @@ function parseOrderDate(value: unknown): string {
  * History screen — re-upload the file and only the previously failed rows
  * get processed.
  */
-export async function runImport({ fileName, parsed, mapping }: RunImportInput): Promise<RunImportResult> {
+export async function runImport({ fileName, parsed, mapping, ownerUsername }: RunImportInput): Promise<RunImportResult> {
   const importRecord = await importsRepository.create({
     file_name: fileName,
     status: "processing",
     total_rows: parsed.rows.length,
+    owner_username: ownerUsername,
   });
 
   const errors: ImportRowError[] = [];
@@ -106,7 +108,7 @@ export async function runImport({ fileName, parsed, mapping }: RunImportInput): 
         continue;
       }
 
-      const { customer, isNew } = await resolveCustomerForImportRow({ name, rawPhone, rawAddress });
+      const { customer, isNew } = await resolveCustomerForImportRow({ name, rawPhone, rawAddress, ownerUsername });
       if (isNew) newCustomers += 1;
       else existingCustomers += 1;
 
@@ -130,6 +132,7 @@ export async function runImport({ fileName, parsed, mapping }: RunImportInput): 
           address_snapshot: cleanAddress(rawAddress),
           delivery_memo: deliveryMemo,
           import_id: importRecord.id,
+          owner_username: ownerUsername,
         },
       ]);
 
@@ -141,6 +144,7 @@ export async function runImport({ fileName, parsed, mapping }: RunImportInput): 
           name: customer.name,
           phone: customer.phone,
           addressNormalized: customer.address_normalized,
+          ownerUsername,
         });
         if (candidates.length > 0) {
           const created = await duplicatesRepository.createMany(
@@ -151,6 +155,7 @@ export async function runImport({ fileName, parsed, mapping }: RunImportInput): 
               match_type: c.matchType,
               confidence: c.confidence,
               reason: c.reason,
+              owner_username: ownerUsername,
             }))
           );
           duplicateCandidateCount += created.length;

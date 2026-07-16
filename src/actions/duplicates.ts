@@ -10,6 +10,7 @@ import {
   mergeDuplicateCandidate,
   rejectDuplicateCandidate,
 } from "@/lib/services/merge.service";
+import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { Customer, CustomerStats, DuplicateCandidate } from "@/types/domain";
 
 export interface DuplicateCandidateView {
@@ -21,7 +22,8 @@ export interface DuplicateCandidateView {
 }
 
 export async function listPendingDuplicatesAction(): Promise<DuplicateCandidateView[]> {
-  const candidates = await duplicatesRepository.listByStatus("pending");
+  const session = await requireSession();
+  const candidates = await duplicatesRepository.listByStatus("pending", ownerScopeFor(session));
   if (candidates.length === 0) return [];
 
   const ids = Array.from(new Set(candidates.flatMap((c) => [c.existing_customer_id, c.new_customer_id])));
@@ -49,7 +51,8 @@ export interface DuplicateActionResult {
 
 export async function mergeDuplicateAction(candidateId: string): Promise<DuplicateActionResult> {
   try {
-    await mergeDuplicateCandidate(candidateId);
+    const session = await requireSession();
+    await mergeDuplicateCandidate(candidateId, session);
     revalidatePath("/duplicates");
     return { ok: true };
   } catch (e) {
@@ -59,7 +62,8 @@ export async function mergeDuplicateAction(candidateId: string): Promise<Duplica
 
 export async function rejectDuplicateAction(candidateId: string): Promise<DuplicateActionResult> {
   try {
-    await rejectDuplicateCandidate(candidateId);
+    const session = await requireSession();
+    await rejectDuplicateCandidate(candidateId, session);
     revalidatePath("/duplicates");
     return { ok: true };
   } catch (e) {
@@ -69,7 +73,8 @@ export async function rejectDuplicateAction(candidateId: string): Promise<Duplic
 
 export async function holdDuplicateAction(candidateId: string): Promise<DuplicateActionResult> {
   try {
-    await holdDuplicateCandidate(candidateId);
+    const session = await requireSession();
+    await holdDuplicateCandidate(candidateId, session);
     revalidatePath("/duplicates");
     return { ok: true };
   } catch (e) {

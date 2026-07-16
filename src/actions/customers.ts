@@ -5,10 +5,12 @@ import { customersRepository } from "@/lib/repositories/customers.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { changeLogRepository } from "@/lib/repositories/change-log.repository";
 import { updateCustomerProfile } from "@/lib/services/customer.service";
+import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { Customer, CustomerChangeLog, CustomerStats, Order } from "@/types/domain";
 
 export async function searchCustomersAction(query: string, page = 1) {
-  return customersRepository.search({ query, page, pageSize: 20 });
+  const session = await requireSession();
+  return customersRepository.search({ query, page, pageSize: 20, ownerUsername: ownerScopeFor(session) });
 }
 
 export interface CustomerDetail {
@@ -19,8 +21,10 @@ export interface CustomerDetail {
 }
 
 export async function getCustomerDetailAction(id: string): Promise<CustomerDetail | null> {
+  const session = await requireSession();
   const customer = await customersRepository.findById(id);
   if (!customer) return null;
+  if (session.role !== "admin" && customer.owner_username !== session.username) return null;
 
   const [stats, orders, changeLogs] = await Promise.all([
     ordersRepository.aggregateStatsByCustomer(id),
@@ -41,6 +45,13 @@ export async function updateCustomerAction(
   _prevState: UpdateCustomerActionState,
   formData: FormData
 ): Promise<UpdateCustomerActionState> {
+  const session = await requireSession();
+  const existing = await customersRepository.findById(customerId);
+  if (!existing) return { ok: false, error: "고객을 찾을 수 없습니다." };
+  if (session.role !== "admin" && existing.owner_username !== session.username) {
+    return { ok: false, error: "이 고객을 수정할 권한이 없습니다." };
+  }
+
   const name = String(formData.get("name") || "").trim();
   if (!name) return { ok: false, error: "이름을 입력해주세요." };
 
@@ -56,7 +67,7 @@ export async function updateCustomerAction(
     : [];
 
   try {
-    await updateCustomerProfile(customerId, { name, phone, address, memo, tags });
+    await updateCustomerProfile(customerId, { name, phone, address, memo, tags }, session.username);
     revalidatePath(`/customers/${customerId}`);
     return { ok: true, error: null };
   } catch (e) {

@@ -4,8 +4,15 @@ import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { duplicatesRepository } from "@/lib/repositories/duplicates.repository";
 import { mergeHistoryRepository } from "@/lib/repositories/merge-history.repository";
 import { changeLogRepository } from "@/lib/repositories/change-log.repository";
+import type { SessionPayload } from "@/lib/auth/session";
 
 export class MergeError extends Error {}
+
+function assertCanActOn(ownerUsername: string, session: SessionPayload) {
+  if (session.role !== "admin" && session.username !== ownerUsername) {
+    throw new MergeError("이 항목을 처리할 권한이 없습니다.");
+  }
+}
 
 /**
  * Approves a pending duplicate candidate: every order on the "new" customer
@@ -21,10 +28,11 @@ export class MergeError extends Error {}
  * mention it, which is desirable — those candidates are moot once the
  * customer they point to no longer exists.
  */
-export async function mergeDuplicateCandidate(candidateId: string, performedBy = "admin") {
+export async function mergeDuplicateCandidate(candidateId: string, session: SessionPayload) {
   const candidate = await duplicatesRepository.findById(candidateId);
   if (!candidate) throw new MergeError("동일인 후보를 찾을 수 없습니다.");
   if (candidate.status !== "pending") throw new MergeError("이미 처리된 후보입니다.");
+  assertCanActOn(candidate.owner_username, session);
 
   const [existing, incoming] = await Promise.all([
     customersRepository.findById(candidate.existing_customer_id),
@@ -39,7 +47,7 @@ export async function mergeDuplicateCandidate(candidateId: string, performedBy =
     kept_customer_id: existing.id,
     removed_customer_id: incoming.id,
     orders_moved: ordersMoved,
-    performed_by: performedBy,
+    performed_by: session.username,
   });
 
   await changeLogRepository.create({
@@ -48,7 +56,7 @@ export async function mergeDuplicateCandidate(candidateId: string, performedBy =
     field: "customer_code",
     old_value: incoming.customer_code,
     new_value: existing.customer_code,
-    performed_by: performedBy,
+    performed_by: session.username,
   });
 
   await customersRepository.delete(incoming.id);
@@ -56,14 +64,16 @@ export async function mergeDuplicateCandidate(candidateId: string, performedBy =
   return { keptCustomerId: existing.id, removedCustomerId: incoming.id, ordersMoved };
 }
 
-export async function rejectDuplicateCandidate(candidateId: string): Promise<void> {
+export async function rejectDuplicateCandidate(candidateId: string, session: SessionPayload): Promise<void> {
   const candidate = await duplicatesRepository.findById(candidateId);
   if (!candidate) throw new MergeError("동일인 후보를 찾을 수 없습니다.");
+  assertCanActOn(candidate.owner_username, session);
   await duplicatesRepository.updateStatus(candidateId, "rejected");
 }
 
-export async function holdDuplicateCandidate(candidateId: string): Promise<void> {
+export async function holdDuplicateCandidate(candidateId: string, session: SessionPayload): Promise<void> {
   const candidate = await duplicatesRepository.findById(candidateId);
   if (!candidate) throw new MergeError("동일인 후보를 찾을 수 없습니다.");
+  assertCanActOn(candidate.owner_username, session);
   await duplicatesRepository.updateStatus(candidateId, "held");
 }

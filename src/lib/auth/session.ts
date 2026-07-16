@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { Role } from "./credentials";
 
 /**
  * Framework-agnostic session token helpers (no next/headers import) so this
@@ -14,6 +15,12 @@ import crypto from "node:crypto";
 
 export const SESSION_COOKIE_NAME = "banchan_admin_session";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+
+export interface SessionPayload {
+  username: string;
+  role: Role;
+  expiresAt: number;
+}
 
 function getSecret(): string {
   const secret = process.env.AUTH_SECRET;
@@ -34,19 +41,21 @@ function timingSafeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-export function createSessionToken(username: string): string {
+export function createSessionToken(username: string, role: Role): string {
   const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
-  const payload = `${username}.${expiresAt}`;
+  const payload = `${username}.${role}.${expiresAt}`;
   return `${payload}.${sign(payload)}`;
 }
 
-export function verifySessionToken(token: string | undefined | null): boolean {
-  if (!token) return false;
+export function verifySessionToken(token: string | undefined | null): SessionPayload | null {
+  if (!token) return null;
   const parts = token.split(".");
-  if (parts.length !== 3) return false;
-  const [username, expiresAtStr, signature] = parts;
-  const expected = sign(`${username}.${expiresAtStr}`);
-  if (!timingSafeEqual(signature, expected)) return false;
+  if (parts.length !== 4) return null;
+  const [username, role, expiresAtStr, signature] = parts;
+  const expected = sign(`${username}.${role}.${expiresAtStr}`);
+  if (!timingSafeEqual(signature, expected)) return null;
   const expiresAt = Number(expiresAtStr);
-  return Number.isFinite(expiresAt) && Date.now() <= expiresAt;
+  if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) return null;
+  if (role !== "admin" && role !== "user") return null;
+  return { username, role, expiresAt };
 }

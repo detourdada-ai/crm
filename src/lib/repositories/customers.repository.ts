@@ -6,6 +6,7 @@ export interface CustomerSearchParams {
   query?: string;
   page?: number;
   pageSize?: number;
+  ownerUsername?: string; // omit for admin (no filter = see everyone's customers)
 }
 
 export interface CustomerInsert {
@@ -15,6 +16,7 @@ export interface CustomerInsert {
   address_normalized?: string | null;
   memo?: string | null;
   tags?: string[];
+  owner_username: string;
 }
 
 export interface CustomerUpdate {
@@ -41,33 +43,38 @@ export const customersRepository = {
     return data ?? [];
   },
 
-  async findByPhone(phone: string): Promise<Customer[]> {
-    const { data, error } = await getSupabaseAdmin().from("customers").select("*").eq("phone", phone);
+  async findByPhone(phone: string, ownerUsername?: string): Promise<Customer[]> {
+    let q = getSupabaseAdmin().from("customers").select("*").eq("phone", phone);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q;
     if (error) throw error;
     return data ?? [];
   },
 
-  async findByNameAndAddress(name: string, addressNormalized: string): Promise<Customer[]> {
-    const { data, error } = await getSupabaseAdmin()
+  async findByNameAndAddress(name: string, addressNormalized: string, ownerUsername?: string): Promise<Customer[]> {
+    let q = getSupabaseAdmin()
       .from("customers")
       .select("*")
       .eq("name", name)
       .eq("address_normalized", addressNormalized);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q;
     if (error) throw error;
     return data ?? [];
   },
 
-  async findByAddress(addressNormalized: string): Promise<Customer[]> {
-    const { data, error } = await getSupabaseAdmin()
-      .from("customers")
-      .select("*")
-      .eq("address_normalized", addressNormalized);
+  async findByAddress(addressNormalized: string, ownerUsername?: string): Promise<Customer[]> {
+    let q = getSupabaseAdmin().from("customers").select("*").eq("address_normalized", addressNormalized);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q;
     if (error) throw error;
     return data ?? [];
   },
 
-  async search({ query, page = 1, pageSize = 20 }: CustomerSearchParams) {
+  async search({ query, page = 1, pageSize = 20, ownerUsername }: CustomerSearchParams) {
     let q = getSupabaseAdmin().from("customers").select("*", { count: "exact" });
+
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
 
     if (query && query.trim()) {
       const term = query.trim();
@@ -106,8 +113,10 @@ export const customersRepository = {
     if (error) throw error;
   },
 
-  async count(): Promise<number> {
-    const { count, error } = await getSupabaseAdmin().from("customers").select("*", { count: "exact", head: true });
+  async count(ownerUsername?: string): Promise<number> {
+    let q = getSupabaseAdmin().from("customers").select("*", { count: "exact", head: true });
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { count, error } = await q;
     if (error) throw error;
     return count ?? 0;
   },

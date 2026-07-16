@@ -17,11 +17,12 @@ export async function loginAction(_prevState: LoginActionState, formData: FormDa
     return { error: "아이디와 비밀번호를 입력해주세요." };
   }
 
-  if (!verifyCredentials(username, password)) {
+  const account = verifyCredentials(username, password);
+  if (!account) {
     return { error: "아이디 또는 비밀번호가 올바르지 않습니다." };
   }
 
-  await setSessionCookie(username);
+  await setSessionCookie(account.username, account.role);
   redirect(redirectTo.startsWith("/") ? redirectTo : "/");
 }
 

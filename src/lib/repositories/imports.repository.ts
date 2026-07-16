@@ -6,6 +6,7 @@ export interface ImportInsert {
   file_name: string;
   status?: ImportStatus;
   total_rows?: number;
+  owner_username: string;
 }
 
 export interface ImportUpdate {
@@ -39,12 +40,10 @@ export const importsRepository = {
     return data as ImportRecord | null;
   },
 
-  async listRecent(limit = 20): Promise<ImportRecord[]> {
-    const { data, error } = await getSupabaseAdmin()
-      .from("imports")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(limit);
+  async listRecent(limit = 20, ownerUsername?: string): Promise<ImportRecord[]> {
+    let q = getSupabaseAdmin().from("imports").select("*");
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
     if (error) throw error;
     return (data as ImportRecord[]) ?? [];
   },

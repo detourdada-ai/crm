@@ -2,13 +2,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { OrderTable } from "@/components/orders/order-table";
 import { PaginationControls } from "@/components/common/pagination-controls";
 import { listOrdersAction } from "@/actions/orders";
+import { requireSession } from "@/lib/auth/current-session";
 
 const PAGE_SIZE = 20;
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const { page: pageParam } = await searchParams;
   const page = Number(pageParam) > 0 ? Number(pageParam) : 1;
-  const { orders, total } = await listOrdersAction(page);
+  const [session, { orders, total }] = await Promise.all([requireSession(), listOrdersAction(page)]);
 
   return (
     <div className="space-y-6">
@@ -19,7 +20,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
 
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <OrderTable orders={orders} showCustomerLink />
+          <OrderTable orders={orders} showCustomerLink showOwner={session.role === "admin"} />
           <PaginationControls page={page} pageSize={PAGE_SIZE} total={total} />
         </CardContent>
       </Card>

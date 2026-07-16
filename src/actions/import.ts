@@ -4,6 +4,7 @@ import { ExcelParseError, parseSpreadsheet } from "@/lib/services/excel-parser.s
 import { autoMapColumns } from "@/lib/services/column-mapping.service";
 import { runImport } from "@/lib/services/import.service";
 import { importsRepository } from "@/lib/repositories/imports.repository";
+import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { ColumnMapping, MappableField, ParsedSheet } from "@/types/excel";
 import type { ImportRecord, ImportSummary } from "@/types/domain";
 
@@ -55,7 +56,8 @@ export async function confirmImportAction(
   mapping: ColumnMapping
 ): Promise<ConfirmImportResult | ConfirmImportError> {
   try {
-    const { importId, summary } = await runImport({ fileName, parsed, mapping });
+    const session = await requireSession();
+    const { importId, summary } = await runImport({ fileName, parsed, mapping, ownerUsername: session.username });
     return { ok: true, importId, summary };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "가져오기 중 오류가 발생했습니다." };
@@ -63,5 +65,6 @@ export async function confirmImportAction(
 }
 
 export async function listRecentImportsAction(): Promise<ImportRecord[]> {
-  return importsRepository.listRecent(20);
+  const session = await requireSession();
+  return importsRepository.listRecent(20, ownerScopeFor(session));
 }

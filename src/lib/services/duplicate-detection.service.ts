@@ -20,6 +20,7 @@ export interface DuplicateCheckInput {
   name: string;
   phone: string | null;
   addressNormalized: string | null;
+  ownerUsername: string; // scopes lookups to this account's own customer pool
 }
 
 export interface DetectedCandidate {
@@ -30,7 +31,7 @@ export interface DetectedCandidate {
 }
 
 export async function detectDuplicateCandidates(input: DuplicateCheckInput): Promise<DetectedCandidate[]> {
-  const { newCustomerId, name, phone, addressNormalized } = input;
+  const { newCustomerId, name, phone, addressNormalized, ownerUsername } = input;
   const matched = new Map<string, DetectedCandidate>();
 
   const addOnce = (existingId: string, candidate: DetectedCandidate) => {
@@ -39,7 +40,7 @@ export async function detectDuplicateCandidates(input: DuplicateCheckInput): Pro
   };
 
   if (phone) {
-    const samePhone = await customersRepository.findByPhone(phone);
+    const samePhone = await customersRepository.findByPhone(phone, ownerUsername);
 
     // CASE3: name same + phone same + address different -> shipping address changed (HIGH)
     for (const existing of samePhone) {
@@ -70,7 +71,7 @@ export async function detectDuplicateCandidates(input: DuplicateCheckInput): Pro
 
   if (addressNormalized) {
     // CASE1: name same + address same + phone different -> mobile number changed (HIGH)
-    const sameNameAddress = await customersRepository.findByNameAndAddress(name, addressNormalized);
+    const sameNameAddress = await customersRepository.findByNameAndAddress(name, addressNormalized, ownerUsername);
     for (const existing of sameNameAddress) {
       if (existing.id === newCustomerId) continue;
       if (existing.phone !== phone) {
@@ -88,7 +89,7 @@ export async function detectDuplicateCandidates(input: DuplicateCheckInput): Pro
     // same person changing phones; different-length names (different given name) read
     // like a different family member at the same address. Either way this is a MEDIUM
     // confidence hint only — the admin makes the actual call in the review screen.
-    const sameAddress = await customersRepository.findByAddress(addressNormalized);
+    const sameAddress = await customersRepository.findByAddress(addressNormalized, ownerUsername);
     for (const existing of sameAddress) {
       if (existing.id === newCustomerId) continue;
       if (existing.phone !== phone && isSimilarButNotIdenticalName(existing.name, name)) {

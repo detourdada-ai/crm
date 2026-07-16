@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Customer } from "@/types/domain";
 
-export function CustomerListTable({ customers }: { customers: Customer[] }) {
+export function CustomerListTable({ customers, showOwner = false }: { customers: Customer[]; showOwner?: boolean }) {
   if (customers.length === 0) {
     return <p className="py-12 text-center text-sm text-muted-foreground">검색 결과가 없습니다.</p>;
   }
@@ -17,6 +17,7 @@ export function CustomerListTable({ customers }: { customers: Customer[] }) {
           <TableHead>전화번호</TableHead>
           <TableHead>주소</TableHead>
           <TableHead>태그</TableHead>
+          {showOwner ? <TableHead>담당자</TableHead> : null}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -39,6 +40,7 @@ export function CustomerListTable({ customers }: { customers: Customer[] }) {
                 ))}
               </div>
             </TableCell>
+            {showOwner ? <TableCell className="text-muted-foreground">{c.owner_username}</TableCell> : null}
           </TableRow>
         ))}
       </TableBody>

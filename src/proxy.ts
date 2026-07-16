@@ -8,15 +8,15 @@ const PUBLIC_PATHS = ["/login"];
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
-  const isAuthenticated = verifySessionToken(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+  const session = verifySessionToken(request.cookies.get(SESSION_COOKIE_NAME)?.value);
 
-  if (!isAuthenticated && !isPublicPath) {
+  if (!session && !isPublicPath) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isAuthenticated && isPublicPath) {
+  if (session && isPublicPath) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 

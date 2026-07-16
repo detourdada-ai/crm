@@ -9,6 +9,7 @@ export interface DuplicateCandidateInsert {
   match_type: string;
   confidence: string;
   reason: string;
+  owner_username: string;
 }
 
 export const duplicatesRepository = {
@@ -24,12 +25,10 @@ export const duplicatesRepository = {
     return (data as DuplicateCandidate[]) ?? [];
   },
 
-  async listByStatus(status: DuplicateStatus = "pending"): Promise<DuplicateCandidate[]> {
-    const { data, error } = await getSupabaseAdmin()
-      .from("duplicate_candidates")
-      .select("*")
-      .eq("status", status)
-      .order("created_at", { ascending: false });
+  async listByStatus(status: DuplicateStatus = "pending", ownerUsername?: string): Promise<DuplicateCandidate[]> {
+    let q = getSupabaseAdmin().from("duplicate_candidates").select("*").eq("status", status);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.order("created_at", { ascending: false });
     if (error) throw error;
     return (data as DuplicateCandidate[]) ?? [];
   },
@@ -44,11 +43,10 @@ export const duplicatesRepository = {
     return data as DuplicateCandidate | null;
   },
 
-  async countPending(): Promise<number> {
-    const { count, error } = await getSupabaseAdmin()
-      .from("duplicate_candidates")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "pending");
+  async countPending(ownerUsername?: string): Promise<number> {
+    let q = getSupabaseAdmin().from("duplicate_candidates").select("*", { count: "exact", head: true }).eq("status", "pending");
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { count, error } = await q;
     if (error) throw error;
     return count ?? 0;
   },

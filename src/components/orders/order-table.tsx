@@ -4,7 +4,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ORDER_STATUS_LABELS, formatCurrency, formatDateTime } from "@/lib/constants/order-status";
 import type { Order } from "@/types/domain";
 
-export function OrderTable({ orders, showCustomerLink = false }: { orders: Order[]; showCustomerLink?: boolean }) {
+export function OrderTable({
+  orders,
+  showCustomerLink = false,
+  showOwner = false,
+}: {
+  orders: Order[];
+  showCustomerLink?: boolean;
+  showOwner?: boolean;
+}) {
   if (orders.length === 0) {
     return <p className="py-12 text-center text-sm text-muted-foreground">주문 내역이 없습니다.</p>;
   }
@@ -20,6 +28,7 @@ export function OrderTable({ orders, showCustomerLink = false }: { orders: Order
           <TableHead className="text-right">금액</TableHead>
           <TableHead>상태</TableHead>
           {showCustomerLink ? <TableHead>고객</TableHead> : null}
+          {showOwner ? <TableHead>담당자</TableHead> : null}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -40,6 +49,7 @@ export function OrderTable({ orders, showCustomerLink = false }: { orders: Order
                 </Link>
               </TableCell>
             ) : null}
+            {showOwner ? <TableCell className="text-muted-foreground">{order.owner_username}</TableCell> : null}
           </TableRow>
         ))}
       </TableBody>

@@ -9,6 +9,7 @@ export interface ImportCustomerInput {
   name: string;
   rawPhone: string | null;
   rawAddress: string | null;
+  ownerUsername: string;
 }
 
 export interface CustomerResolution {
@@ -23,6 +24,10 @@ export interface CustomerResolution {
  * record and lets duplicate-detection.service flag it for admin review
  * instead of silently assuming an identity match (see project spec: identity
  * is customer_id, never phone, and merges always require manual approval).
+ *
+ * Matching is scoped to the uploading account's own customers (owner_username)
+ * so user1..user5's customer pools stay separate; "admin" imports are scoped
+ * to admin's own pool the same way (admin's *viewing* is what's unrestricted).
  */
 export async function resolveCustomerForImportRow(input: ImportCustomerInput): Promise<CustomerResolution> {
   const name = input.name.trim();
@@ -31,7 +36,7 @@ export async function resolveCustomerForImportRow(input: ImportCustomerInput): P
   const addressNormalized = normalizeAddressForCompare(input.rawAddress);
 
   if (phone) {
-    const samePhone = await customersRepository.findByPhone(phone);
+    const samePhone = await customersRepository.findByPhone(phone, input.ownerUsername);
     const exact = samePhone.find((c) => c.name === name && c.address_normalized === addressNormalized);
     if (exact) return { customer: exact, isNew: false };
   }
@@ -41,6 +46,7 @@ export async function resolveCustomerForImportRow(input: ImportCustomerInput): P
     phone,
     address,
     address_normalized: addressNormalized,
+    owner_username: input.ownerUsername,
   });
 
   return { customer: created, isNew: true };

@@ -13,6 +13,7 @@ export interface OrderInsert {
   address_snapshot?: string | null;
   delivery_memo?: string | null;
   import_id?: string | null;
+  owner_username: string;
 }
 
 export interface OrderItemInsert {
@@ -45,14 +46,12 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
-  async listRecent(page = 1, pageSize = 20) {
+  async listRecent(page = 1, pageSize = 20, ownerUsername?: string) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-    const { data, error, count } = await getSupabaseAdmin()
-      .from("orders")
-      .select("*", { count: "exact" })
-      .order("order_date", { ascending: false })
-      .range(from, to);
+    let q = getSupabaseAdmin().from("orders").select("*", { count: "exact" });
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error, count } = await q.order("order_date", { ascending: false }).range(from, to);
     if (error) throw error;
     return { orders: (data as Order[]) ?? [], total: count ?? 0 };
   },
@@ -89,14 +88,18 @@ export const ordersRepository = {
     return data?.length ?? 0;
   },
 
-  async count(): Promise<number> {
-    const { count, error } = await getSupabaseAdmin().from("orders").select("*", { count: "exact", head: true });
+  async count(ownerUsername?: string): Promise<number> {
+    let q = getSupabaseAdmin().from("orders").select("*", { count: "exact", head: true });
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { count, error } = await q;
     if (error) throw error;
     return count ?? 0;
   },
 
-  async sumAmountSince(sinceIso: string): Promise<number> {
-    const { data, error } = await getSupabaseAdmin().from("orders").select("total_amount").gte("order_date", sinceIso);
+  async sumAmountSince(sinceIso: string, ownerUsername?: string): Promise<number> {
+    let q = getSupabaseAdmin().from("orders").select("total_amount").gte("order_date", sinceIso);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q;
     if (error) throw error;
     return (data ?? []).reduce((sum, r) => sum + Number(r.total_amount), 0);
   },

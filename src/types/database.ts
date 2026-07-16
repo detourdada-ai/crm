@@ -20,6 +20,7 @@ export interface Database {
           address_normalized: string | null;
           memo: string | null;
           tags: string[];
+          owner_username: string;
           created_at: string;
           updated_at: string;
         };
@@ -32,6 +33,7 @@ export interface Database {
           address_normalized?: string | null;
           memo?: string | null;
           tags?: string[];
+          owner_username?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -51,6 +53,7 @@ export interface Database {
           address_snapshot: string | null;
           delivery_memo: string | null;
           import_id: string | null;
+          owner_username: string;
           created_at: string;
           updated_at: string;
         };
@@ -66,6 +69,7 @@ export interface Database {
           address_snapshot?: string | null;
           delivery_memo?: string | null;
           import_id?: string | null;
+          owner_username?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -109,6 +113,7 @@ export interface Database {
           duplicate_candidates: number;
           column_mapping: Record<string, string> | null;
           error_log: unknown | null;
+          owner_username: string;
           created_at: string;
         };
         Insert: {
@@ -123,6 +128,7 @@ export interface Database {
           duplicate_candidates?: number;
           column_mapping?: Record<string, string> | null;
           error_log?: unknown | null;
+          owner_username?: string;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["imports"]["Insert"]>;
@@ -138,6 +144,7 @@ export interface Database {
           confidence: string;
           reason: string;
           status: string;
+          owner_username: string;
           created_at: string;
           resolved_at: string | null;
         };
@@ -150,6 +157,7 @@ export interface Database {
           confidence: string;
           reason: string;
           status?: string;
+          owner_username?: string;
           created_at?: string;
           resolved_at?: string | null;
         };

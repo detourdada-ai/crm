@@ -14,16 +14,16 @@ export interface DashboardStats {
  * MVP summary numbers for the Dashboard menu. Deeper analytics (VIP
  * segments, reorder cadence, etc.) are planned for Sprint 3 — see spec.
  */
-export async function getDashboardStats(): Promise<DashboardStats> {
+export async function getDashboardStats(ownerUsername?: string): Promise<DashboardStats> {
   const startOfMonth = new Date();
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
   const [totalCustomers, totalOrders, pendingDuplicates, monthRevenue] = await Promise.all([
-    customersRepository.count(),
-    ordersRepository.count(),
-    duplicatesRepository.countPending(),
-    ordersRepository.sumAmountSince(startOfMonth.toISOString()),
+    customersRepository.count(ownerUsername),
+    ordersRepository.count(ownerUsername),
+    duplicatesRepository.countPending(ownerUsername),
+    ordersRepository.sumAmountSince(startOfMonth.toISOString(), ownerUsername),
   ]);
 
   return { totalCustomers, totalOrders, pendingDuplicates, monthRevenue };

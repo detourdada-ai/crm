@@ -14,6 +14,12 @@
 --     Next.js server using the Supabase SERVICE ROLE key (server-only), which
 --     bypasses RLS. This keeps the DB safe by default even though Sprint 1
 --     uses a temporary hardcoded admin login instead of Supabase Auth.
+--   * Multi-user scoping: customers/orders/imports/duplicate_candidates carry
+--     owner_username (the logged-in account that created/uploaded them). The
+--     "admin" account sees everything; "user1".."user5" only see their own
+--     rows. This is enforced in the app layer (see lib/auth/current-session's
+--     ownerScopeFor + the repository `ownerUsername` filters), not via RLS,
+--     since there is still no per-request Supabase session to key policies to.
 -- ============================================================================
 
 create extension if not exists "pgcrypto";
@@ -32,6 +38,7 @@ create table if not exists customers (
   address_normalized text,
   memo text,
   tags text[] not null default '{}',
+  owner_username text not null default 'admin',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -40,6 +47,7 @@ create index if not exists idx_customers_name on customers using gin (to_tsvecto
 create index if not exists idx_customers_phone on customers (phone);
 create index if not exists idx_customers_address_normalized on customers (address_normalized);
 create index if not exists idx_customers_customer_code on customers (customer_code);
+create index if not exists idx_customers_owner_username on customers (owner_username);
 
 create or replace function assign_customer_code()
 returns trigger as $$
@@ -84,10 +92,12 @@ create table if not exists imports (
   duplicate_candidates integer not null default 0,
   column_mapping jsonb,
   error_log jsonb,
+  owner_username text not null default 'admin',
   created_at timestamptz not null default now()
 );
 
 create index if not exists idx_imports_created_at on imports (created_at desc);
+create index if not exists idx_imports_owner_username on imports (owner_username);
 
 -- ----------------------------------------------------------------------------
 -- orders
@@ -105,6 +115,7 @@ create table if not exists orders (
   address_snapshot text,
   delivery_memo text,
   import_id uuid references imports (id) on delete set null,
+  owner_username text not null default 'admin',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (order_number)
@@ -113,6 +124,7 @@ create table if not exists orders (
 create index if not exists idx_orders_customer_id on orders (customer_id);
 create index if not exists idx_orders_order_date on orders (order_date desc);
 create index if not exists idx_orders_import_id on orders (import_id);
+create index if not exists idx_orders_owner_username on orders (owner_username);
 
 drop trigger if exists trg_orders_updated_at on orders;
 create trigger trg_orders_updated_at
@@ -149,12 +161,14 @@ create table if not exists duplicate_candidates (
   confidence text not null check (confidence in ('HIGH', 'MEDIUM')),
   reason text not null,
   status text not null default 'pending' check (status in ('pending', 'merged', 'rejected', 'held')),
+  owner_username text not null default 'admin',
   created_at timestamptz not null default now(),
   resolved_at timestamptz,
   unique (existing_customer_id, new_customer_id)
 );
 
 create index if not exists idx_duplicate_candidates_status on duplicate_candidates (status);
+create index if not exists idx_duplicate_candidates_owner_username on duplicate_candidates (owner_username);
 
 -- ----------------------------------------------------------------------------
 -- merge_history (audit trail for every approved merge)

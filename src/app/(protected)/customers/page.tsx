@@ -3,6 +3,7 @@ import { CustomerSearchBar } from "@/components/customers/customer-search-bar";
 import { CustomerListTable } from "@/components/customers/customer-list-table";
 import { PaginationControls } from "@/components/common/pagination-controls";
 import { searchCustomersAction } from "@/actions/customers";
+import { requireSession } from "@/lib/auth/current-session";
 
 const PAGE_SIZE = 20;
 
@@ -13,7 +14,10 @@ export default async function CustomersPage({
 }) {
   const { q, page: pageParam } = await searchParams;
   const page = Number(pageParam) > 0 ? Number(pageParam) : 1;
-  const { customers, total } = await searchCustomersAction(q ?? "", page);
+  const [session, { customers, total }] = await Promise.all([
+    requireSession(),
+    searchCustomersAction(q ?? "", page),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -26,7 +30,7 @@ export default async function CustomersPage({
 
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <CustomerListTable customers={customers} />
+          <CustomerListTable customers={customers} showOwner={session.role === "admin"} />
           <PaginationControls page={page} pageSize={PAGE_SIZE} total={total} />
         </CardContent>
       </Card>

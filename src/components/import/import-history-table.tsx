@@ -6,7 +6,7 @@ function formatDateTime(value: string): string {
   return new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
 }
 
-export function ImportHistoryTable({ imports }: { imports: ImportRecord[] }) {
+export function ImportHistoryTable({ imports, showOwner = false }: { imports: ImportRecord[]; showOwner?: boolean }) {
   if (imports.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">아직 업로드 이력이 없습니다.</p>;
   }
@@ -21,6 +21,7 @@ export function ImportHistoryTable({ imports }: { imports: ImportRecord[] }) {
             <TableHead className="text-right">처리건수</TableHead>
             <TableHead className="text-right">실패건수</TableHead>
             <TableHead>상태</TableHead>
+            {showOwner ? <TableHead>업로드한 계정</TableHead> : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -41,6 +42,7 @@ export function ImportHistoryTable({ imports }: { imports: ImportRecord[] }) {
                   {imp.status === "completed" ? "완료" : imp.status === "failed" ? "실패" : "처리중"}
                 </Badge>
               </TableCell>
+              {showOwner ? <TableCell className="text-muted-foreground">{imp.owner_username}</TableCell> : null}
             </TableRow>
           ))}
         </TableBody>
