@@ -16,7 +16,7 @@ export function Header() {
         </SheetTrigger>
         <SheetContent side="left" className="w-60 p-0">
           <SheetTitle className="flex h-14 items-center border-b px-4 text-lg font-semibold">
-            반찬가게 CRM
+            CRM
           </SheetTitle>
           <div className="p-3">
             <NavLinks />

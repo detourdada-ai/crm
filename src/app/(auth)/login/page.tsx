@@ -12,7 +12,7 @@ export default async function LoginPage({
     <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">반찬가게 CRM</CardTitle>
+          <CardTitle className="text-xl">CRM</CardTitle>
           <CardDescription>관리자 계정으로 로그인하세요.</CardDescription>
         </CardHeader>
         <CardContent>

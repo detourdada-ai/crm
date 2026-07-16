@@ -1,4 +1,4 @@
-# 반찬가게 CRM
+# CRM
 
 스마트스토어 주문 엑셀을 업로드하면 고객/주문 관리가 자동화되는 CRM. Next.js(App Router) + TypeScript +
 TailwindCSS + shadcn/ui + Supabase.

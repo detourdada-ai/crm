@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "반찬가게 CRM",
-  description: "엑셀 업로드로 고객/주문 관리를 자동화하는 반찬가게 CRM",
+  title: "CRM",
+  description: "엑셀 업로드로 고객/주문 관리를 자동화하는 CRM",
 };
 
 export default function RootLayout({
