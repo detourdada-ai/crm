@@ -18,8 +18,45 @@ export interface Database {
         };
         Relationships: [];
       };
+      customer_order_gaps: {
+        Row: {
+          customer_id: string;
+          owner_username: string;
+          order_date: string;
+          prev_order_date: string | null;
+          gap_days: number | null;
+        };
+        Relationships: [];
+      };
+      customer_reorder_cycle: {
+        Row: {
+          customer_id: string;
+          owner_username: string;
+          avg_interval_days: number;
+          gap_count: number;
+          last_order_at: string;
+        };
+        Relationships: [];
+      };
     };
-    Functions: Record<string, never>;
+    Functions: {
+      monthly_revenue: {
+        Args: { p_owner_username: string | null; p_months: number };
+        Returns: { month: string; revenue: number }[];
+      };
+      orders_by_weekday: {
+        Args: { p_owner_username: string | null };
+        Returns: { weekday: number; order_count: number }[];
+      };
+      top_products: {
+        Args: { p_owner_username: string | null; p_limit: number };
+        Returns: { product_name: string; total_quantity: number; total_amount: number }[];
+      };
+      order_amount_summary: {
+        Args: { p_owner_username: string | null; p_since: string | null };
+        Returns: { total_amount: number; order_count: number }[];
+      };
+    };
     Enums: Record<string, never>;
     Tables: {
       customers: {

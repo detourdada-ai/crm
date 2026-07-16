@@ -1,7 +1,6 @@
 import "server-only";
 import { customersRepository } from "@/lib/repositories/customers.repository";
 import { customerStatsRepository } from "@/lib/repositories/customer-stats.repository";
-import { ordersRepository } from "@/lib/repositories/orders.repository";
 import type { Customer } from "@/types/domain";
 
 export interface ReorderDueCustomer {
@@ -17,75 +16,50 @@ const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 /**
  * Flags customers who are overdue relative to THEIR OWN historical ordering
- * pattern (average days between orders), rather than a fixed global cutoff.
- * Only considers customers with 2+ orders, since a reorder "cycle" isn't
- * defined for a single purchase.
+ * pattern (average days between orders, precomputed by the customer_reorder_cycle
+ * view via a window function), rather than a fixed global cutoff. Only
+ * considers customers with 2+ orders, since a reorder "cycle" isn't defined
+ * for a single purchase.
  */
 export async function computeReorderDueCustomers(ownerUsername?: string): Promise<ReorderDueCustomer[]> {
-  const repeatCustomerIds = await customerStatsRepository.findRepeatCustomerIds(ownerUsername);
-  if (repeatCustomerIds.length === 0) return [];
-
-  const orderDates = await ordersRepository.findOrderDatesByCustomerIds(repeatCustomerIds);
-
-  const byCustomer = new Map<string, string[]>();
-  for (const row of orderDates) {
-    const list = byCustomer.get(row.customer_id) ?? [];
-    list.push(row.order_date);
-    byCustomer.set(row.customer_id, list);
-  }
+  const cycles = await customerStatsRepository.findReorderCycles(ownerUsername);
+  if (cycles.length === 0) return [];
 
   const now = Date.now();
-  const candidates: {
-    customerId: string;
-    averageIntervalDays: number;
-    daysSinceLastOrder: number;
-    overdueDays: number;
-    lastOrderAt: string;
-    totalOrders: number;
-  }[] = [];
+  const overdue = cycles
+    .map((row) => {
+      const daysSinceLastOrder = (now - new Date(row.last_order_at).getTime()) / MS_PER_DAY;
+      const overdueDays = daysSinceLastOrder - row.avg_interval_days;
+      return { row, daysSinceLastOrder, overdueDays };
+    })
+    .filter((r) => r.overdueDays > 0)
+    .sort((a, b) => b.overdueDays - a.overdueDays);
 
-  for (const [customerId, dates] of byCustomer) {
-    if (dates.length < 2) continue;
-    const timestamps = dates.map((d) => new Date(d).getTime()).sort((a, b) => a - b);
-    const gaps = timestamps.slice(1).map((t, i) => t - timestamps[i]);
-    const averageIntervalMs = gaps.reduce((sum, g) => sum + g, 0) / gaps.length;
-    const averageIntervalDays = averageIntervalMs / MS_PER_DAY;
+  if (overdue.length === 0) return [];
 
-    const lastOrderMs = timestamps[timestamps.length - 1];
-    const daysSinceLastOrder = (now - lastOrderMs) / MS_PER_DAY;
-    const overdueDays = daysSinceLastOrder - averageIntervalDays;
-
-    if (overdueDays > 0) {
-      candidates.push({
-        customerId,
-        averageIntervalDays,
-        daysSinceLastOrder,
-        overdueDays,
-        lastOrderAt: new Date(lastOrderMs).toISOString(),
-        totalOrders: dates.length,
-      });
-    }
-  }
-
-  if (candidates.length === 0) return [];
-
-  candidates.sort((a, b) => b.overdueDays - a.overdueDays);
-
-  const customers = await customersRepository.findByIds(candidates.map((c) => c.customerId));
+  const customers = await customersRepository.findByIds(overdue.map((r) => r.row.customer_id));
   const byId = new Map<string, Customer>(customers.map((c) => [c.id, c]));
 
-  return candidates
-    .map((c) => {
-      const customer = byId.get(c.customerId);
+  return overdue
+    .map(({ row, daysSinceLastOrder, overdueDays }) => {
+      const customer = byId.get(row.customer_id);
       if (!customer) return null;
       return {
         customer,
-        averageIntervalDays: Math.round(c.averageIntervalDays * 10) / 10,
-        daysSinceLastOrder: Math.round(c.daysSinceLastOrder),
-        overdueDays: Math.round(c.overdueDays),
-        lastOrderAt: c.lastOrderAt,
-        totalOrders: c.totalOrders,
+        averageIntervalDays: Math.round(row.avg_interval_days * 10) / 10,
+        daysSinceLastOrder: Math.round(daysSinceLastOrder),
+        overdueDays: Math.round(overdueDays),
+        lastOrderAt: row.last_order_at,
+        totalOrders: row.gap_count + 1,
       };
     })
     .filter((v): v is ReorderDueCustomer => v !== null);
+}
+
+/** Company-wide average reorder cycle across every customer who has one. */
+export async function computeAverageReorderCycleDays(ownerUsername?: string): Promise<number | null> {
+  const cycles = await customerStatsRepository.findReorderCycles(ownerUsername);
+  if (cycles.length === 0) return null;
+  const sum = cycles.reduce((acc, c) => acc + c.avg_interval_days, 0);
+  return Math.round((sum / cycles.length) * 10) / 10;
 }

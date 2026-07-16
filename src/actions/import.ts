@@ -64,7 +64,7 @@ export async function confirmImportAction(
   }
 }
 
-export async function listRecentImportsAction(): Promise<ImportRecord[]> {
+export async function listRecentImportsAction(limit = 20): Promise<ImportRecord[]> {
   const session = await requireSession();
-  return importsRepository.listRecent(20, ownerScopeFor(session));
+  return importsRepository.listRecent(limit, ownerScopeFor(session));
 }

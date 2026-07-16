@@ -4,9 +4,9 @@ import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { Order, OrderItem } from "@/types/domain";
 
-export async function listOrdersAction(page = 1) {
+export async function listOrdersAction(page = 1, pageSize = 20) {
   const session = await requireSession();
-  return ordersRepository.listRecent(page, 20, ownerScopeFor(session));
+  return ordersRepository.listRecent(page, pageSize, ownerScopeFor(session));
 }
 
 export interface OrderDetail {

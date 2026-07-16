@@ -23,6 +23,9 @@ TailwindCSS + shadcn/ui + Supabase.
   결과 리포트, Import 이력, 동일인 검토/병합 화면, 고객관리(검색/상세/변경이력), 주문관리.
 - **Sprint 3** (일부 완료): Dashboard 심화 통계(매출 추이 차트, 신규 vs 재구매), VIP 세그먼트, 재주문 분석
   완료. 문자 발송은 외부 연동이 필요해 보류 중.
+- **Sprint 4** (완료): Dashboard 전면 재구축 — KPI 카드(객단가/평균 재주문 주기 포함), 최근 주문/업로드,
+  동일인 검토 카드, 월별 매출·요일별 주문 차트(Recharts), 인기상품 TOP10, 고객 구매 랭킹, 최근 미주문
+  고객. 모든 집계를 Supabase View/RPC로 이동해 원시 행을 앱으로 끌어와 합산하지 않도록 함.
 
 ## 시작하기
 
@@ -104,6 +107,16 @@ npm run dev
 - 두 기능 모두 계정별 데이터 범위(`owner_username`)를 그대로 따릅니다.
 - 이미 스키마를 적용한 프로젝트는
   [`supabase/migrations/0005_stats_and_settings.sql`](supabase/migrations/0005_stats_and_settings.sql)을
+  SQL Editor에서 실행하세요.
+
+### Dashboard 분석 (Sprint 4)
+
+- `customer_order_gaps`/`customer_reorder_cycle` 뷰(윈도우 함수로 주문 간 간격 계산), `monthly_revenue`
+  / `orders_by_weekday` / `top_products` / `order_amount_summary` RPC 함수를 새로 추가했습니다. 원시
+  주문 행을 앱으로 가져와 JS에서 합산하지 않고, 집계 자체를 Postgres에서 끝내는 방식입니다
+  (`dashboard-analytics.repository.ts`).
+- 이미 스키마를 적용한 프로젝트는
+  [`supabase/migrations/0006_dashboard_analytics.sql`](supabase/migrations/0006_dashboard_analytics.sql)을
   SQL Editor에서 실행하세요.
 
 ## 폴더 구조
