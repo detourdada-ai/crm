@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getOrderDetailAction } from "@/actions/orders";
 import { OrderItemRawData } from "@/components/orders/order-item-raw-data";
+import { BackButton } from "@/components/common/back-button";
 import { formatCurrency, formatDateTime } from "@/lib/constants/order-status";
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -26,6 +27,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="space-y-6">
+      <BackButton fallbackHref="/orders" />
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-semibold">{order.order_number}</h1>
         {order.status ? <Badge variant="secondary">{order.status}</Badge> : null}

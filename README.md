@@ -78,8 +78,10 @@ npm run dev
 
 ### 계정 및 데이터 범위 (다중 사용자)
 
-- 계정: `admin`(관리자) / `user1`~`user5`(담당자), 비밀번호는 모두 기본 `1234`(환경 변수
-  `ADMIN_PASSWORD`, `USER1_PASSWORD` … `USER5_PASSWORD`로 개별 변경 가능).
+- 계정: `admin`(관리자) / `user1`~`user5`(담당자). 비밀번호는 `app_accounts` 테이블에 scrypt로 해시
+  저장되며, 처음 로그인 시 환경 변수(`ADMIN_PASSWORD`, `USER1_PASSWORD` … `USER5_PASSWORD`, 기본값
+  `1234`)로 자동 시딩됩니다. 이후 비밀번호 변경은 [설정] 화면에서 처리하며(담당자는 본인 것만, 관리자는
+  아무 계정이나), 환경 변수는 더 이상 참조되지 않습니다.
 - `customers`/`orders`/`imports`/`duplicate_candidates`에 `owner_username` 컬럼이 있습니다. 담당자
   계정은 본인이 업로드/등록한 데이터만 조회·수정·병합할 수 있고, `admin`은 전체를 조회할 수 있습니다
   (`src/lib/auth/current-session.ts`의 `ownerScopeFor()` — `admin`이면 `undefined`를 반환해 필터를

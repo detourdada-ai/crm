@@ -230,6 +230,22 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["customer_change_logs"]["Insert"]>;
         Relationships: [];
       };
+      app_accounts: {
+        Row: {
+          username: string;
+          password_hash: string;
+          role: string;
+          updated_at: string;
+        };
+        Insert: {
+          username: string;
+          password_hash: string;
+          role: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["app_accounts"]["Insert"]>;
+        Relationships: [];
+      };
     };
   };
 }

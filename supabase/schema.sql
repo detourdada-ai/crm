@@ -218,6 +218,20 @@ create table if not exists customer_change_logs (
 create index if not exists idx_customer_change_logs_customer_id on customer_change_logs (customer_id);
 
 -- ----------------------------------------------------------------------------
+-- app_accounts (admin/user1..user5 login + password hashes)
+-- ----------------------------------------------------------------------------
+-- Starts empty; the app seeds it on first login attempt using
+-- ADMIN_PASSWORD/USER1_PASSWORD.. env vars (falling back to "1234"), hashed
+-- with scrypt. After that this table is the source of truth for passwords,
+-- changeable from the Settings screen — env vars are only the initial seed.
+create table if not exists app_accounts (
+  username text primary key,
+  password_hash text not null,
+  role text not null check (role in ('admin', 'user')),
+  updated_at timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------------------
 -- RLS: enabled, no anon/authenticated policies (server uses service role key)
 -- ----------------------------------------------------------------------------
 alter table customers enable row level security;
@@ -227,3 +241,4 @@ alter table imports enable row level security;
 alter table duplicate_candidates enable row level security;
 alter table merge_history enable row level security;
 alter table customer_change_logs enable row level security;
+alter table app_accounts enable row level security;

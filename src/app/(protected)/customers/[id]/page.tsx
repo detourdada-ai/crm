@@ -6,6 +6,7 @@ import { CustomerEditForm } from "@/components/customers/customer-edit-form";
 import { CustomerStatsCards } from "@/components/customers/customer-stats-cards";
 import { CustomerChangeHistory } from "@/components/customers/customer-change-history";
 import { OrderTable } from "@/components/orders/order-table";
+import { BackButton } from "@/components/common/back-button";
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,6 +17,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   return (
     <div className="space-y-6">
+      <BackButton fallbackHref="/customers" />
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-semibold">{customer.name}</h1>
         <Badge variant="outline">{customer.customer_code}</Badge>
