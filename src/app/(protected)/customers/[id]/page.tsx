@@ -1,19 +1,23 @@
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCustomerDetailAction } from "@/actions/customers";
 import { CustomerEditForm } from "@/components/customers/customer-edit-form";
 import { CustomerStatsCards } from "@/components/customers/customer-stats-cards";
 import { CustomerChangeHistory } from "@/components/customers/customer-change-history";
+import { CustomerTimeline } from "@/components/customers/customer-timeline";
+import { CustomerFavoriteButton } from "@/components/customers/customer-favorite-button";
 import { OrderTable } from "@/components/orders/order-table";
 import { BackButton } from "@/components/common/back-button";
+import { CUSTOMER_STATUS_LABELS } from "@/lib/constants/customer-status";
+import type { CustomerStatus } from "@/types/domain";
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const detail = await getCustomerDetailAction(id);
   if (!detail) notFound();
 
-  const { customer, stats, orders, changeLogs } = detail;
+  const { customer, stats, orders, changeLogs, timeline, isVip } = detail;
 
   return (
     <div className="space-y-6">
@@ -21,11 +25,16 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-semibold">{customer.name}</h1>
         <Badge variant="outline">{customer.customer_code}</Badge>
+        {isVip ? <Badge className="bg-yellow-400 text-yellow-950 hover:bg-yellow-400">VIP</Badge> : null}
+        <Badge variant={customer.status === "active" ? "outline" : "secondary"}>
+          {CUSTOMER_STATUS_LABELS[customer.status as CustomerStatus] ?? customer.status}
+        </Badge>
         {customer.tags.map((tag) => (
           <Badge key={tag} variant="secondary">
             {tag}
           </Badge>
         ))}
+        <CustomerFavoriteButton customerId={customer.id} initialIsFavorite={customer.is_favorite} />
       </div>
 
       <CustomerStatsCards stats={stats} />
@@ -45,6 +54,16 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         </CardHeader>
         <CardContent>
           <OrderTable orders={orders} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Timeline</CardTitle>
+          <CardDescription>주문, 정보 변경, 병합 등 모든 이벤트를 시간순으로 보여줍니다.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CustomerTimeline events={timeline} />
         </CardContent>
       </Card>
 

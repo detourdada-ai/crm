@@ -17,6 +17,8 @@ export type DuplicateConfidence = "HIGH" | "MEDIUM";
 
 export type DuplicateStatus = "pending" | "merged" | "rejected" | "held";
 
+export type CustomerStatus = "active" | "dormant" | "watchlist" | "blocked";
+
 export interface Customer {
   id: UUID;
   customer_code: string; // e.g. C000001, immutable, the true identity key
@@ -27,6 +29,8 @@ export interface Customer {
   memo: string | null;
   tags: string[];
   owner_username: string; // account that owns/manages this customer; "admin" sees all
+  is_favorite: boolean;
+  status: CustomerStatus;
   created_at: ISODateString;
   updated_at: ISODateString;
 }

@@ -39,6 +39,8 @@ create table if not exists customers (
   memo text,
   tags text[] not null default '{}',
   owner_username text not null default 'admin',
+  is_favorite boolean not null default false,
+  status text not null default 'active' check (status in ('active', 'dormant', 'watchlist', 'blocked')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -48,6 +50,7 @@ create index if not exists idx_customers_phone on customers (phone);
 create index if not exists idx_customers_address_normalized on customers (address_normalized);
 create index if not exists idx_customers_customer_code on customers (customer_code);
 create index if not exists idx_customers_owner_username on customers (owner_username);
+create index if not exists customers_is_favorite_idx on customers (is_favorite) where is_favorite = true;
 
 create or replace function assign_customer_code()
 returns trigger as $$

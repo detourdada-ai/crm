@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CUSTOMER_STATUS_OPTIONS } from "@/lib/constants/customer-status";
 import type { Customer } from "@/types/domain";
 
 const initialState: UpdateCustomerActionState = { ok: false, error: null };
@@ -33,6 +35,21 @@ export function CustomerEditForm({ customer }: { customer: Customer }) {
       <div className="space-y-2 sm:col-span-2">
         <Label htmlFor="address">주소</Label>
         <Input id="address" name="address" defaultValue={customer.address ?? ""} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="status">고객 상태</Label>
+        <Select name="status" defaultValue={customer.status}>
+          <SelectTrigger id="status" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CUSTOMER_STATUS_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="space-y-2 sm:col-span-2">
         <Label htmlFor="memo">메모</Label>

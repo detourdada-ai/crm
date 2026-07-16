@@ -4,6 +4,8 @@
  * `supabase gen types typescript`, you can drop this in its place.
  */
 
+import type { CustomerStatus } from "./domain";
+
 export interface Database {
   public: {
     Views: {
@@ -70,6 +72,8 @@ export interface Database {
           memo: string | null;
           tags: string[];
           owner_username: string;
+          is_favorite: boolean;
+          status: CustomerStatus;
           created_at: string;
           updated_at: string;
         };
@@ -83,6 +87,8 @@ export interface Database {
           memo?: string | null;
           tags?: string[];
           owner_username?: string;
+          is_favorite?: boolean;
+          status?: CustomerStatus;
           created_at?: string;
           updated_at?: string;
         };

@@ -1,6 +1,6 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import type { Customer } from "@/types/domain";
+import type { Customer, CustomerStatus } from "@/types/domain";
 
 export interface CustomerSearchParams {
   query?: string;
@@ -26,6 +26,8 @@ export interface CustomerUpdate {
   address_normalized?: string | null;
   memo?: string | null;
   tags?: string[];
+  is_favorite?: boolean;
+  status?: CustomerStatus;
 }
 
 /** Direct Supabase query access for the `customers` table. No business logic here. */

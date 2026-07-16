@@ -26,6 +26,9 @@ TailwindCSS + shadcn/ui + Supabase.
 - **Sprint 4** (완료): Dashboard 전면 재구축 — KPI 카드(객단가/평균 재주문 주기 포함), 최근 주문/업로드,
   동일인 검토 카드, 월별 매출·요일별 주문 차트(Recharts), 인기상품 TOP10, 고객 구매 랭킹, 최근 미주문
   고객. 모든 집계를 Supabase View/RPC로 이동해 원시 행을 앱으로 끌어와 합산하지 않도록 함.
+- **Sprint 5** (완료): 고객 CRM 기능 강화 — 즐겨찾기 토글, 고객 상태(정상/휴면/주의/차단), VIP 자동 분류
+  뱃지를 고객 상세/목록에 노출. 주문·전화번호/주소 변경·병합·메모 변경을 하나로 합친 Timeline 추가.
+  기존 변경 이력/병합 이력은 그대로 유지.
 
 ## 시작하기
 
@@ -117,6 +120,18 @@ npm run dev
   (`dashboard-analytics.repository.ts`).
 - 이미 스키마를 적용한 프로젝트는
   [`supabase/migrations/0006_dashboard_analytics.sql`](supabase/migrations/0006_dashboard_analytics.sql)을
+  SQL Editor에서 실행하세요.
+
+### 고객 CRM 강화 (Sprint 5)
+
+- `customers` 테이블에 `is_favorite`(즐겨찾기), `status`(고객 상태: `active`/`dormant`/`watchlist`/`blocked`)
+  컬럼을 추가했습니다. VIP는 여전히 주문 통계 기반 자동 분류(`vip.service.ts`)이며, `status`는 담당자가
+  직접 지정하는 별도 필드입니다.
+- **Timeline**: 주문, 전화번호/주소 변경, 병합, 메모 변경을 하나의 시간순 피드로 합쳐서 보여줍니다
+  (`timeline.service.ts`). 기존의 변경 이력 표(`customer_change_logs` 기반)와 병합 이력은 그대로
+  유지되며, Timeline은 이를 대체하지 않고 보완합니다.
+- 이미 스키마를 적용한 프로젝트는
+  [`supabase/migrations/0007_customer_favorite_status.sql`](supabase/migrations/0007_customer_favorite_status.sql)을
   SQL Editor에서 실행하세요.
 
 ## 폴더 구조

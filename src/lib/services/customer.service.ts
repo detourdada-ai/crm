@@ -3,7 +3,8 @@ import { customersRepository } from "@/lib/repositories/customers.repository";
 import { changeLogRepository, type ChangeLogInsert } from "@/lib/repositories/change-log.repository";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress, normalizeAddressForCompare } from "@/lib/utils/address";
-import type { Customer } from "@/types/domain";
+import type { Customer, CustomerStatus } from "@/types/domain";
+import { CUSTOMER_STATUS_LABELS } from "@/lib/constants/customer-status";
 
 export interface ImportCustomerInput {
   name: string;
@@ -58,6 +59,7 @@ export interface UpdateCustomerInput {
   address: string | null;
   memo: string | null;
   tags: string[];
+  status: CustomerStatus;
 }
 
 /**
@@ -79,6 +81,7 @@ export async function updateCustomerProfile(
   const addressNormalized = normalizeAddressForCompare(input.address);
   const memo = input.memo?.trim() || null;
   const tags = input.tags;
+  const status = input.status;
 
   const logs: ChangeLogInsert[] = [];
   if (existing.phone !== phone) {
@@ -131,6 +134,16 @@ export async function updateCustomerProfile(
       performed_by: performedBy,
     });
   }
+  if (existing.status !== status) {
+    logs.push({
+      customer_id: id,
+      entity: "customer_info",
+      field: "status",
+      old_value: CUSTOMER_STATUS_LABELS[existing.status as CustomerStatus] ?? existing.status,
+      new_value: CUSTOMER_STATUS_LABELS[status],
+      performed_by: performedBy,
+    });
+  }
 
   const updated = await customersRepository.update(id, {
     name,
@@ -139,9 +152,14 @@ export async function updateCustomerProfile(
     address_normalized: addressNormalized,
     memo,
     tags,
+    status,
   });
 
   if (logs.length > 0) await changeLogRepository.createMany(logs);
 
   return updated;
+}
+
+export async function setCustomerFavorite(id: string, isFavorite: boolean): Promise<Customer> {
+  return customersRepository.update(id, { is_favorite: isFavorite });
 }
