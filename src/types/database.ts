@@ -6,7 +6,19 @@
 
 export interface Database {
   public: {
-    Views: Record<string, never>;
+    Views: {
+      customer_order_stats: {
+        Row: {
+          customer_id: string;
+          owner_username: string;
+          total_orders: number;
+          total_amount: number;
+          first_order_at: string | null;
+          last_order_at: string | null;
+        };
+        Relationships: [];
+      };
+    };
     Functions: Record<string, never>;
     Enums: Record<string, never>;
     Tables: {
@@ -244,6 +256,20 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["app_accounts"]["Insert"]>;
+        Relationships: [];
+      };
+      app_settings: {
+        Row: {
+          key: string;
+          value: Record<string, unknown>;
+          updated_at: string;
+        };
+        Insert: {
+          key: string;
+          value: Record<string, unknown>;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["app_settings"]["Insert"]>;
         Relationships: [];
       };
     };

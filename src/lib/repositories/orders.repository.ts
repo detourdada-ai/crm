@@ -62,6 +62,20 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
+  /** order_date per customer for reorder-cycle analysis; ascending so consecutive gaps are easy to compute. */
+  async findOrderDatesByCustomerIds(
+    customerIds: string[]
+  ): Promise<{ customer_id: string; order_date: string }[]> {
+    if (customerIds.length === 0) return [];
+    const { data, error } = await getSupabaseAdmin()
+      .from("orders")
+      .select("customer_id, order_date")
+      .in("customer_id", customerIds)
+      .order("order_date", { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  },
+
   async listRecent(page = 1, pageSize = 20, ownerUsername?: string) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
@@ -110,6 +124,18 @@ export const ordersRepository = {
     const { count, error } = await q;
     if (error) throw error;
     return count ?? 0;
+  },
+
+  /** Raw (order_date, total_amount, customer_id) since a given date, for revenue-trend / new-vs-repeat charts. */
+  async findAmountsSince(
+    sinceIso: string,
+    ownerUsername?: string
+  ): Promise<{ order_date: string; total_amount: number; customer_id: string }[]> {
+    let q = getSupabaseAdmin().from("orders").select("order_date, total_amount, customer_id").gte("order_date", sinceIso);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.order("order_date", { ascending: true });
+    if (error) throw error;
+    return data ?? [];
   },
 
   async sumAmountSince(sinceIso: string, ownerUsername?: string): Promise<number> {

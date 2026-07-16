@@ -21,7 +21,8 @@ TailwindCSS + shadcn/ui + Supabase.
   라우트 보호(proxy), Supabase 연결 구조, Vercel 배포 가능한 상태.
 - **Sprint 2** (완료): 엑셀 업로드 → 컬럼 자동 매핑 → 주문/주문상품/고객 생성 → 동일인 후보 탐지 →
   결과 리포트, Import 이력, 동일인 검토/병합 화면, 고객관리(검색/상세/변경이력), 주문관리.
-- **Sprint 3** (예정): Dashboard 심화 통계, VIP 세그먼트, 재주문 분석, 문자 발송.
+- **Sprint 3** (일부 완료): Dashboard 심화 통계(매출 추이 차트, 신규 vs 재구매), VIP 세그먼트, 재주문 분석
+  완료. 문자 발송은 외부 연동이 필요해 보류 중.
 
 ## 시작하기
 
@@ -91,6 +92,19 @@ npm run dev
 - 이미 스키마를 적용한 Supabase 프로젝트가 있다면
   [`supabase/migrations/0002_add_owner_username.sql`](supabase/migrations/0002_add_owner_username.sql)을
   SQL Editor에서 실행해 컬럼을 추가하세요 (기존 행은 모두 `owner_username = 'admin'`으로 채워집니다).
+
+### VIP / 재주문 분석 (Sprint 3)
+
+- **VIP 고객**: `customer_order_stats` 뷰(고객별 주문횟수/총액 집계)를 기준으로, 총 구매금액 또는
+  주문횟수 둘 중 하나만 넘어도 VIP로 분류합니다. 기준값은 `app_settings` 테이블에 저장되며 [설정] 화면
+  (관리자 전용)에서 즉시 변경할 수 있습니다 — 기본값은 50만원 또는 10회.
+- **재주문 임박**: 전역 고정값이 아니라 **고객 개인의 과거 평균 주문 주기**를 계산해, 그 주기를 이미
+  넘겼는데 재주문이 없는 고객만 보여줍니다(`reorder.service.ts`). 주문이 1건뿐인 고객은 주기를 계산할
+  수 없어 대상에서 제외됩니다.
+- 두 기능 모두 계정별 데이터 범위(`owner_username`)를 그대로 따릅니다.
+- 이미 스키마를 적용한 프로젝트는
+  [`supabase/migrations/0005_stats_and_settings.sql`](supabase/migrations/0005_stats_and_settings.sql)을
+  SQL Editor에서 실행하세요.
 
 ## 폴더 구조
 

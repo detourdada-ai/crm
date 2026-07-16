@@ -232,6 +232,30 @@ create table if not exists app_accounts (
 );
 
 -- ----------------------------------------------------------------------------
+-- app_settings (admin-editable thresholds, e.g. VIP criteria)
+-- ----------------------------------------------------------------------------
+create table if not exists app_settings (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------------------
+-- customer_order_stats (per-customer order aggregates for VIP/list views)
+-- ----------------------------------------------------------------------------
+create or replace view customer_order_stats as
+select
+  c.id as customer_id,
+  c.owner_username,
+  count(o.id) as total_orders,
+  coalesce(sum(o.total_amount), 0) as total_amount,
+  min(o.order_date) as first_order_at,
+  max(o.order_date) as last_order_at
+from customers c
+left join orders o on o.customer_id = c.id
+group by c.id, c.owner_username;
+
+-- ----------------------------------------------------------------------------
 -- RLS: enabled, no anon/authenticated policies (server uses service role key)
 -- ----------------------------------------------------------------------------
 alter table customers enable row level security;
@@ -240,5 +264,6 @@ alter table order_items enable row level security;
 alter table imports enable row level security;
 alter table duplicate_candidates enable row level security;
 alter table merge_history enable row level security;
+alter table app_settings enable row level security;
 alter table customer_change_logs enable row level security;
 alter table app_accounts enable row level security;

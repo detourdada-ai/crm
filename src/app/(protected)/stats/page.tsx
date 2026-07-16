@@ -1,28 +1,64 @@
-import { BarChart3 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { listVipCustomersAction, listReorderDueCustomersAction } from "@/actions/stats";
+import { VipCustomerTable } from "@/components/stats/vip-customer-table";
+import { ReorderDueTable } from "@/components/stats/reorder-due-table";
 
-export default function StatsPage() {
+export default async function StatsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const { tab } = await searchParams;
+  const [vipCustomers, reorderDue] = await Promise.all([
+    listVipCustomersAction(),
+    listReorderDueCustomersAction(),
+  ]);
+
+  const defaultTab = tab === "reorder" ? "reorder" : "vip";
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">통계</h1>
-        <p className="text-sm text-muted-foreground">VIP 고객, 재주문 분석 등 심화 통계는 Sprint 3에서 제공됩니다.</p>
+        <p className="text-sm text-muted-foreground">VIP 고객과 재주문이 임박한 고객을 확인할 수 있습니다.</p>
       </div>
+
+      <Tabs defaultValue={defaultTab}>
+        <TabsList>
+          <TabsTrigger value="vip">VIP 고객 ({vipCustomers.length})</TabsTrigger>
+          <TabsTrigger value="reorder">재주문 임박 ({reorderDue.length})</TabsTrigger>
+        </TabsList>
+        <TabsContent value="vip">
+          <Card>
+            <CardHeader>
+              <CardTitle>VIP 고객</CardTitle>
+              <CardDescription>
+                총 구매금액 또는 주문횟수 기준. 기준값은 [설정] 화면에서 변경할 수 있습니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <VipCustomerTable customers={vipCustomers} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="reorder">
+          <Card>
+            <CardHeader>
+              <CardTitle>재주문 임박 고객</CardTitle>
+              <CardDescription>
+                고객마다 실제 주문 간격(평균 주기)을 계산해, 그 주기를 이미 넘겼는데 재주문이 없는 고객만
+                보여줍니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ReorderDueTable customers={reorderDue} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
       <Card>
         <CardHeader>
-          <CardTitle>준비 중입니다</CardTitle>
-          <CardDescription>Sprint 3에서 아래 기능이 이어서 구축될 예정입니다.</CardDescription>
+          <CardTitle>준비 중인 기능</CardTitle>
+          <CardDescription>문자 발송(재주문 알림/프로모션)은 외부 연동이 필요해 추후 진행됩니다.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-16 text-center text-muted-foreground">
-            <BarChart3 className="size-8" />
-            <ul className="text-sm">
-              <li>VIP 고객 세그먼트</li>
-              <li>재주문 주기 분석</li>
-              <li>문자 발송 캠페인</li>
-            </ul>
-          </div>
-        </CardContent>
       </Card>
     </div>
   );

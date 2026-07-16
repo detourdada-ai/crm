@@ -3,7 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireSession } from "@/lib/auth/current-session";
 import { listAccounts } from "@/lib/auth/credentials";
+import { getVipCriteria } from "@/lib/services/vip.service";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
+import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
 
 export default async function SettingsPage() {
   const session = await requireSession();
@@ -29,6 +31,8 @@ export default async function SettingsPage() {
     );
   }
 
+  const vipCriteria = await getVipCriteria();
+
   return (
     <div className="space-y-6">
       <div>
@@ -43,6 +47,18 @@ export default async function SettingsPage() {
             <Badge variant="outline">관리자</Badge>
           </CardTitle>
         </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>VIP 고객 기준</CardTitle>
+          <CardDescription>
+            총 구매금액 또는 주문횟수 둘 중 하나만 넘어도 VIP로 분류됩니다. [통계] 화면에 바로 반영됩니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <VipCriteriaForm criteria={vipCriteria} />
+        </CardContent>
       </Card>
 
       <Card>
