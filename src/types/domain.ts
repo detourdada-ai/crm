@@ -31,6 +31,7 @@ export interface Customer {
   owner_username: string; // account that owns/manages this customer; "admin" sees all
   is_favorite: boolean;
   status: CustomerStatus;
+  created_by_import_id: UUID | null; // set only if a specific import first created this customer
   created_at: ISODateString;
   updated_at: ISODateString;
 }
@@ -38,6 +39,8 @@ export interface Customer {
 // Freeform: Smartstore's own status text (배송중/구매확정/취소 등) is stored
 // verbatim rather than translated into a fixed enum — see schema.sql.
 export type OrderStatus = string;
+
+export type OrderSource = "import" | "manual";
 
 export interface Order {
   id: UUID;
@@ -58,6 +61,10 @@ export interface Order {
   buyer_name: string | null;
   buyer_id: string | null;
   shipped_at: ISODateString | null;
+  delivery_date: ISODateString | null; // parsed from 옵션정보 at import time, or set manually
+  bag_number: string | null;
+  bag_returned: boolean;
+  order_source: OrderSource;
   import_id: UUID | null;
   owner_username: string;
   created_at: ISODateString;

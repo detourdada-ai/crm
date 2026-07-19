@@ -1,4 +1,4 @@
-import { Menu, LogOut } from "lucide-react";
+import { Menu, LogOut, Utensils } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import { getSession } from "@/lib/auth/current-session";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,8 @@ export async function Header() {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-60 p-0">
-          <SheetTitle className="flex h-14 items-center border-b px-4 text-lg font-semibold">
+          <SheetTitle className="flex h-14 items-center gap-2 border-b px-4 text-lg font-semibold">
+            <Utensils className="size-5 text-primary" />
             CRM
           </SheetTitle>
           <div className="p-3">

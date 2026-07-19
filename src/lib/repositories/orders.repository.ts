@@ -1,6 +1,6 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import type { Order, OrderItem } from "@/types/domain";
+import type { Order, OrderItem, OrderSource } from "@/types/domain";
 
 export interface OrderInsert {
   customer_id: string;
@@ -19,8 +19,32 @@ export interface OrderInsert {
   buyer_name?: string | null;
   buyer_id?: string | null;
   shipped_at?: string | null;
+  delivery_date?: string | null;
+  bag_number?: string | null;
+  bag_returned?: boolean;
+  order_source?: OrderSource;
   import_id?: string | null;
   owner_username: string;
+}
+
+export interface OrderUpdate {
+  bag_number?: string | null;
+  bag_returned?: boolean;
+  delivery_date?: string | null;
+}
+
+export type OrderSortField = "delivery_date" | "order_date" | "total_amount";
+
+export interface OrderSearchParams {
+  page?: number;
+  pageSize?: number;
+  ownerUsername?: string;
+  status?: string;
+  bagReturned?: boolean;
+  deliveryDateFrom?: string;
+  deliveryDateTo?: string;
+  sortBy?: OrderSortField;
+  sortAscending?: boolean;
 }
 
 export interface OrderItemInsert {
@@ -70,6 +94,65 @@ export const ordersRepository = {
     const { data, error, count } = await q.order("order_date", { ascending: false }).range(from, to);
     if (error) throw error;
     return { orders: (data as Order[]) ?? [], total: count ?? 0 };
+  },
+
+  async search({
+    page = 1,
+    pageSize = 20,
+    ownerUsername,
+    status,
+    bagReturned,
+    deliveryDateFrom,
+    deliveryDateTo,
+    sortBy = "delivery_date",
+    sortAscending = false,
+  }: OrderSearchParams) {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    let q = getSupabaseAdmin().from("orders").select("*", { count: "exact" });
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    if (status) q = q.ilike("status", `%${status}%`);
+    if (bagReturned !== undefined) q = q.eq("bag_returned", bagReturned);
+    if (deliveryDateFrom) q = q.gte("delivery_date", deliveryDateFrom);
+    if (deliveryDateTo) q = q.lte("delivery_date", deliveryDateTo);
+
+    const { data, error, count } = await q
+      .order(sortBy, { ascending: sortAscending, nullsFirst: false })
+      .order("order_date", { ascending: false })
+      .range(from, to);
+    if (error) throw error;
+    return { orders: (data as Order[]) ?? [], total: count ?? 0 };
+  },
+
+  async findByImportId(importId: string): Promise<Order[]> {
+    const { data, error } = await getSupabaseAdmin().from("orders").select("*").eq("import_id", importId);
+    if (error) throw error;
+    return (data as Order[]) ?? [];
+  },
+
+  async deleteMany(orderIds: string[]): Promise<void> {
+    if (orderIds.length === 0) return;
+    const { error } = await getSupabaseAdmin().from("orders").delete().in("id", orderIds);
+    if (error) throw error;
+  },
+
+  async update(id: string, input: OrderUpdate): Promise<Order> {
+    const { data, error } = await getSupabaseAdmin().from("orders").update(input).eq("id", id).select("*").single();
+    if (error) throw error;
+    return data as Order;
+  },
+
+  /** Bulk-marks every not-yet-returned bag as returned for orders delivered strictly before `beforeIso`. Returns the count updated. */
+  async markBagsReturnedBefore(beforeIso: string, ownerUsername?: string): Promise<number> {
+    let q = getSupabaseAdmin()
+      .from("orders")
+      .update({ bag_returned: true })
+      .eq("bag_returned", false)
+      .lt("delivery_date", beforeIso);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("id");
+    if (error) throw error;
+    return data?.length ?? 0;
   },
 
   async createMany(orders: OrderInsert[]): Promise<Order[]> {

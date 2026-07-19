@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ImportDeleteButton } from "./import-delete-button";
 import type { ImportRecord } from "@/types/domain";
 
 function formatDateTime(value: string): string {
@@ -22,6 +23,7 @@ export function ImportHistoryTable({ imports, showOwner = false }: { imports: Im
             <TableHead className="text-right">실패건수</TableHead>
             <TableHead>상태</TableHead>
             {showOwner ? <TableHead>업로드한 계정</TableHead> : null}
+            <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -43,6 +45,9 @@ export function ImportHistoryTable({ imports, showOwner = false }: { imports: Im
                 </Badge>
               </TableCell>
               {showOwner ? <TableCell className="text-muted-foreground">{imp.owner_username}</TableCell> : null}
+              <TableCell>
+                <ImportDeleteButton importId={imp.id} fileName={imp.file_name} />
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

@@ -29,6 +29,10 @@ TailwindCSS + shadcn/ui + Supabase.
 - **Sprint 5** (완료): 고객 CRM 기능 강화 — 즐겨찾기 토글, 고객 상태(정상/휴면/주의/차단), VIP 자동 분류
   뱃지를 고객 상세/목록에 노출. 주문·전화번호/주소 변경·병합·메모 변경을 하나로 합친 Timeline 추가.
   기존 변경 이력/병합 이력은 그대로 유지.
+- **Sprint 6** (완료): 엑셀 업로드 시 전체화면 로딩 오버레이로 중복 등록 방지, 업로드 이력 삭제(주문+연관
+  고객 정리) 기능, 주문관리 필터/정렬 및 배송일·구매자·상품명·수량·연락처·배송지주소·배송메세지·
+  가방번호·회수여부 컬럼 노출, 옵션정보에서 배송일 자동 파싱, 가방 회수 일괄 처리 버튼, 수동 주문 등록,
+  포인트 컬러를 반영한 디자인 리프레시.
 
 ## 시작하기
 
@@ -132,6 +136,26 @@ npm run dev
   유지되며, Timeline은 이를 대체하지 않고 보완합니다.
 - 이미 스키마를 적용한 프로젝트는
   [`supabase/migrations/0007_customer_favorite_status.sql`](supabase/migrations/0007_customer_favorite_status.sql)을
+  SQL Editor에서 실행하세요.
+
+### 주문 운영 개선 (Sprint 6)
+
+- `orders` 테이블에 `delivery_date`(배송일), `bag_number`(가방번호), `bag_returned`(회수여부),
+  `order_source`(`import`/`manual`) 컬럼을, `customers` 테이블에 `created_by_import_id`(어느 import가
+  이 고객을 새로 만들었는지)를 추가했습니다.
+- **엑셀 업로드 안전장치**: 업로드 진행 중에는 전체화면 로딩 오버레이로 다른 조작(중복 클릭 포함)을
+  막고, 새로고침/이탈 시 경고합니다. 실수로 중복 등록했을 경우 Import 이력에서 삭제 버튼으로 해당
+  업로드의 주문을 모두 지우고, 그 업로드가 새로 만든 뒤 주문이 0건이 된 고객도 함께 정리합니다
+  (`import.service.ts`의 `deleteImport`).
+- **배송일 자동 인식**: 스마트스토어 옵션정보 컬럼에 담긴 "MM월DD일" 형식의 배송 날짜를 정규식으로
+  추출해 `delivery_date`로 저장합니다(`delivery-date.ts`).
+- **가방 회수 관리**: 주문관리 화면에서 가방번호/회수여부를 인라인으로 바로 수정할 수 있고, "이전
+  미회수 건 일괄 회수 처리" 버튼으로 배송일이 지난 미회수 건을 한 번에 정리할 수 있습니다.
+- **주문 필터/정렬 + 수동 주문**: 배송일 범위·상태·회수여부로 필터링하고 배송일/주문일/금액 기준으로
+  정렬할 수 있습니다. "수동 주문 등록"은 엑셀 업로드와 동일한 고객 매칭 로직을 재사용해 고객관리에도
+  바로 반영됩니다.
+- 이미 스키마를 적용한 프로젝트는
+  [`supabase/migrations/0008_delivery_bag_manual_order.sql`](supabase/migrations/0008_delivery_bag_manual_order.sql)을
   SQL Editor에서 실행하세요.
 
 ## 폴더 구조

@@ -47,4 +47,9 @@ export const importsRepository = {
     if (error) throw error;
     return (data as ImportRecord[]) ?? [];
   },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await getSupabaseAdmin().from("imports").delete().eq("id", id);
+    if (error) throw error;
+  },
 };

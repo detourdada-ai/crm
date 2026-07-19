@@ -1,8 +1,9 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { ExcelParseError, parseSpreadsheet } from "@/lib/services/excel-parser.service";
 import { autoMapColumns } from "@/lib/services/column-mapping.service";
-import { runImport } from "@/lib/services/import.service";
+import { runImport, deleteImport } from "@/lib/services/import.service";
 import { importsRepository } from "@/lib/repositories/imports.repository";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { ColumnMapping, MappableField, ParsedSheet } from "@/types/excel";
@@ -67,4 +68,30 @@ export async function confirmImportAction(
 export async function listRecentImportsAction(limit = 20): Promise<ImportRecord[]> {
   const session = await requireSession();
   return importsRepository.listRecent(limit, ownerScopeFor(session));
+}
+
+export interface DeleteImportActionState {
+  ok: boolean;
+  error: string | null;
+}
+
+/** Reverses a mistaken/duplicate upload: removes its orders and any customer it solely created. */
+export async function deleteImportAction(importId: string): Promise<DeleteImportActionState> {
+  const session = await requireSession();
+  const record = await importsRepository.findById(importId);
+  if (!record) return { ok: false, error: "업로드 기록을 찾을 수 없습니다." };
+  if (session.role !== "admin" && record.owner_username !== session.username) {
+    return { ok: false, error: "이 업로드 기록을 삭제할 권한이 없습니다." };
+  }
+
+  try {
+    await deleteImport(importId);
+    revalidatePath("/import");
+    revalidatePath("/orders");
+    revalidatePath("/customers");
+    revalidatePath("/");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "삭제 중 오류가 발생했습니다." };
+  }
 }

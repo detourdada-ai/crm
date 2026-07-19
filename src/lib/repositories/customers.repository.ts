@@ -17,6 +17,7 @@ export interface CustomerInsert {
   memo?: string | null;
   tags?: string[];
   owner_username: string;
+  created_by_import_id?: string | null;
 }
 
 export interface CustomerUpdate {
@@ -113,6 +114,12 @@ export const customersRepository = {
   async delete(id: string): Promise<void> {
     const { error } = await getSupabaseAdmin().from("customers").delete().eq("id", id);
     if (error) throw error;
+  },
+
+  async findByCreatedByImportId(importId: string): Promise<Customer[]> {
+    const { data, error } = await getSupabaseAdmin().from("customers").select("*").eq("created_by_import_id", importId);
+    if (error) throw error;
+    return data ?? [];
   },
 
   async count(ownerUsername?: string): Promise<number> {

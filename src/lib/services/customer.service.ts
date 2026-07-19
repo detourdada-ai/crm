@@ -11,6 +11,7 @@ export interface ImportCustomerInput {
   rawPhone: string | null;
   rawAddress: string | null;
   ownerUsername: string;
+  importId?: string | null;
 }
 
 export interface CustomerResolution {
@@ -48,6 +49,7 @@ export async function resolveCustomerForImportRow(input: ImportCustomerInput): P
     address,
     address_normalized: addressNormalized,
     owner_username: input.ownerUsername,
+    created_by_import_id: input.importId ?? null,
   });
 
   return { customer: created, isNew: true };

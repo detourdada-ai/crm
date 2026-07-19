@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { analyzeImportFileAction, confirmImportAction } from "@/actions/import";
@@ -9,6 +9,7 @@ import type { ImportSummary } from "@/types/domain";
 import { ImportDropzone } from "./import-dropzone";
 import { ColumnMappingForm } from "./column-mapping-form";
 import { ImportResultCards } from "./import-result-cards";
+import { ImportLoadingOverlay } from "./import-loading-overlay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -29,6 +30,20 @@ export function ImportWorkspace() {
   const [stage, setStage] = useState<Stage>({ step: "idle" });
   const [isAnalyzing, startAnalyzing] = useTransition();
   const [isConfirming, startConfirming] = useTransition();
+  const isBusy = isAnalyzing || isConfirming;
+
+  // Guard against the user navigating away or refreshing mid-upload — this
+  // is exactly how a duplicate registration happened before (no feedback
+  // that the upload was in progress, so the user re-triggered it).
+  useEffect(() => {
+    if (!isBusy) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isBusy]);
 
   function handleFileSelected(file: File) {
     startAnalyzing(async () => {
@@ -64,36 +79,37 @@ export function ImportWorkspace() {
     });
   }
 
-  if (stage.step === "done") {
-    return (
-      <div className="space-y-4">
-        <ImportResultCards summary={stage.summary} />
-        <Button variant="outline" onClick={() => setStage({ step: "idle" })}>
-          다른 파일 업로드
-        </Button>
-      </div>
-    );
-  }
-
-  if (stage.step === "mapping") {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>컬럼 매핑 확인 — {stage.fileName}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ColumnMappingForm
-            parsed={stage.parsed}
-            initialMapping={stage.mapping}
-            initialUnmapped={stage.unmapped}
-            unrecognizedHeaders={stage.unrecognizedHeaders}
-            onConfirm={handleConfirm}
-            isSubmitting={isConfirming}
-          />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return <ImportDropzone onFileSelected={handleFileSelected} disabled={isAnalyzing} />;
+  return (
+    <>
+      {isBusy ? (
+        <ImportLoadingOverlay message={isAnalyzing ? "파일을 분석하는 중입니다..." : "엑셀 데이터를 등록하는 중입니다..."} />
+      ) : null}
+      {stage.step === "done" ? (
+        <div className="space-y-4">
+          <ImportResultCards summary={stage.summary} />
+          <Button variant="outline" onClick={() => setStage({ step: "idle" })}>
+            다른 파일 업로드
+          </Button>
+        </div>
+      ) : stage.step === "mapping" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>컬럼 매핑 확인 — {stage.fileName}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ColumnMappingForm
+              parsed={stage.parsed}
+              initialMapping={stage.mapping}
+              initialUnmapped={stage.unmapped}
+              unrecognizedHeaders={stage.unrecognizedHeaders}
+              onConfirm={handleConfirm}
+              isSubmitting={isConfirming}
+            />
+          </CardContent>
+        </Card>
+      ) : (
+        <ImportDropzone onFileSelected={handleFileSelected} disabled={isAnalyzing} />
+      )}
+    </>
+  );
 }

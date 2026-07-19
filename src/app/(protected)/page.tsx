@@ -61,7 +61,7 @@ export default async function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {kpiCards.map((card) => (
           <Link key={card.label} href={card.href}>
-            <Card className="transition-colors hover:bg-muted/40">
+            <Card className="border-t-4 border-t-primary/70 transition-colors hover:bg-accent/40">
               <CardHeader className="pb-2">
                 <CardDescription>{card.label}</CardDescription>
                 <CardTitle className="text-2xl">{card.value}</CardTitle>

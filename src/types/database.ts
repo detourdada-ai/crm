@@ -4,7 +4,7 @@
  * `supabase gen types typescript`, you can drop this in its place.
  */
 
-import type { CustomerStatus } from "./domain";
+import type { CustomerStatus, OrderSource } from "./domain";
 
 export interface Database {
   public: {
@@ -74,6 +74,7 @@ export interface Database {
           owner_username: string;
           is_favorite: boolean;
           status: CustomerStatus;
+          created_by_import_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -89,6 +90,7 @@ export interface Database {
           owner_username?: string;
           is_favorite?: boolean;
           status?: CustomerStatus;
+          created_by_import_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -114,6 +116,10 @@ export interface Database {
           buyer_name: string | null;
           buyer_id: string | null;
           shipped_at: string | null;
+          delivery_date: string | null;
+          bag_number: string | null;
+          bag_returned: boolean;
+          order_source: OrderSource;
           import_id: string | null;
           owner_username: string;
           created_at: string;
@@ -137,6 +143,10 @@ export interface Database {
           buyer_name?: string | null;
           buyer_id?: string | null;
           shipped_at?: string | null;
+          delivery_date?: string | null;
+          bag_number?: string | null;
+          bag_returned?: boolean;
+          order_source?: OrderSource;
           import_id?: string | null;
           owner_username?: string;
           created_at?: string;

@@ -102,6 +102,12 @@ create table if not exists imports (
 create index if not exists idx_imports_created_at on imports (created_at desc);
 create index if not exists idx_imports_owner_username on imports (owner_username);
 
+-- Set only when the customer was newly created by this import (never for a
+-- reused/matched customer or a manually-entered order). Lets deleting an
+-- import also safely remove customers it solely created.
+alter table customers add column if not exists created_by_import_id uuid references imports (id) on delete set null;
+create index if not exists idx_customers_created_by_import_id on customers (created_by_import_id);
+
 -- ----------------------------------------------------------------------------
 -- orders
 -- ----------------------------------------------------------------------------
@@ -128,6 +134,12 @@ create table if not exists orders (
   buyer_name text,
   buyer_id text,
   shipped_at timestamptz,
+  -- 배송일: parsed out of the 옵션정보 column when present, otherwise set
+  -- manually. More operationally relevant than order_date for this shop.
+  delivery_date timestamptz,
+  bag_number text,
+  bag_returned boolean not null default false,
+  order_source text not null default 'import' check (order_source in ('import', 'manual')),
   import_id uuid references imports (id) on delete set null,
   owner_username text not null default 'admin',
   created_at timestamptz not null default now(),
@@ -137,6 +149,8 @@ create table if not exists orders (
 
 create index if not exists idx_orders_customer_id on orders (customer_id);
 create index if not exists idx_orders_order_date on orders (order_date desc);
+create index if not exists idx_orders_delivery_date on orders (delivery_date desc);
+create index if not exists idx_orders_bag_returned on orders (bag_returned) where bag_returned = false;
 create index if not exists idx_orders_import_id on orders (import_id);
 create index if not exists idx_orders_owner_username on orders (owner_username);
 

@@ -2,10 +2,12 @@ import "server-only";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { importsRepository } from "@/lib/repositories/imports.repository";
 import { duplicatesRepository } from "@/lib/repositories/duplicates.repository";
+import { customersRepository } from "@/lib/repositories/customers.repository";
 import { detectDuplicateCandidates } from "./duplicate-detection.service";
 import { resolveCustomerForImportRow } from "./customer.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress } from "@/lib/utils/address";
+import { parseDeliveryDateFromOption } from "@/lib/utils/delivery-date";
 import type { ParsedSheet, ColumnMapping } from "@/types/excel";
 import type { ImportRowError, ImportSummary } from "@/types/domain";
 
@@ -132,7 +134,13 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         continue;
       }
 
-      const { customer, isNew } = await resolveCustomerForImportRow({ name, rawPhone, rawAddress, ownerUsername });
+      const { customer, isNew } = await resolveCustomerForImportRow({
+        name,
+        rawPhone,
+        rawAddress,
+        ownerUsername,
+        importId: importRecord.id,
+      });
       if (isNew) newCustomers += 1;
       else existingCustomers += 1;
 
@@ -148,6 +156,14 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         extra: row,
       }));
       const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+
+      // 옵션정보 often embeds the delivery-area + delivery-date choice
+      // (e.g. "하남/강동(일부): ... / 날짜 선택: 07월16일") — pull the date
+      // out of whichever item's option text has it first.
+      const orderDateObj = new Date(orderDate);
+      const deliveryDate = items
+        .map((item) => parseDeliveryDateFromOption(item.option_name, orderDateObj))
+        .find((d) => d !== null) ?? null;
 
       const [order] = await ordersRepository.createMany([
         {
@@ -167,6 +183,8 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
           buyer_name: buyerName,
           buyer_id: buyerId,
           shipped_at: shippedAt,
+          delivery_date: deliveryDate,
+          order_source: "import",
           import_id: importRecord.id,
           owner_username: ownerUsername,
         },
@@ -231,4 +249,38 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       failedRows,
     },
   };
+}
+
+export interface DeleteImportResult {
+  deletedOrders: number;
+  deletedCustomers: number;
+}
+
+/**
+ * Reverses a mistaken/duplicate upload: deletes every order (and its items,
+ * via FK cascade) created by this import, then removes any customer that
+ * import newly created and now has zero remaining orders. Customers that
+ * were matched/reused from an existing pool are always left untouched since
+ * created_by_import_id is only set on brand-new customers.
+ */
+export async function deleteImport(importId: string): Promise<DeleteImportResult> {
+  const orders = await ordersRepository.findByImportId(importId);
+  await ordersRepository.deleteMany(orders.map((o) => o.id));
+
+  const candidateCustomers = await customersRepository.findByCreatedByImportId(importId);
+  let deletedCustomers = 0;
+  for (const customer of candidateCustomers) {
+    const stats = await ordersRepository.aggregateStatsByCustomer(customer.id);
+    if (stats.totalOrders > 0) continue;
+    try {
+      await customersRepository.delete(customer.id);
+      deletedCustomers += 1;
+    } catch {
+      // Referenced elsewhere (e.g. kept side of a merge) — leave it in place.
+    }
+  }
+
+  await importsRepository.delete(importId);
+
+  return { deletedOrders: orders.length, deletedCustomers };
 }
