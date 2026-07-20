@@ -5,9 +5,17 @@ import { usePathname } from "next/navigation";
 import { NAV_ITEMS, DRIVER_NAV_ITEMS } from "@/lib/constants/nav";
 import { cn } from "@/lib/utils";
 
-export function NavLinks({ onNavigate, isDriver = false }: { onNavigate?: () => void; isDriver?: boolean }) {
+export function NavLinks({
+  onNavigate,
+  isDriver = false,
+  isAdmin = false,
+}: {
+  onNavigate?: () => void;
+  isDriver?: boolean;
+  isAdmin?: boolean;
+}) {
   const pathname = usePathname();
-  const items = isDriver ? DRIVER_NAV_ITEMS : NAV_ITEMS;
+  const items = isDriver ? DRIVER_NAV_ITEMS : NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <nav className="flex flex-col gap-1">

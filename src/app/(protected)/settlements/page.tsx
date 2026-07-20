@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription } from "@/components/ui/card";
 import { SettlementPeriodPicker } from "@/components/settlements/settlement-period-picker";
 import { SettlementTable } from "@/components/settlements/settlement-table";
 import { getSettlementBoardAction } from "@/actions/settlements";
+import { requireSession } from "@/lib/auth/current-session";
 import type { SettlementPeriodType } from "@/lib/services/settlement.service";
 
 function todayIso(): string {
@@ -15,6 +16,23 @@ export default async function SettlementsPage({
 }: {
   searchParams: Promise<{ period?: string; date?: string }>;
 }) {
+  const session = await requireSession();
+
+  if (session.role !== "admin") {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">정산관리</h1>
+        </div>
+        <Card>
+          <CardContent className="pt-6 text-sm text-muted-foreground">
+            정산관리는 관리자만 조회할 수 있습니다.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const { period, date } = await searchParams;
   const periodType = (period as SettlementPeriodType) || "monthly";
   const referenceDate = date || todayIso();

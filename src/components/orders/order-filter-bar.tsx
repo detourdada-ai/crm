@@ -18,7 +18,15 @@ const SORT_OPTIONS = [
   { value: "total_amount:asc", label: "금액 낮은순" },
 ];
 
-export function OrderFilterBar() {
+export function OrderFilterBar({
+  orderDateFrom,
+  orderDateTo,
+  deliveryDate,
+}: {
+  orderDateFrom: string;
+  orderDateTo: string;
+  deliveryDate: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -60,7 +68,7 @@ export function OrderFilterBar() {
           id="orderDateFrom"
           type="date"
           className="w-40"
-          defaultValue={searchParams.get("orderDateFrom") ?? ""}
+          defaultValue={orderDateFrom}
           onChange={(e) => updateParam("orderDateFrom", e.target.value)}
         />
       </div>
@@ -72,7 +80,7 @@ export function OrderFilterBar() {
           id="orderDateTo"
           type="date"
           className="w-40"
-          defaultValue={searchParams.get("orderDateTo") ?? ""}
+          defaultValue={orderDateTo}
           onChange={(e) => updateParam("orderDateTo", e.target.value)}
         />
       </div>
@@ -84,7 +92,7 @@ export function OrderFilterBar() {
           id="deliveryDate"
           type="date"
           className="w-40"
-          defaultValue={searchParams.get("deliveryDate") ?? ""}
+          defaultValue={deliveryDate}
           onChange={(e) => updateParam("deliveryDate", e.target.value)}
         />
       </div>

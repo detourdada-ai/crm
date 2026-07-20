@@ -10,6 +10,7 @@ import { ROLE_LABELS } from "@/lib/constants/role-labels";
 export async function Header() {
   const session = await getSession();
   const isDriver = session?.role === "driver";
+  const isAdmin = session?.role === "admin";
 
   return (
     <header className="flex h-14 items-center gap-3 border-b bg-background px-4 md:px-6">
@@ -26,7 +27,7 @@ export async function Header() {
             CRM
           </SheetTitle>
           <div className="p-3">
-            <NavLinks isDriver={isDriver} />
+            <NavLinks isDriver={isDriver} isAdmin={isAdmin} />
           </div>
         </SheetContent>
       </Sheet>

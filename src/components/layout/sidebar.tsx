@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth/current-session";
 export async function Sidebar() {
   const session = await getSession();
   const isDriver = session?.role === "driver";
+  const isAdmin = session?.role === "admin";
 
   return (
     <aside className="hidden w-60 shrink-0 border-r bg-sidebar md:flex md:flex-col">
@@ -13,7 +14,7 @@ export async function Sidebar() {
         <span className="text-lg font-semibold">CRM</span>
       </div>
       <div className="flex-1 overflow-y-auto p-3">
-        <NavLinks isDriver={isDriver} />
+        <NavLinks isDriver={isDriver} isAdmin={isAdmin} />
       </div>
     </aside>
   );
