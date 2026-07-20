@@ -166,17 +166,24 @@ export const ordersRepository = {
     return data as Order;
   },
 
-  /** Bulk-marks every not-yet-returned bag as returned for orders delivered strictly before `beforeIso`. Returns the count updated. */
-  async markBagsReturnedBefore(beforeIso: string, ownerUsername?: string): Promise<number> {
-    let q = getSupabaseAdmin()
+  /** Other not-yet-returned bags for the same customer, delivered before `beforeIso` — used for the "이전 미회수 가방" confirm alert on order detail. */
+  async findUnreturnedPriorOrders(customerId: string, excludeOrderId: string, beforeIso: string): Promise<Order[]> {
+    const { data, error } = await getSupabaseAdmin()
       .from("orders")
-      .update({ bag_returned: true })
+      .select("*")
+      .eq("customer_id", customerId)
       .eq("bag_returned", false)
-      .lt("delivery_date", beforeIso);
-    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
-    const { data, error } = await q.select("id");
+      .neq("id", excludeOrderId)
+      .lt("delivery_date", beforeIso)
+      .order("delivery_date", { ascending: true });
     if (error) throw error;
-    return data?.length ?? 0;
+    return (data as Order[]) ?? [];
+  },
+
+  async markManyBagsReturned(orderIds: string[]): Promise<void> {
+    if (orderIds.length === 0) return;
+    const { error } = await getSupabaseAdmin().from("orders").update({ bag_returned: true }).in("id", orderIds);
+    if (error) throw error;
   },
 
   async createMany(orders: OrderInsert[]): Promise<Order[]> {

@@ -37,6 +37,10 @@ export function CustomerEditForm({ customer }: { customer: Customer }) {
         <Input id="address" name="address" defaultValue={customer.address ?? ""} />
       </div>
       <div className="space-y-2">
+        <Label htmlFor="bagNo">평소 가방번호</Label>
+        <Input id="bagNo" name="bagNo" defaultValue={customer.bag_no ?? ""} placeholder="예: 12" />
+      </div>
+      <div className="space-y-2">
         <Label htmlFor="status">고객 상태</Label>
         <Select name="status" defaultValue={customer.status}>
           <SelectTrigger id="status" className="w-full">

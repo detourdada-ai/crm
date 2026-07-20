@@ -93,6 +93,7 @@ const FIELD_ALIASES: Record<MappableField, string[]> = {
     "totalamount",
     "totalprice",
   ],
+  bag_no: ["가방번호", "가방no", "bagno", "bagnumber"],
 };
 
 /** Strips whitespace, parenthetical notes, and punctuation; lowercases latin chars. */

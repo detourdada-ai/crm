@@ -29,3 +29,17 @@ export function parseDeliveryDateFromOption(optionText: string | null | undefine
   }
   return candidate.toISOString();
 }
+
+/**
+ * Pulls the delivery-area description out of the same 옵션정보 text, i.e.
+ * everything before the "날짜 선택" (date choice) portion, e.g.
+ * "하남/강동(일부): 미사/풍산/덕풍/신장/창우/강일/고덕/명일".
+ */
+export function parseDeliveryAreaFromOption(optionText: string | null | undefined): string | null {
+  if (!optionText) return null;
+  const dateChoiceIndex = optionText.search(/날짜\s*선택/);
+  const area = (dateChoiceIndex >= 0 ? optionText.slice(0, dateChoiceIndex) : optionText)
+    .replace(/\/\s*$/, "")
+    .trim();
+  return area || null;
+}

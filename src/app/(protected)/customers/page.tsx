@@ -1,22 +1,23 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { CustomerSearchBar } from "@/components/customers/customer-search-bar";
-import { CustomerListTable } from "@/components/customers/customer-list-table";
+import { CustomerListTable, type CustomerListRow } from "@/components/customers/customer-list-table";
 import { PaginationControls } from "@/components/common/pagination-controls";
 import { searchCustomersAction } from "@/actions/customers";
 import { requireSession } from "@/lib/auth/current-session";
+import type { CustomerSortField } from "@/lib/repositories/customers.repository";
 
 const PAGE_SIZE = 20;
 
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; sort?: string; dir?: string }>;
 }) {
-  const { q, page: pageParam } = await searchParams;
+  const { q, page: pageParam, sort, dir } = await searchParams;
   const page = Number(pageParam) > 0 ? Number(pageParam) : 1;
   const [session, { customers, total }] = await Promise.all([
     requireSession(),
-    searchCustomersAction(q ?? "", page),
+    searchCustomersAction(q ?? "", page, sort as CustomerSortField | undefined, dir === "asc"),
   ]);
 
   return (
@@ -30,7 +31,7 @@ export default async function CustomersPage({
 
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <CustomerListTable customers={customers} showOwner={session.role === "admin"} />
+          <CustomerListTable customers={customers as CustomerListRow[]} showOwner={session.role === "admin"} />
           <PaginationControls page={page} pageSize={PAGE_SIZE} total={total} />
         </CardContent>
       </Card>

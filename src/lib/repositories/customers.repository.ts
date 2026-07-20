@@ -2,11 +2,22 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { Customer, CustomerStatus } from "@/types/domain";
 
+export type CustomerSortField =
+  | "customer_code"
+  | "name"
+  | "phone"
+  | "address"
+  | "total_orders"
+  | "total_amount"
+  | "last_order_at";
+
 export interface CustomerSearchParams {
   query?: string;
   page?: number;
   pageSize?: number;
   ownerUsername?: string; // omit for admin (no filter = see everyone's customers)
+  sortBy?: CustomerSortField;
+  sortAscending?: boolean;
 }
 
 export interface CustomerInsert {
@@ -77,9 +88,11 @@ export const customersRepository = {
     return data ?? [];
   },
 
-  async search({ query, page = 1, pageSize = 20, ownerUsername }: CustomerSearchParams) {
+  async search({ query, page = 1, pageSize = 20, ownerUsername, sortBy, sortAscending = false }: CustomerSearchParams) {
+    // customer_list_view joins in order stats so 주문횟수/총금액/최근주문일 can
+    // be sorted the same way as native columns (see migrations/0011).
     // 병합되어 흡수된 고객은 목록에서 기본적으로 숨김 (감사/이력 조회는 customer detail에서 가능)
-    let q = getSupabaseAdmin().from("customers").select("*", { count: "exact" }).neq("status", "merged");
+    let q = getSupabaseAdmin().from("customer_list_view").select("*", { count: "exact" }).neq("status", "merged");
 
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
 
@@ -93,9 +106,11 @@ export const customersRepository = {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    const { data, error, count } = await q.order("created_at", { ascending: false }).range(from, to);
+    const { data, error, count } = await q
+      .order(sortBy ?? "created_at", { ascending: sortBy ? sortAscending : false, nullsFirst: false })
+      .range(from, to);
     if (error) throw error;
-    return { customers: data ?? [], total: count ?? 0 };
+    return { customers: (data as Customer[]) ?? [], total: count ?? 0 };
   },
 
   async create(input: CustomerInsert): Promise<Customer> {

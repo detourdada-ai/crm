@@ -12,6 +12,7 @@ export interface ImportCustomerInput {
   rawAddress: string | null;
   ownerUsername: string;
   importId?: string | null;
+  bagNo?: string | null;
 }
 
 export interface CustomerResolution {
@@ -40,7 +41,15 @@ export async function resolveCustomerForImportRow(input: ImportCustomerInput): P
   if (phone) {
     const samePhone = await customersRepository.findByPhone(phone, input.ownerUsername);
     const exact = samePhone.find((c) => c.name === name && c.address_normalized === addressNormalized);
-    if (exact) return { customer: exact, isNew: false };
+    if (exact) {
+      // Fill in bag_no only if the customer doesn't have one yet — never
+      // overwrite a value the shop owner already set/edited.
+      if (input.bagNo && !exact.bag_no) {
+        const updated = await customersRepository.update(exact.id, { bag_no: input.bagNo });
+        return { customer: updated, isNew: false };
+      }
+      return { customer: exact, isNew: false };
+    }
   }
 
   const created = await customersRepository.create({
@@ -50,6 +59,7 @@ export async function resolveCustomerForImportRow(input: ImportCustomerInput): P
     address_normalized: addressNormalized,
     owner_username: input.ownerUsername,
     created_by_import_id: input.importId ?? null,
+    bag_no: input.bagNo ?? null,
   });
 
   return { customer: created, isNew: true };
@@ -62,6 +72,7 @@ export interface UpdateCustomerInput {
   memo: string | null;
   tags: string[];
   status: CustomerStatus;
+  bagNo: string | null;
 }
 
 /**
@@ -146,12 +157,23 @@ export async function updateCustomerProfile(
       performed_by: performedBy,
     });
   }
+  if (existing.bag_no !== input.bagNo) {
+    logs.push({
+      customer_id: id,
+      entity: "customer_info",
+      field: "bag_no",
+      old_value: existing.bag_no,
+      new_value: input.bagNo,
+      performed_by: performedBy,
+    });
+  }
 
   const updated = await customersRepository.update(id, {
     name,
     phone,
     address,
     address_normalized: addressNormalized,
+    bag_no: input.bagNo,
     memo,
     tags,
     status,

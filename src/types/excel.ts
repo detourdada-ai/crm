@@ -24,7 +24,8 @@ export type MappableField =
   | "option_name"
   | "quantity"
   | "unit_price"
-  | "amount";
+  | "amount"
+  | "bag_no";
 
 export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boolean }[] = [
   { key: "order_number", label: "주문번호", required: true },
@@ -48,6 +49,7 @@ export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boo
   { key: "quantity", label: "수량", required: true },
   { key: "unit_price", label: "단가", required: false },
   { key: "amount", label: "금액", required: true },
+  { key: "bag_no", label: "가방번호", required: false },
 ];
 
 export interface ParsedSheet {

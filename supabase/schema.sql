@@ -315,6 +315,19 @@ left join orders o on o.customer_id = c.id
 group by c.id, c.owner_username;
 
 -- ----------------------------------------------------------------------------
+-- customer_list_view (customers + order stats, for the sortable 고객관리 list —
+-- lets "주문횟수"/"총금액"/"최근주문일" be ORDER BY targets like any native column)
+-- ----------------------------------------------------------------------------
+create or replace view customer_list_view as
+select
+  c.*,
+  coalesce(s.total_orders, 0) as total_orders,
+  coalesce(s.total_amount, 0) as total_amount,
+  s.last_order_at
+from customers c
+left join customer_order_stats s on s.customer_id = c.id;
+
+-- ----------------------------------------------------------------------------
 -- Sprint 4 dashboard analytics (views + RPC functions; see
 -- migrations/0006_dashboard_analytics.sql for full comments)
 -- ----------------------------------------------------------------------------

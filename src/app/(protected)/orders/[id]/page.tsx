@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getOrderDetailAction } from "@/actions/orders";
 import { OrderItemRawData } from "@/components/orders/order-item-raw-data";
+import { OrderBagManagement } from "@/components/orders/order-bag-management";
 import { BackButton } from "@/components/common/back-button";
-import { formatCurrency, formatDateTime } from "@/lib/constants/order-status";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants/order-status";
+import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
@@ -23,13 +25,14 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const detail = await getOrderDetailAction(id);
   if (!detail) notFound();
 
-  const { order, items } = detail;
+  const { order, items, driverName } = detail;
 
   return (
     <div className="space-y-6">
       <BackButton fallbackHref="/orders" />
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-semibold">{order.order_number}</h1>
+        <h1 className="text-2xl font-semibold">{order.order_number ?? "(수동주문)"}</h1>
+        <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
         {order.status ? <Badge variant="secondary">{order.status}</Badge> : null}
       </div>
 
@@ -61,12 +64,28 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <CardTitle>배송/결제 정보</CardTitle>
           </CardHeader>
           <CardContent>
+            <Field label="배송일" value={order.delivery_date ? formatDate(order.delivery_date) : null} />
+            <Field label="배송가능지역" value={order.delivery_area} />
+            <Field label="담당기사" value={driverName} />
             <Field label="판매채널" value={order.sales_channel} />
             <Field label="택배사" value={order.courier} />
             <Field label="송장번호" value={order.tracking_number} />
             <Field label="배송완료일" value={order.shipped_at ? formatDateTime(order.shipped_at) : null} />
             <Field label="총 주문금액" value={formatCurrency(Number(order.total_amount))} />
             <Field label="담당자" value={order.owner_username} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>가방 관리</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <OrderBagManagement
+              orderId={order.id}
+              initialBagNumber={order.bag_number}
+              initialBagReturned={order.bag_returned}
+            />
           </CardContent>
         </Card>
       </div>

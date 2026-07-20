@@ -7,7 +7,7 @@ import { detectDuplicateCandidates } from "./duplicate-detection.service";
 import { resolveCustomerForImportRow } from "./customer.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress } from "@/lib/utils/address";
-import { parseDeliveryDateFromOption } from "@/lib/utils/delivery-date";
+import { parseDeliveryDateFromOption, parseDeliveryAreaFromOption } from "@/lib/utils/delivery-date";
 import type { ParsedSheet, ColumnMapping } from "@/types/excel";
 import type { ImportRowError, ImportSummary } from "@/types/domain";
 
@@ -120,6 +120,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       const buyerName = cellToString(getMapped(first, mapping, "buyer_name")) || null;
       const buyerId = cellToString(getMapped(first, mapping, "buyer_id")) || null;
       const shippedAt = parseOptionalDate(getMapped(first, mapping, "shipped_at"));
+      const bagNo = cellToString(getMapped(first, mapping, "bag_no")) || null;
 
       // Some Smartstore export permission levels mask both 수취인명 and
       // 구매자명 for privacy, leaving only phone/address/buyer_id. Fall back
@@ -140,6 +141,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         rawAddress,
         ownerUsername,
         importId: importRecord.id,
+        bagNo,
       });
       if (isNew) newCustomers += 1;
       else existingCustomers += 1;
@@ -158,12 +160,15 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
 
       // 옵션정보 often embeds the delivery-area + delivery-date choice
-      // (e.g. "하남/강동(일부): ... / 날짜 선택: 07월16일") — pull the date
-      // out of whichever item's option text has it first.
+      // (e.g. "하남/강동(일부): ... / 날짜 선택: 07월16일") — pull both out
+      // of whichever item's option text has them first.
       const orderDateObj = new Date(orderDate);
       const deliveryDate = items
         .map((item) => parseDeliveryDateFromOption(item.option_name, orderDateObj))
         .find((d) => d !== null) ?? null;
+      const deliveryArea = items
+        .map((item) => parseDeliveryAreaFromOption(item.option_name))
+        .find((a) => a !== null) ?? null;
 
       const [order] = await ordersRepository.createMany([
         {
@@ -184,6 +189,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
           buyer_id: buyerId,
           shipped_at: shippedAt,
           delivery_date: deliveryDate,
+          delivery_area: deliveryArea,
           order_source: "import",
           import_id: importRecord.id,
           owner_username: ownerUsername,

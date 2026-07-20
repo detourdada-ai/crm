@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { customersRepository } from "@/lib/repositories/customers.repository";
+import { customersRepository, type CustomerSortField } from "@/lib/repositories/customers.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { changeLogRepository } from "@/lib/repositories/change-log.repository";
 import { updateCustomerProfile, setCustomerFavorite } from "@/lib/services/customer.service";
@@ -10,9 +10,21 @@ import { getVipCriteria } from "@/lib/services/vip.service";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { Customer, CustomerChangeLog, CustomerStats, Order, CustomerStatus } from "@/types/domain";
 
-export async function searchCustomersAction(query: string, page = 1) {
+export async function searchCustomersAction(
+  query: string,
+  page = 1,
+  sortBy?: CustomerSortField,
+  sortAscending?: boolean
+) {
   const session = await requireSession();
-  return customersRepository.search({ query, page, pageSize: 20, ownerUsername: ownerScopeFor(session) });
+  return customersRepository.search({
+    query,
+    page,
+    pageSize: 20,
+    ownerUsername: ownerScopeFor(session),
+    sortBy,
+    sortAscending,
+  });
 }
 
 export interface CustomerDetail {
@@ -90,9 +102,10 @@ export async function updateCustomerAction(
         .filter(Boolean)
     : [];
   const status = (String(formData.get("status") || "active") as CustomerStatus);
+  const bagNo = String(formData.get("bagNo") || "").trim() || null;
 
   try {
-    await updateCustomerProfile(customerId, { name, phone, address, memo, tags, status }, session.username);
+    await updateCustomerProfile(customerId, { name, phone, address, memo, tags, status, bagNo }, session.username);
     revalidatePath(`/customers/${customerId}`);
     return { ok: true, error: null };
   } catch (e) {

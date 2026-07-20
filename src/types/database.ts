@@ -40,6 +40,30 @@ export interface Database {
         };
         Relationships: [];
       };
+      customer_list_view: {
+        Row: {
+          id: string;
+          customer_code: string;
+          name: string;
+          phone: string | null;
+          address: string | null;
+          address_normalized: string | null;
+          memo: string | null;
+          tags: string[];
+          owner_username: string;
+          is_favorite: boolean;
+          status: CustomerStatus;
+          merged_into_id: string | null;
+          bag_no: string | null;
+          created_by_import_id: string | null;
+          created_at: string;
+          updated_at: string;
+          total_orders: number;
+          total_amount: number;
+          last_order_at: string | null;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       monthly_revenue: {

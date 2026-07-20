@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { ordersRepository, type OrderSortField } from "@/lib/repositories/orders.repository";
+import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { resolveCustomerForImportRow } from "@/lib/services/customer.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress } from "@/lib/utils/address";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
-import type { Order, OrderItem } from "@/types/domain";
+import type { Order, OrderItem, DeliveryStatus } from "@/types/domain";
 
 export async function listOrdersAction(page = 1, pageSize = 20) {
   const session = await requireSession();
@@ -21,10 +22,11 @@ export interface OrderItemSummary {
 export interface SearchOrdersParams {
   page?: number;
   pageSize?: number;
-  status?: string;
+  deliveryStatus?: DeliveryStatus;
   bagReturned?: boolean;
-  deliveryDateFrom?: string;
-  deliveryDateTo?: string;
+  orderDateFrom?: string;
+  orderDateTo?: string;
+  deliveryDate?: string;
   sortBy?: OrderSortField;
   sortAscending?: boolean;
 }
@@ -33,6 +35,7 @@ export interface SearchOrdersResult {
   orders: Order[];
   total: number;
   itemSummaries: Record<string, OrderItemSummary>;
+  driverNames: Record<string, string>;
 }
 
 export async function searchOrdersAction(params: SearchOrdersParams): Promise<SearchOrdersResult> {
@@ -60,12 +63,17 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
     itemSummaries[order.id] = { productSummary, totalQuantity };
   }
 
-  return { orders, total, itemSummaries };
+  const driverIds = Array.from(new Set(orders.map((o) => o.driver_id).filter((id): id is string => id !== null)));
+  const drivers = await driversRepository.findByIds(driverIds);
+  const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
+
+  return { orders, total, itemSummaries, driverNames };
 }
 
 export interface OrderDetail {
   order: Order;
   items: OrderItem[];
+  driverName: string | null;
 }
 
 export async function getOrderDetailAction(id: string): Promise<OrderDetail | null> {
@@ -74,8 +82,11 @@ export async function getOrderDetailAction(id: string): Promise<OrderDetail | nu
   if (!order) return null;
   if (session.role !== "admin" && order.owner_username !== session.username) return null;
 
-  const items = await ordersRepository.findItemsByOrderIds([id]);
-  return { order, items };
+  const [items, driver] = await Promise.all([
+    ordersRepository.findItemsByOrderIds([id]),
+    order.driver_id ? driversRepository.findById(order.driver_id) : Promise.resolve(null),
+  ]);
+  return { order, items, driverName: driver?.name ?? null };
 }
 
 export interface UpdateOrderBagActionState {
@@ -99,21 +110,43 @@ export async function updateOrderBagAction(
   return { ok: true, error: null };
 }
 
-export interface BulkMarkReturnedResult {
-  ok: boolean;
-  updated: number;
-  error: string | null;
+export interface PriorUnreturnedBagsResult {
+  count: number;
+  orderIds: string[];
 }
 
-/** "이전 미회수 건 일괄 회수 처리": marks every not-yet-returned bag as returned for deliveries strictly before today. */
-export async function bulkMarkBagsReturnedAction(): Promise<BulkMarkReturnedResult> {
+/** Checked before marking an order's bag as returned — surfaces earlier orders for the same customer that are still unreturned, so the shop owner can clear the backlog in one confirm. */
+export async function checkPriorUnreturnedBagsAction(orderId: string): Promise<PriorUnreturnedBagsResult> {
   const session = await requireSession();
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
+  const order = await ordersRepository.findById(orderId);
+  if (!order) throw new Error("주문을 찾을 수 없습니다.");
+  if (session.role !== "admin" && order.owner_username !== session.username) {
+    throw new Error("이 주문을 수정할 권한이 없습니다.");
+  }
 
-  const updated = await ordersRepository.markBagsReturnedBefore(startOfToday.toISOString(), ownerScopeFor(session));
+  const referenceDate = order.delivery_date ?? order.order_date;
+  const priorOrders = await ordersRepository.findUnreturnedPriorOrders(order.customer_id, orderId, referenceDate);
+  return { count: priorOrders.length, orderIds: priorOrders.map((o) => o.id) };
+}
+
+/** Marks the given order's bag returned, plus any additionally-selected prior orders ("전체 회수"). */
+export async function markBagReturnedAction(
+  orderId: string,
+  bagNumber: string | null,
+  includeOrderIds: string[] = []
+): Promise<UpdateOrderBagActionState> {
+  const session = await requireSession();
+  const order = await ordersRepository.findById(orderId);
+  if (!order) return { ok: false, error: "주문을 찾을 수 없습니다." };
+  if (session.role !== "admin" && order.owner_username !== session.username) {
+    return { ok: false, error: "이 주문을 수정할 권한이 없습니다." };
+  }
+
+  await ordersRepository.update(orderId, { bag_number: bagNumber, bag_returned: true });
+  await ordersRepository.markManyBagsReturned(includeOrderIds);
+  revalidatePath(`/orders/${orderId}`);
   revalidatePath("/orders");
-  return { ok: true, updated, error: null };
+  return { ok: true, error: null };
 }
 
 export interface CreateManualOrderState {
@@ -161,12 +194,11 @@ export async function createManualOrderAction(
       ownerUsername: session.username,
     });
 
-    const orderNumber = `MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-
+    // 스마트스토어 주문만 order_number가 필수 — 수동 주문은 없어도 된다 (null).
     const [order] = await ordersRepository.createMany([
       {
         customer_id: customer.id,
-        order_number: orderNumber,
+        order_number: null,
         order_date: orderDate,
         status,
         total_amount: amount,
