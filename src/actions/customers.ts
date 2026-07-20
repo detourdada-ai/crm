@@ -22,6 +22,7 @@ export interface CustomerDetail {
   changeLogs: CustomerChangeLog[];
   timeline: TimelineEvent[];
   isVip: boolean;
+  mergedIntoCustomer: Customer | null;
 }
 
 export async function getCustomerDetailAction(id: string): Promise<CustomerDetail | null> {
@@ -30,17 +31,18 @@ export async function getCustomerDetailAction(id: string): Promise<CustomerDetai
   if (!customer) return null;
   if (session.role !== "admin" && customer.owner_username !== session.username) return null;
 
-  const [stats, orders, changeLogs, timeline, vipCriteria] = await Promise.all([
+  const [stats, orders, changeLogs, timeline, vipCriteria, mergedIntoCustomer] = await Promise.all([
     ordersRepository.aggregateStatsByCustomer(id),
     ordersRepository.findByCustomerId(id),
     changeLogRepository.listByCustomer(id),
     getCustomerTimeline(id),
     getVipCriteria(),
+    customer.merged_into_id ? customersRepository.findById(customer.merged_into_id) : Promise.resolve(null),
   ]);
 
   const isVip = stats.totalAmount >= vipCriteria.minTotalAmount && stats.totalOrders >= vipCriteria.minOrderCount;
 
-  return { customer, stats, orders, changeLogs, timeline, isVip };
+  return { customer, stats, orders, changeLogs, timeline, isVip, mergedIntoCustomer };
 }
 
 export async function toggleCustomerFavoriteAction(id: string): Promise<{ isFavorite: boolean }> {

@@ -7,6 +7,7 @@ export type UUID = string;
 export type ISODateString = string;
 
 export type DuplicateMatchType =
+  | "exact_duplicate" // CASE0: name+phone+address_normalized all identical (retroactive scan)
   | "phone_changed" // CASE1: same name+address, different phone
   | "address_changed" // CASE2: same phone, different address
   | "shipping_changed" // CASE3: same name+phone, different address
@@ -17,7 +18,7 @@ export type DuplicateConfidence = "HIGH" | "MEDIUM";
 
 export type DuplicateStatus = "pending" | "merged" | "rejected" | "held";
 
-export type CustomerStatus = "active" | "dormant" | "watchlist" | "blocked";
+export type CustomerStatus = "active" | "dormant" | "watchlist" | "blocked" | "merged";
 
 export interface Customer {
   id: UUID;
@@ -31,6 +32,8 @@ export interface Customer {
   owner_username: string; // account that owns/manages this customer; "admin" sees all
   is_favorite: boolean;
   status: CustomerStatus;
+  merged_into_id: UUID | null; // set when status = "merged"; points at the surviving customer
+  bag_no: string | null; // usual delivery bag number for this customer (default for new orders)
   created_by_import_id: UUID | null; // set only if a specific import first created this customer
   created_at: ISODateString;
   updated_at: ISODateString;
@@ -42,10 +45,14 @@ export type OrderStatus = string;
 
 export type OrderSource = "import" | "manual";
 
+// Internal delivery workflow status, distinct from the freeform Smartstore
+// `status` passthrough text. Driven by driver assignment/completion.
+export type DeliveryStatus = "배송대기" | "배송중" | "완료";
+
 export interface Order {
   id: UUID;
   customer_id: UUID;
-  order_number: string; // from smartstore excel, unique per import source
+  order_number: string | null; // null for manual orders without a smartstore order number
   order_date: ISODateString;
   status: OrderStatus;
   total_amount: number;
@@ -62,11 +69,29 @@ export interface Order {
   buyer_id: string | null;
   shipped_at: ISODateString | null;
   delivery_date: ISODateString | null; // parsed from 옵션정보 at import time, or set manually
+  delivery_area: string | null; // parsed from 옵션정보 alongside delivery_date
   bag_number: string | null;
   bag_returned: boolean;
   order_source: OrderSource;
+  delivery_status: DeliveryStatus;
+  driver_id: UUID | null;
+  completed_at: ISODateString | null;
   import_id: UUID | null;
   owner_username: string;
+  created_at: ISODateString;
+  updated_at: ISODateString;
+}
+
+export type DriverStatus = "active" | "inactive";
+
+export interface Driver {
+  id: UUID;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  vehicle_number: string | null;
+  status: DriverStatus;
+  rate_per_delivery: number;
   created_at: ISODateString;
   updated_at: ISODateString;
 }

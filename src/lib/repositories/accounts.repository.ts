@@ -6,6 +6,7 @@ export interface AppAccountRow {
   username: string;
   password_hash: string;
   role: Role;
+  driver_id: string | null;
   updated_at: string;
 }
 
@@ -43,6 +44,28 @@ export const accountsRepository = {
       .from("app_accounts")
       .update({ password_hash: passwordHash, updated_at: new Date().toISOString() })
       .eq("username", username);
+    if (error) throw error;
+  },
+
+  async createDriverAccount(username: string, passwordHash: string, driverId: string): Promise<void> {
+    const { error } = await getSupabaseAdmin()
+      .from("app_accounts")
+      .insert({ username, password_hash: passwordHash, role: "driver", driver_id: driverId });
+    if (error) throw error;
+  },
+
+  async findByDriverId(driverId: string): Promise<AppAccountRow | null> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("app_accounts")
+      .select("*")
+      .eq("driver_id", driverId)
+      .maybeSingle();
+    if (error) throw error;
+    return data as AppAccountRow | null;
+  },
+
+  async delete(username: string): Promise<void> {
+    const { error } = await getSupabaseAdmin().from("app_accounts").delete().eq("username", username);
     if (error) throw error;
   },
 };

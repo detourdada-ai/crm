@@ -58,4 +58,15 @@ export const duplicatesRepository = {
       .eq("id", id);
     if (error) throw error;
   },
+
+  /** After merging `customerId` away, any other still-pending candidate mentioning it no longer makes sense to review independently. */
+  async rejectOtherPendingReferencing(customerId: string, excludeCandidateId: string): Promise<void> {
+    const { error } = await getSupabaseAdmin()
+      .from("duplicate_candidates")
+      .update({ status: "rejected", resolved_at: new Date().toISOString() })
+      .eq("status", "pending")
+      .neq("id", excludeCandidateId)
+      .or(`existing_customer_id.eq.${customerId},new_customer_id.eq.${customerId}`);
+    if (error) throw error;
+  },
 };

@@ -4,7 +4,7 @@
  * `supabase gen types typescript`, you can drop this in its place.
  */
 
-import type { CustomerStatus, OrderSource } from "./domain";
+import type { CustomerStatus, OrderSource, DeliveryStatus, DriverStatus } from "./domain";
 
 export interface Database {
   public: {
@@ -74,6 +74,8 @@ export interface Database {
           owner_username: string;
           is_favorite: boolean;
           status: CustomerStatus;
+          merged_into_id: string | null;
+          bag_no: string | null;
           created_by_import_id: string | null;
           created_at: string;
           updated_at: string;
@@ -90,6 +92,8 @@ export interface Database {
           owner_username?: string;
           is_favorite?: boolean;
           status?: CustomerStatus;
+          merged_into_id?: string | null;
+          bag_no?: string | null;
           created_by_import_id?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -101,7 +105,7 @@ export interface Database {
         Row: {
           id: string;
           customer_id: string;
-          order_number: string;
+          order_number: string | null;
           order_date: string;
           status: string;
           total_amount: number;
@@ -117,9 +121,13 @@ export interface Database {
           buyer_id: string | null;
           shipped_at: string | null;
           delivery_date: string | null;
+          delivery_area: string | null;
           bag_number: string | null;
           bag_returned: boolean;
           order_source: OrderSource;
+          delivery_status: DeliveryStatus;
+          driver_id: string | null;
+          completed_at: string | null;
           import_id: string | null;
           owner_username: string;
           created_at: string;
@@ -128,7 +136,7 @@ export interface Database {
         Insert: {
           id?: string;
           customer_id: string;
-          order_number: string;
+          order_number?: string | null;
           order_date: string;
           status?: string;
           total_amount?: number;
@@ -144,15 +152,45 @@ export interface Database {
           buyer_id?: string | null;
           shipped_at?: string | null;
           delivery_date?: string | null;
+          delivery_area?: string | null;
           bag_number?: string | null;
           bag_returned?: boolean;
           order_source?: OrderSource;
+          delivery_status?: DeliveryStatus;
+          driver_id?: string | null;
+          completed_at?: string | null;
           import_id?: string | null;
           owner_username?: string;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["orders"]["Insert"]>;
+        Relationships: [];
+      };
+      drivers: {
+        Row: {
+          id: string;
+          name: string;
+          phone: string | null;
+          address: string | null;
+          vehicle_number: string | null;
+          status: DriverStatus;
+          rate_per_delivery: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          phone?: string | null;
+          address?: string | null;
+          vehicle_number?: string | null;
+          status?: DriverStatus;
+          rate_per_delivery?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["drivers"]["Insert"]>;
         Relationships: [];
       };
       order_items: {
@@ -300,12 +338,14 @@ export interface Database {
           username: string;
           password_hash: string;
           role: string;
+          driver_id: string | null;
           updated_at: string;
         };
         Insert: {
           username: string;
           password_hash: string;
           role: string;
+          driver_id?: string | null;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["app_accounts"]["Insert"]>;

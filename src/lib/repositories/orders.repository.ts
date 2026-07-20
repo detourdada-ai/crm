@@ -1,10 +1,10 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import type { Order, OrderItem, OrderSource } from "@/types/domain";
+import type { Order, OrderItem, OrderSource, DeliveryStatus } from "@/types/domain";
 
 export interface OrderInsert {
   customer_id: string;
-  order_number: string;
+  order_number?: string | null;
   order_date: string;
   status?: string;
   total_amount: number;
@@ -20,9 +20,13 @@ export interface OrderInsert {
   buyer_id?: string | null;
   shipped_at?: string | null;
   delivery_date?: string | null;
+  delivery_area?: string | null;
   bag_number?: string | null;
   bag_returned?: boolean;
   order_source?: OrderSource;
+  delivery_status?: DeliveryStatus;
+  driver_id?: string | null;
+  completed_at?: string | null;
   import_id?: string | null;
   owner_username: string;
 }
@@ -31,18 +35,30 @@ export interface OrderUpdate {
   bag_number?: string | null;
   bag_returned?: boolean;
   delivery_date?: string | null;
+  delivery_status?: DeliveryStatus;
+  driver_id?: string | null;
+  completed_at?: string | null;
 }
 
-export type OrderSortField = "delivery_date" | "order_date" | "total_amount";
+export type OrderSortField =
+  | "order_number"
+  | "order_date"
+  | "delivery_date"
+  | "recipient_name"
+  | "phone_snapshot"
+  | "total_amount"
+  | "delivery_status"
+  | "driver_id";
 
 export interface OrderSearchParams {
   page?: number;
   pageSize?: number;
   ownerUsername?: string;
-  status?: string;
+  deliveryStatus?: DeliveryStatus;
   bagReturned?: boolean;
-  deliveryDateFrom?: string;
-  deliveryDateTo?: string;
+  orderDateFrom?: string;
+  orderDateTo?: string;
+  deliveryDate?: string;
   sortBy?: OrderSortField;
   sortAscending?: boolean;
 }
@@ -100,10 +116,11 @@ export const ordersRepository = {
     page = 1,
     pageSize = 20,
     ownerUsername,
-    status,
+    deliveryStatus,
     bagReturned,
-    deliveryDateFrom,
-    deliveryDateTo,
+    orderDateFrom,
+    orderDateTo,
+    deliveryDate,
     sortBy = "delivery_date",
     sortAscending = false,
   }: OrderSearchParams) {
@@ -111,10 +128,17 @@ export const ordersRepository = {
     const to = from + pageSize - 1;
     let q = getSupabaseAdmin().from("orders").select("*", { count: "exact" });
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
-    if (status) q = q.ilike("status", `%${status}%`);
+    if (deliveryStatus) q = q.eq("delivery_status", deliveryStatus);
     if (bagReturned !== undefined) q = q.eq("bag_returned", bagReturned);
-    if (deliveryDateFrom) q = q.gte("delivery_date", deliveryDateFrom);
-    if (deliveryDateTo) q = q.lte("delivery_date", deliveryDateTo);
+    if (orderDateFrom) q = q.gte("order_date", orderDateFrom);
+    if (orderDateTo) q = q.lte("order_date", orderDateTo);
+    if (deliveryDate) {
+      const start = new Date(deliveryDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(deliveryDate);
+      end.setHours(23, 59, 59, 999);
+      q = q.gte("delivery_date", start.toISOString()).lte("delivery_date", end.toISOString());
+    }
 
     const { data, error, count } = await q
       .order(sortBy, { ascending: sortAscending, nullsFirst: false })

@@ -17,6 +17,15 @@ export function proxy(request: NextRequest) {
   }
 
   if (session && isPublicPath) {
+    return NextResponse.redirect(new URL(session.role === "driver" ? "/driver" : "/", request.url));
+  }
+
+  // Driver accounts only ever see the delivery-only view; admin/user accounts
+  // never see it, since it has no sidebar/nav to the rest of the CRM.
+  if (session && session.role === "driver" && !pathname.startsWith("/driver")) {
+    return NextResponse.redirect(new URL("/driver", request.url));
+  }
+  if (session && session.role !== "driver" && pathname.startsWith("/driver")) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 

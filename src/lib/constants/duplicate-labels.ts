@@ -1,6 +1,7 @@
 import type { DuplicateMatchType } from "@/types/domain";
 
 export const MATCH_TYPE_LABELS: Record<DuplicateMatchType, string> = {
+  exact_duplicate: "완전 중복 고객",
   phone_changed: "휴대폰 번호 변경 가능성",
   address_changed: "주소 변경 가능성",
   shipping_changed: "배송지 변경 가능성",

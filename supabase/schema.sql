@@ -40,7 +40,11 @@ create table if not exists customers (
   tags text[] not null default '{}',
   owner_username text not null default 'admin',
   is_favorite boolean not null default false,
-  status text not null default 'active' check (status in ('active', 'dormant', 'watchlist', 'blocked')),
+  -- 'merged': absorbed into another customer via 동일인 검토 병합. Record is kept
+  -- (never deleted) for audit/history; merged_into_id points at the survivor.
+  status text not null default 'active' check (status in ('active', 'dormant', 'watchlist', 'blocked', 'merged')),
+  merged_into_id uuid references customers (id) on delete set null,
+  bag_no text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -109,12 +113,36 @@ alter table customers add column if not exists created_by_import_id uuid referen
 create index if not exists idx_customers_created_by_import_id on customers (created_by_import_id);
 
 -- ----------------------------------------------------------------------------
+-- drivers (배송 기사)
+-- ----------------------------------------------------------------------------
+create table if not exists drivers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  phone text,
+  address text,
+  vehicle_number text,
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  rate_per_delivery numeric(12, 2) not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_drivers_status on drivers (status);
+
+drop trigger if exists trg_drivers_updated_at on drivers;
+create trigger trg_drivers_updated_at
+  before update on drivers
+  for each row execute function set_updated_at();
+
+-- ----------------------------------------------------------------------------
 -- orders
 -- ----------------------------------------------------------------------------
 create table if not exists orders (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references customers (id) on delete restrict,
-  order_number text not null,
+  -- nullable: 수동 주문은 스마트스토어 주문번호가 없음. unique 제약은 유지되지만
+  -- Postgres는 NULL끼리 서로 다른 값으로 취급하므로 여러 개의 수동 주문이 공존 가능.
+  order_number text,
   order_date timestamptz not null,
   -- Freeform text, not an enum: Smartstore's own status strings (배송중,
   -- 구매확정, 취소 등) are stored verbatim rather than translated into a
@@ -137,9 +165,15 @@ create table if not exists orders (
   -- 배송일: parsed out of the 옵션정보 column when present, otherwise set
   -- manually. More operationally relevant than order_date for this shop.
   delivery_date timestamptz,
+  -- 옵션정보에서 함께 추출되는 배송 가능 지역 설명(예: "하남/강동(일부): 미사/풍산...")
+  delivery_area text,
   bag_number text,
   bag_returned boolean not null default false,
   order_source text not null default 'import' check (order_source in ('import', 'manual')),
+  -- 내부 배송 진행 상태(스마트스토어 원본 status와 별개). 기사 배정/배송완료 처리에 따라 전이됨.
+  delivery_status text not null default '배송대기' check (delivery_status in ('배송대기', '배송중', '완료')),
+  driver_id uuid references drivers (id) on delete set null,
+  completed_at timestamptz,
   import_id uuid references imports (id) on delete set null,
   owner_username text not null default 'admin',
   created_at timestamptz not null default now(),
@@ -153,6 +187,9 @@ create index if not exists idx_orders_delivery_date on orders (delivery_date des
 create index if not exists idx_orders_bag_returned on orders (bag_returned) where bag_returned = false;
 create index if not exists idx_orders_import_id on orders (import_id);
 create index if not exists idx_orders_owner_username on orders (owner_username);
+create index if not exists idx_orders_driver_id on orders (driver_id);
+create index if not exists idx_orders_delivery_status on orders (delivery_status);
+create index if not exists idx_orders_delivery_area on orders (delivery_area);
 
 drop trigger if exists trg_orders_updated_at on orders;
 create trigger trg_orders_updated_at
@@ -191,7 +228,9 @@ create table if not exists duplicate_candidates (
   new_customer_id uuid not null references customers (id) on delete cascade,
   import_id uuid references imports (id) on delete set null,
   match_type text not null check (
-    match_type in ('phone_changed', 'address_changed', 'shipping_changed', 'family', 'phone_changed_likely')
+    match_type in (
+      'exact_duplicate', 'phone_changed', 'address_changed', 'shipping_changed', 'family', 'phone_changed_likely'
+    )
   ),
   confidence text not null check (confidence in ('HIGH', 'MEDIUM')),
   reason text not null,
@@ -244,7 +283,10 @@ create index if not exists idx_customer_change_logs_customer_id on customer_chan
 create table if not exists app_accounts (
   username text primary key,
   password_hash text not null,
-  role text not null check (role in ('admin', 'user')),
+  role text not null check (role in ('admin', 'user', 'driver')),
+  -- set only for role = 'driver': links the login to its drivers row so a
+  -- driver's session can be scoped to just their own assigned deliveries.
+  driver_id uuid references drivers (id) on delete set null,
   updated_at timestamptz not null default now()
 );
 

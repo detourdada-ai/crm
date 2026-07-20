@@ -56,6 +56,6 @@ export function verifySessionToken(token: string | undefined | null): SessionPay
   if (!timingSafeEqual(signature, expected)) return null;
   const expiresAt = Number(expiresAtStr);
   if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) return null;
-  if (role !== "admin" && role !== "user") return null;
+  if (role !== "admin" && role !== "user" && role !== "driver") return null;
   return { username, role, expiresAt };
 }

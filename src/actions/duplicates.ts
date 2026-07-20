@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { duplicatesRepository } from "@/lib/repositories/duplicates.repository";
 import { customersRepository } from "@/lib/repositories/customers.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
+import { scanForExactDuplicates } from "@/lib/services/duplicate-detection.service";
 import {
   MergeError,
   holdDuplicateCandidate,
@@ -23,6 +24,10 @@ export interface DuplicateCandidateView {
 
 export async function listPendingDuplicatesAction(): Promise<DuplicateCandidateView[]> {
   const session = await requireSession();
+  // Cheap on this dataset size — retroactively raises exact-duplicate
+  // customers (same name+phone+address) that real-time import-time
+  // detection can miss when two uploads race each other.
+  await scanForExactDuplicates();
   const candidates = await duplicatesRepository.listByStatus("pending", ownerScopeFor(session));
   if (candidates.length === 0) return [];
 

@@ -1,5 +1,6 @@
 import "server-only";
 import { customersRepository } from "@/lib/repositories/customers.repository";
+import { duplicatesRepository, type DuplicateCandidateInsert } from "@/lib/repositories/duplicates.repository";
 import { isSimilarButNotIdenticalName } from "@/lib/utils/similarity";
 import type { DuplicateConfidence, DuplicateMatchType } from "@/types/domain";
 
@@ -107,4 +108,53 @@ export async function detectDuplicateCandidates(input: DuplicateCheckInput): Pro
   }
 
   return Array.from(matched.values());
+}
+
+export interface DedupScanResult {
+  groupsFound: number;
+  candidatesCreated: number;
+}
+
+/**
+ * Retroactive sweep for customers that are already 100% identical (same
+ * name + phone + normalized address + owner), which real-time import-time
+ * detection can miss if two imports race each other (see: the user5
+ * duplicate-upload incident this was built to clean up). Cheap to run on
+ * every 동일인 검토 page load since the customer table is small — grouping
+ * happens in JS rather than a DB-side GROUP BY/RPC.
+ *
+ * Never merges automatically: it only raises HIGH-confidence
+ * "exact_duplicate" candidates for the same manual-approval review flow.
+ */
+export async function scanForExactDuplicates(): Promise<DedupScanResult> {
+  const rows = await customersRepository.findAllForDedupScan();
+
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = `${row.owner_username}::${row.name}::${row.phone}::${row.address_normalized}`;
+    const list = groups.get(key) ?? [];
+    list.push(row);
+    groups.set(key, list);
+  }
+
+  const inserts: DuplicateCandidateInsert[] = [];
+  let groupsFound = 0;
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    groupsFound += 1;
+    const [keep, ...dupes] = group;
+    for (const dupe of dupes) {
+      inserts.push({
+        existing_customer_id: keep.id,
+        new_customer_id: dupe.id,
+        match_type: "exact_duplicate",
+        confidence: "HIGH",
+        reason: "이름/전화번호/주소가 완전히 동일한 중복 고객 (자동 감지)",
+        owner_username: dupe.owner_username,
+      });
+    }
+  }
+
+  const created = await duplicatesRepository.createMany(inserts);
+  return { groupsFound, candidatesCreated: created.length };
 }

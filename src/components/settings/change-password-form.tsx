@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Account } from "@/lib/auth/credentials";
+import { ROLE_LABELS } from "@/lib/constants/role-labels";
 
 const initialState: ChangePasswordActionState = { ok: false, error: null };
 
@@ -43,7 +44,7 @@ export function ChangePasswordForm({
             <SelectContent>
               {accounts.map((account) => (
                 <SelectItem key={account.username} value={account.username}>
-                  {account.username} {account.role === "admin" ? "(관리자)" : ""}
+                  {account.username} ({ROLE_LABELS[account.role]})
                 </SelectItem>
               ))}
             </SelectContent>

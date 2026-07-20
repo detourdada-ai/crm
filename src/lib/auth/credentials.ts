@@ -12,12 +12,17 @@ import { hashPassword, verifyPassword } from "./password";
  *
  * "admin" can see every user's customers/orders; "user" accounts only see
  * data they own (see owner_username scoping across repositories/services).
+ *
+ * "driver" accounts (Sprint 7) are a third kind: created ad hoc from the
+ * 기사관리 settings screen (not seeded from env vars), scoped to a single
+ * `drivers` row via `driver_id`, and restricted to the delivery-only view.
  */
-export type Role = "admin" | "user";
+export type Role = "admin" | "user" | "driver";
 
 export interface Account {
   username: string;
   role: Role;
+  driverId: string | null;
 }
 
 const USER_ACCOUNT_NAMES = ["user1", "user2", "user3", "user4", "user5"] as const;
@@ -46,13 +51,13 @@ export async function verifyCredentials(username: string, password: string): Pro
   await ensureSeeded();
   const row = await accountsRepository.findByUsername(username);
   if (!row || !verifyPassword(password, row.password_hash)) return null;
-  return { username: row.username, role: row.role };
+  return { username: row.username, role: row.role, driverId: row.driver_id };
 }
 
 export async function listAccounts(): Promise<Account[]> {
   await ensureSeeded();
   const rows = await accountsRepository.listAll();
-  return rows.map((r) => ({ username: r.username, role: r.role }));
+  return rows.map((r) => ({ username: r.username, role: r.role, driverId: r.driver_id }));
 }
 
 /** Used when changing your OWN password: must know the current one. */

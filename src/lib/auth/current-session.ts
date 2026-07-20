@@ -9,6 +9,7 @@ import {
   type SessionPayload,
 } from "./session";
 import type { Role } from "./credentials";
+import { accountsRepository } from "@/lib/repositories/accounts.repository";
 
 export async function setSessionCookie(username: string, role: Role): Promise<void> {
   const store = await cookies();
@@ -50,4 +51,13 @@ export async function requireSession(): Promise<SessionPayload> {
 /** Owner scope to filter data by: undefined means "no filter" (admin sees everything). */
 export function ownerScopeFor(session: SessionPayload): string | undefined {
   return session.role === "admin" ? undefined : session.username;
+}
+
+/** Use from driver-only pages/actions (배송관리's driver-facing view). */
+export async function requireDriverSession(): Promise<{ session: SessionPayload; driverId: string }> {
+  const session = await requireSession();
+  if (session.role !== "driver") redirect("/");
+  const account = await accountsRepository.findByUsername(session.username);
+  if (!account?.driver_id) redirect("/login");
+  return { session, driverId: account.driver_id };
 }

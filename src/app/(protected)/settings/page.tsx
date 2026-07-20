@@ -6,6 +6,7 @@ import { listAccounts } from "@/lib/auth/credentials";
 import { getVipCriteria } from "@/lib/services/vip.service";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
+import { ROLE_LABELS } from "@/lib/constants/role-labels";
 
 export default async function SettingsPage() {
   const session = await requireSession();
@@ -94,11 +95,15 @@ export default async function SettingsPage() {
                   <TableCell className="font-medium">{account.username}</TableCell>
                   <TableCell>
                     <Badge variant={account.role === "admin" ? "default" : "secondary"}>
-                      {account.role === "admin" ? "관리자" : "담당자"}
+                      {ROLE_LABELS[account.role]}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {account.role === "admin" ? "전체" : "본인이 등록한 고객/주문만"}
+                    {account.role === "admin"
+                      ? "전체"
+                      : account.role === "driver"
+                        ? "본인 배송 목록만"
+                        : "본인이 등록한 고객/주문만"}
                   </TableCell>
                 </TableRow>
               ))}

@@ -18,6 +18,7 @@ export interface CustomerInsert {
   tags?: string[];
   owner_username: string;
   created_by_import_id?: string | null;
+  bag_no?: string | null;
 }
 
 export interface CustomerUpdate {
@@ -29,6 +30,8 @@ export interface CustomerUpdate {
   tags?: string[];
   is_favorite?: boolean;
   status?: CustomerStatus;
+  merged_into_id?: string | null;
+  bag_no?: string | null;
 }
 
 /** Direct Supabase query access for the `customers` table. No business logic here. */
@@ -75,7 +78,8 @@ export const customersRepository = {
   },
 
   async search({ query, page = 1, pageSize = 20, ownerUsername }: CustomerSearchParams) {
-    let q = getSupabaseAdmin().from("customers").select("*", { count: "exact" });
+    // 병합되어 흡수된 고객은 목록에서 기본적으로 숨김 (감사/이력 조회는 customer detail에서 가능)
+    let q = getSupabaseAdmin().from("customers").select("*", { count: "exact" }).neq("status", "merged");
 
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
 
@@ -123,10 +127,24 @@ export const customersRepository = {
   },
 
   async count(ownerUsername?: string): Promise<number> {
-    let q = getSupabaseAdmin().from("customers").select("*", { count: "exact", head: true });
+    let q = getSupabaseAdmin().from("customers").select("*", { count: "exact", head: true }).neq("status", "merged");
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     const { count, error } = await q;
     if (error) throw error;
     return count ?? 0;
+  },
+
+  /** Every non-merged customer's identity fields, for the retroactive exact-duplicate scan (grouped in JS — table is small enough that a DB-side GROUP BY isn't worth the extra RPC). */
+  async findAllForDedupScan(): Promise<
+    Pick<Customer, "id" | "name" | "phone" | "address_normalized" | "owner_username">[]
+  > {
+    const { data, error } = await getSupabaseAdmin()
+      .from("customers")
+      .select("id, name, phone, address_normalized, owner_username")
+      .neq("status", "merged")
+      .not("phone", "is", null)
+      .not("address_normalized", "is", null);
+    if (error) throw error;
+    return data ?? [];
   },
 };

@@ -16,17 +16,14 @@ function assertCanActOn(ownerUsername: string, session: SessionPayload) {
 
 /**
  * Approves a pending duplicate candidate: every order on the "new" customer
- * is repointed to the "existing" customer's id, the new customer row is
- * deleted, and the merge is written to merge_history for audit. This is the
- * ONLY path that ever deletes/merges a customer — nothing in the import
- * pipeline does this automatically (see project spec: "자동 병합 절대 금지").
+ * is repointed to the "existing" customer's id, and the merge is written to
+ * merge_history for audit. This is the ONLY path that ever merges a customer
+ * — nothing in the import pipeline does this automatically (see project
+ * spec: "자동 병합 절대 금지").
  *
- * Order of operations matters: merge_history is written while the
- * duplicate_candidate row and both customers still exist (their ids are
- * referenced by FK), and the customer delete happens last. Deleting the
- * customer cascades to remove any other duplicate_candidates rows that
- * mention it, which is desirable — those candidates are moot once the
- * customer they point to no longer exists.
+ * The "new" customer row is NEVER deleted (spec: "삭제 금지") — it's kept for
+ * audit/history and marked status="merged" with merged_into_id pointing at
+ * the survivor, then excluded from normal customer search/list/count.
  */
 export async function mergeDuplicateCandidate(candidateId: string, session: SessionPayload) {
   const candidate = await duplicatesRepository.findById(candidateId);
@@ -59,7 +56,9 @@ export async function mergeDuplicateCandidate(candidateId: string, session: Sess
     performed_by: session.username,
   });
 
-  await customersRepository.delete(incoming.id);
+  await customersRepository.update(incoming.id, { status: "merged", merged_into_id: existing.id });
+  await duplicatesRepository.updateStatus(candidate.id, "merged");
+  await duplicatesRepository.rejectOtherPendingReferencing(incoming.id, candidate.id);
 
   return { keptCustomerId: existing.id, removedCustomerId: incoming.id, ordersMoved };
 }

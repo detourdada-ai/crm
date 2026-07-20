@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCustomerDetailAction } from "@/actions/customers";
 import { CustomerEditForm } from "@/components/customers/customer-edit-form";
@@ -17,11 +19,25 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const detail = await getCustomerDetailAction(id);
   if (!detail) notFound();
 
-  const { customer, stats, orders, changeLogs, timeline, isVip } = detail;
+  const { customer, stats, orders, changeLogs, timeline, isVip, mergedIntoCustomer } = detail;
 
   return (
     <div className="space-y-6">
       <BackButton fallbackHref="/customers" />
+
+      {mergedIntoCustomer ? (
+        <Alert variant="destructive">
+          <AlertTitle>병합된 고객입니다</AlertTitle>
+          <AlertDescription>
+            이 고객은{" "}
+            <Link href={`/customers/${mergedIntoCustomer.id}`} className="font-medium underline">
+              {mergedIntoCustomer.name} ({mergedIntoCustomer.customer_code})
+            </Link>
+            로 병합되었습니다. 주문 이력은 병합된 고객 쪽에서 확인할 수 있습니다.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-semibold">{customer.name}</h1>
         <Badge variant="outline">{customer.customer_code}</Badge>
