@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV_ITEMS } from "@/lib/constants/nav";
+import { NAV_ITEMS, DRIVER_NAV_ITEMS } from "@/lib/constants/nav";
 import { cn } from "@/lib/utils";
 
-export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+export function NavLinks({ onNavigate, isDriver = false }: { onNavigate?: () => void; isDriver?: boolean }) {
   const pathname = usePathname();
+  const items = isDriver ? DRIVER_NAV_ITEMS : NAV_ITEMS;
 
   return (
     <nav className="flex flex-col gap-1">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
         const Icon = item.icon;
         return (

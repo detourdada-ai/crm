@@ -154,6 +154,54 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
+  /** All orders whose delivery_date falls on the given calendar day — the 배송관리 board is scoped to one day at a time. */
+  async findByDeliveryDate(dateIso: string, ownerUsername?: string): Promise<Order[]> {
+    const start = new Date(dateIso);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(dateIso);
+    end.setHours(23, 59, 59, 999);
+
+    let q = getSupabaseAdmin()
+      .from("orders")
+      .select("*")
+      .gte("delivery_date", start.toISOString())
+      .lte("delivery_date", end.toISOString());
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data as Order[]) ?? [];
+  },
+
+  /** Assigns a driver to the given orders and moves them into 배송중. */
+  async assignDriver(orderIds: string[], driverId: string): Promise<void> {
+    if (orderIds.length === 0) return;
+    const { error } = await getSupabaseAdmin()
+      .from("orders")
+      .update({ driver_id: driverId, delivery_status: "배송중" })
+      .in("id", orderIds);
+    if (error) throw error;
+  },
+
+  /** A driver's own orders — either their currently in-progress deliveries or (with includeCompleted) their full history, for the driver-only delivery view. */
+  async findByDriverId(driverId: string, deliveryStatus?: DeliveryStatus): Promise<Order[]> {
+    let q = getSupabaseAdmin().from("orders").select("*").eq("driver_id", driverId);
+    if (deliveryStatus) q = q.eq("delivery_status", deliveryStatus);
+    const { data, error } = await q.order("delivery_date", { ascending: true });
+    if (error) throw error;
+    return (data as Order[]) ?? [];
+  },
+
+  async markDelivered(orderId: string): Promise<Order> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("orders")
+      .update({ delivery_status: "완료", completed_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return data as Order;
+  },
+
   async deleteMany(orderIds: string[]): Promise<void> {
     if (orderIds.length === 0) return;
     const { error } = await getSupabaseAdmin().from("orders").delete().in("id", orderIds);

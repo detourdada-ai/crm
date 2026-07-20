@@ -6,6 +6,8 @@ import { listAccounts } from "@/lib/auth/credentials";
 import { getVipCriteria } from "@/lib/services/vip.service";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
+import { DriverManagementCard } from "@/components/settings/driver-management-card";
+import { listDriversAction } from "@/actions/drivers";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
 
 export default async function SettingsPage() {
@@ -32,7 +34,7 @@ export default async function SettingsPage() {
     );
   }
 
-  const vipCriteria = await getVipCriteria();
+  const [vipCriteria, drivers] = await Promise.all([getVipCriteria(), listDriversAction()]);
 
   return (
     <div className="space-y-6">
@@ -114,8 +116,18 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>기사관리</CardTitle>
+          <CardDescription>배송 기사와 로그인 계정을 등록/관리합니다. 건당 배송비는 정산관리에 사용됩니다.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DriverManagementCard drivers={drivers} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>준비 중인 설정</CardTitle>
-          <CardDescription>Sprint 3에서 아래 항목이 추가될 예정입니다.</CardDescription>
+          <CardDescription>다음 스프린트에서 아래 항목이 추가될 예정입니다.</CardDescription>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
           <ul className="list-inside list-disc space-y-1">

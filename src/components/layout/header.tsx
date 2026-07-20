@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { NavLinks } from "./nav-links";
+import { ROLE_LABELS } from "@/lib/constants/role-labels";
 
 export async function Header() {
   const session = await getSession();
+  const isDriver = session?.role === "driver";
 
   return (
     <header className="flex h-14 items-center gap-3 border-b bg-background px-4 md:px-6">
@@ -24,7 +26,7 @@ export async function Header() {
             CRM
           </SheetTitle>
           <div className="p-3">
-            <NavLinks />
+            <NavLinks isDriver={isDriver} />
           </div>
         </SheetContent>
       </Sheet>
@@ -34,7 +36,7 @@ export async function Header() {
       {session ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>{session.username}</span>
-          <Badge variant="outline">{session.role === "admin" ? "관리자" : "담당자"}</Badge>
+          <Badge variant="outline">{ROLE_LABELS[session.role]}</Badge>
         </div>
       ) : null}
 
