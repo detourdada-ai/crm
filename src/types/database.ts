@@ -4,7 +4,7 @@
  * `supabase gen types typescript`, you can drop this in its place.
  */
 
-import type { CustomerStatus, OrderSource, DeliveryStatus, DriverStatus } from "./domain";
+import type { CustomerStatus, OrderSource, DeliveryStatus, DriverStatus, SettlementStatus } from "./domain";
 
 export interface Database {
   public: {
@@ -215,6 +215,34 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["drivers"]["Insert"]>;
+        Relationships: [];
+      };
+      settlements: {
+        Row: {
+          id: string;
+          driver_id: string;
+          period_start: string;
+          period_end: string;
+          delivery_count: number;
+          amount: number;
+          status: SettlementStatus;
+          paid_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          driver_id: string;
+          period_start: string;
+          period_end: string;
+          delivery_count?: number;
+          amount?: number;
+          status?: SettlementStatus;
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["settlements"]["Insert"]>;
         Relationships: [];
       };
       order_items: {

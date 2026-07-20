@@ -208,6 +208,19 @@ export const ordersRepository = {
     if (error) throw error;
   },
 
+  /** Completed-delivery count for one driver within [periodStartIso, periodEndIso] — the basis for 정산관리's amount = count × rate. */
+  async countCompletedByDriverInPeriod(driverId: string, periodStartIso: string, periodEndIso: string): Promise<number> {
+    const { count, error } = await getSupabaseAdmin()
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("driver_id", driverId)
+      .eq("delivery_status", "완료")
+      .gte("completed_at", periodStartIso)
+      .lte("completed_at", periodEndIso);
+    if (error) throw error;
+    return count ?? 0;
+  },
+
   async update(id: string, input: OrderUpdate): Promise<Order> {
     const { data, error } = await getSupabaseAdmin().from("orders").update(input).eq("id", id).select("*").single();
     if (error) throw error;

@@ -96,6 +96,21 @@ export interface Driver {
   updated_at: ISODateString;
 }
 
+export type SettlementStatus = "unpaid" | "paid";
+
+export interface Settlement {
+  id: UUID;
+  driver_id: UUID;
+  period_start: string; // date, e.g. "2026-07-01"
+  period_end: string;
+  delivery_count: number;
+  amount: number;
+  status: SettlementStatus;
+  paid_at: ISODateString | null;
+  created_at: ISODateString;
+  updated_at: ISODateString;
+}
+
 export interface OrderItem {
   id: UUID;
   order_id: UUID;

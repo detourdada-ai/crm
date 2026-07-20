@@ -417,6 +417,31 @@ grant execute on function top_products(text, int) to service_role;
 grant execute on function order_amount_summary(text, timestamptz) to service_role;
 
 -- ----------------------------------------------------------------------------
+-- settlements (Sprint 7 Phase 4: 기사별 배송 정산)
+-- ----------------------------------------------------------------------------
+create table if not exists settlements (
+  id uuid primary key default gen_random_uuid(),
+  driver_id uuid not null references drivers (id) on delete cascade,
+  period_start date not null,
+  period_end date not null,
+  delivery_count integer not null default 0,
+  amount numeric(12, 2) not null default 0,
+  status text not null default 'unpaid' check (status in ('unpaid', 'paid')),
+  paid_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (driver_id, period_start, period_end)
+);
+
+create index if not exists idx_settlements_driver_id on settlements (driver_id);
+create index if not exists idx_settlements_period on settlements (period_start, period_end);
+
+drop trigger if exists trg_settlements_updated_at on settlements;
+create trigger trg_settlements_updated_at
+  before update on settlements
+  for each row execute function set_updated_at();
+
+-- ----------------------------------------------------------------------------
 -- RLS: enabled, no anon/authenticated policies (server uses service role key)
 -- ----------------------------------------------------------------------------
 alter table customers enable row level security;
@@ -428,3 +453,5 @@ alter table merge_history enable row level security;
 alter table app_settings enable row level security;
 alter table customer_change_logs enable row level security;
 alter table app_accounts enable row level security;
+alter table drivers enable row level security;
+alter table settlements enable row level security;
