@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DeliveryBoard } from "@/components/delivery/delivery-board";
 import { DeliveryDatePicker } from "@/components/delivery/delivery-date-picker";
 import { getDeliveryBoardAction } from "@/actions/delivery";
+import { isValidDateString } from "@/lib/utils/date";
 
 function todayIso(): string {
   const now = new Date();
@@ -15,7 +16,7 @@ export default async function DeliveryPage({
   searchParams: Promise<{ date?: string }>;
 }) {
   const { date } = await searchParams;
-  const selectedDate = date || todayIso();
+  const selectedDate = isValidDateString(date) ? date : todayIso();
 
   const { orders, drivers } = await getDeliveryBoardAction(selectedDate);
 

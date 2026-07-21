@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { AddressSearchInput } from "@/components/common/address-search-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CUSTOMER_STATUS_OPTIONS } from "@/lib/constants/customer-status";
 import type { Customer } from "@/types/domain";
@@ -34,7 +35,7 @@ export function CustomerEditForm({ customer }: { customer: Customer }) {
       </div>
       <div className="space-y-2 sm:col-span-2">
         <Label htmlFor="address">주소</Label>
-        <Input id="address" name="address" defaultValue={customer.address ?? ""} />
+        <AddressSearchInput id="address" name="address" defaultValue={customer.address ?? ""} />
       </div>
       <div className="space-y-2">
         <Label htmlFor="bagNo">평소 가방번호</Label>

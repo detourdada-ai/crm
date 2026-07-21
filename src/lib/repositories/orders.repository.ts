@@ -46,6 +46,7 @@ export type OrderSortField =
   | "delivery_date"
   | "recipient_name"
   | "phone_snapshot"
+  | "address_snapshot"
   | "total_amount"
   | "delivery_status"
   | "driver_id";

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { ArrowUpDown } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -10,13 +11,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { formatCurrency } from "@/lib/constants/order-status";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 import { assignDriverAction } from "@/actions/delivery";
+import { cn } from "@/lib/utils";
 import type { Order, Driver } from "@/types/domain";
 
 export function DeliveryBoard({ orders, drivers }: { orders: Order[]; drivers: Driver[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [driverId, setDriverId] = useState<string>("");
+  const [sortByAddress, setSortByAddress] = useState(false);
   const [isPending, startTransition] = useTransition();
   const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
+
+  // 배차 시 인근 주소끼리 묶어서 보기 위한 정렬 — 주문(order)의 배송지 스냅샷 기준
+  // (고객관리의 현재 주소가 아니라 그 주문 당시 실제 배송 주소로 정렬한다).
+  const sortedOrders = useMemo(() => {
+    if (!sortByAddress) return orders;
+    return [...orders].sort((a, b) => (a.address_snapshot ?? "").localeCompare(b.address_snapshot ?? "", "ko"));
+  }, [orders, sortByAddress]);
 
   if (orders.length === 0) {
     return <p className="py-12 text-center text-sm text-muted-foreground">해당 날짜에 배송 예정인 주문이 없습니다.</p>;
@@ -82,7 +92,15 @@ export function DeliveryBoard({ orders, drivers }: { orders: Order[]; drivers: D
             </TableHead>
             <TableHead>고객명</TableHead>
             <TableHead>연락처</TableHead>
-            <TableHead>주소</TableHead>
+            <TableHead
+              className="cursor-pointer select-none"
+              onClick={() => setSortByAddress((prev) => !prev)}
+            >
+              <span className="inline-flex items-center gap-1">
+                주소
+                <ArrowUpDown className={cn("size-3.5", sortByAddress ? "text-foreground" : "text-muted-foreground/40")} />
+              </span>
+            </TableHead>
             <TableHead>배송메모</TableHead>
             <TableHead className="text-right">금액</TableHead>
             <TableHead>담당기사</TableHead>
@@ -90,7 +108,7 @@ export function DeliveryBoard({ orders, drivers }: { orders: Order[]; drivers: D
           </TableRow>
         </TableHeader>
         <TableBody>
-          {orders.map((order) => (
+          {sortedOrders.map((order) => (
             <TableRow key={order.id}>
               <TableCell>
                 <Checkbox

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SortableTableHead } from "@/components/common/sortable-table-head";
-import { ORDER_STATUS_LABELS, formatCurrency, formatDate, formatDateTime } from "@/lib/constants/order-status";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants/order-status";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 import { OrderBagCell } from "./order-bag-cell";
 import type { Order } from "@/types/domain";
@@ -38,7 +38,7 @@ export function OrderTable({
           <TableHead>상품명</TableHead>
           <TableHead className="text-right">수량</TableHead>
           <SortableTableHead field="phone_snapshot">연락처</SortableTableHead>
-          <TableHead>배송지주소</TableHead>
+          <SortableTableHead field="address_snapshot">배송지주소</SortableTableHead>
           <TableHead>배송메세지</TableHead>
           <TableHead>가방번호 / 회수</TableHead>
           <SortableTableHead field="total_amount" className="text-right" defaultDir="asc">
@@ -87,11 +87,6 @@ export function OrderTable({
               <TableCell className="text-right">{formatCurrency(Number(order.total_amount))}</TableCell>
               <TableCell>
                 <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
-                {order.status ? (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {ORDER_STATUS_LABELS[order.status] ?? order.status}
-                  </p>
-                ) : null}
               </TableCell>
               <TableCell>{order.driver_id ? (driverNames?.[order.driver_id] ?? "-") : "-"}</TableCell>
               {showCustomerLink ? (

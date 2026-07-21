@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { createManualOrderAction } from "@/actions/orders";
+import { AddressSearchInput } from "@/components/common/address-search-input";
 
 export function ManualOrderButton() {
   const [open, setOpen] = useState(false);
@@ -64,7 +65,7 @@ export function ManualOrderButton() {
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="address">주소</Label>
-            <Input id="address" name="address" />
+            <AddressSearchInput id="address" name="address" />
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="deliveryMemo">배송메세지</Label>
@@ -75,8 +76,8 @@ export function ManualOrderButton() {
             <Input id="orderDate" name="orderDate" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="deliveryDate">배송일</Label>
-            <Input id="deliveryDate" name="deliveryDate" type="date" />
+            <Label htmlFor="manualDeliveryDate">배송일</Label>
+            <Input id="manualDeliveryDate" name="deliveryDate" type="date" />
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="productName">상품명</Label>

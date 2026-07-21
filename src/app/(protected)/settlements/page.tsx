@@ -3,6 +3,7 @@ import { SettlementPeriodPicker } from "@/components/settlements/settlement-peri
 import { SettlementTable } from "@/components/settlements/settlement-table";
 import { getSettlementBoardAction } from "@/actions/settlements";
 import { requireSession } from "@/lib/auth/current-session";
+import { isValidDateString } from "@/lib/utils/date";
 import type { SettlementPeriodType } from "@/lib/services/settlement.service";
 
 function todayIso(): string {
@@ -34,8 +35,9 @@ export default async function SettlementsPage({
   }
 
   const { period, date } = await searchParams;
-  const periodType = (period as SettlementPeriodType) || "monthly";
-  const referenceDate = date || todayIso();
+  const periodType: SettlementPeriodType =
+    period === "daily" || period === "weekly" || period === "monthly" ? period : "monthly";
+  const referenceDate = isValidDateString(date) ? date : todayIso();
 
   const { periodStart, periodEnd, rows } = await getSettlementBoardAction(periodType, referenceDate);
 

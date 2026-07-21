@@ -6,6 +6,7 @@ import { PaginationControls } from "@/components/common/pagination-controls";
 import { searchOrdersAction } from "@/actions/orders";
 import { requireSession } from "@/lib/auth/current-session";
 import { resolvePeriodRange } from "@/lib/services/settlement.service";
+import { isValidDateString } from "@/lib/utils/date";
 import type { OrderSortField } from "@/lib/repositories/orders.repository";
 import type { DeliveryStatus } from "@/types/domain";
 
@@ -37,9 +38,9 @@ export default async function OrdersPage({
   // 필터를 아직 지정하지 않았으면 주문일은 이번주, 배송일은 오늘로 기본 설정
   // (전체 이력을 한 번에 다 보여주면 목록이 너무 길어짐) — 필터 초기화도 이 기본값으로 돌아간다.
   const thisWeek = resolvePeriodRange("weekly", todayIso());
-  const orderDateFrom = params.orderDateFrom ?? thisWeek.start;
-  const orderDateTo = params.orderDateTo ?? thisWeek.end;
-  const deliveryDate = params.deliveryDate ?? todayIso();
+  const orderDateFrom = isValidDateString(params.orderDateFrom) ? params.orderDateFrom : thisWeek.start;
+  const orderDateTo = isValidDateString(params.orderDateTo) ? params.orderDateTo : thisWeek.end;
+  const deliveryDate = isValidDateString(params.deliveryDate) ? params.deliveryDate : todayIso();
 
   const [session, { orders, total, itemSummaries, driverNames }] = await Promise.all([
     requireSession(),
