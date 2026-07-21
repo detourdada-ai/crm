@@ -92,6 +92,7 @@ export interface Driver {
   vehicle_number: string | null;
   status: DriverStatus;
   rate_per_delivery: number;
+  owner_username: string;
   created_at: ISODateString;
   updated_at: ISODateString;
 }

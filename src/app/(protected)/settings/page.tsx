@@ -13,15 +13,40 @@ import { ROLE_LABELS } from "@/lib/constants/role-labels";
 export default async function SettingsPage() {
   const session = await requireSession();
   const isAdmin = session.role === "admin";
-  const accounts = await listAccounts();
+  const [accounts, drivers] = await Promise.all([listAccounts(), listDriversAction()]);
 
   if (!isAdmin) {
+    const vipCriteria = await getVipCriteria(session.username);
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold">설정</h1>
-          <p className="text-sm text-muted-foreground">비밀번호 변경</p>
+          <p className="text-sm text-muted-foreground">비밀번호 변경 및 내 계정 설정</p>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>VIP 고객 기준</CardTitle>
+            <CardDescription>
+              총 구매금액 또는 주문횟수 둘 중 하나만 넘어도 VIP로 분류됩니다. 내 고객관리/통계 화면에만
+              적용됩니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <VipCriteriaForm criteria={vipCriteria} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>기사관리</CardTitle>
+            <CardDescription>내가 등록한 배송 기사와 로그인 계정을 관리합니다. 건당 배송비는 정산관리에 사용됩니다.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DriverManagementCard drivers={drivers} isAdmin={false} accountUsernames={[]} />
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>비밀번호 변경</CardTitle>
@@ -34,7 +59,7 @@ export default async function SettingsPage() {
     );
   }
 
-  const [vipCriteria, drivers] = await Promise.all([getVipCriteria(), listDriversAction()]);
+  const accountUsernames = accounts.filter((a) => a.role !== "driver").map((a) => a.username);
 
   return (
     <div className="space-y-6">
@@ -50,18 +75,6 @@ export default async function SettingsPage() {
             <Badge variant="outline">관리자</Badge>
           </CardTitle>
         </CardHeader>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>VIP 고객 기준</CardTitle>
-          <CardDescription>
-            총 구매금액 또는 주문횟수 둘 중 하나만 넘어도 VIP로 분류됩니다. [통계] 화면에 바로 반영됩니다.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <VipCriteriaForm criteria={vipCriteria} />
-        </CardContent>
       </Card>
 
       <Card>
@@ -117,10 +130,13 @@ export default async function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>기사관리</CardTitle>
-          <CardDescription>배송 기사와 로그인 계정을 등록/관리합니다. 건당 배송비는 정산관리에 사용됩니다.</CardDescription>
+          <CardDescription>
+            전체 계정의 배송 기사를 계정별로 조회/등록/수정할 수 있습니다. 배정 이력이 없는 기사는 완전히 삭제할
+            수도 있습니다. 건당 배송비는 정산관리에 사용됩니다.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <DriverManagementCard drivers={drivers} />
+          <DriverManagementCard drivers={drivers} isAdmin accountUsernames={accountUsernames} />
         </CardContent>
       </Card>
 

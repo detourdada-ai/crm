@@ -48,7 +48,7 @@ export async function getCustomerDetailAction(id: string): Promise<CustomerDetai
     ordersRepository.findByCustomerId(id),
     changeLogRepository.listByCustomer(id),
     getCustomerTimeline(id),
-    getVipCriteria(),
+    getVipCriteria(customer.owner_username),
     customer.merged_into_id ? customersRepository.findById(customer.merged_into_id) : Promise.resolve(null),
   ]);
 

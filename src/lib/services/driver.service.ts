@@ -14,6 +14,7 @@ export interface CreateDriverInput {
   ratePerDelivery: number;
   username: string;
   password: string;
+  ownerUsername: string;
 }
 
 /** Creates a driver row + its login account together — a driver account only ever exists tied to exactly one driver row. */
@@ -27,6 +28,7 @@ export async function createDriverWithAccount(input: CreateDriverInput): Promise
     address: input.address,
     vehicle_number: input.vehicleNumber,
     rate_per_delivery: input.ratePerDelivery,
+    owner_username: input.ownerUsername,
   });
 
   try {

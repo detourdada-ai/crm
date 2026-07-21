@@ -19,7 +19,9 @@ export function ImportHistoryTable({ imports, showOwner = false }: { imports: Im
           <TableRow>
             <TableHead>파일명</TableHead>
             <TableHead>업로드시간</TableHead>
-            <TableHead className="text-right">처리건수</TableHead>
+            <TableHead className="text-right" title="엑셀 행(품목 줄) 기준 처리 건수 — 서로 다른 주문번호 개수와 다를 수 있습니다">
+              처리건수(행)
+            </TableHead>
             <TableHead className="text-right">실패건수</TableHead>
             <TableHead>상태</TableHead>
             {showOwner ? <TableHead>업로드한 계정</TableHead> : null}

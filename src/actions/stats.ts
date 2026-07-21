@@ -25,8 +25,8 @@ export async function updateVipCriteriaAction(
   formData: FormData
 ): Promise<UpdateVipCriteriaState> {
   const session = await requireSession();
-  if (session.role !== "admin") {
-    return { ok: false, error: "관리자만 변경할 수 있습니다." };
+  if (session.role === "admin") {
+    return { ok: false, error: "VIP 기준은 일반 계정에서 각자 설정합니다." };
   }
 
   const minTotalAmount = Number(formData.get("minTotalAmount"));
@@ -36,7 +36,7 @@ export async function updateVipCriteriaAction(
     return { ok: false, error: "올바른 숫자를 입력해주세요." };
   }
 
-  await setVipCriteria({ minTotalAmount, minOrderCount });
+  await setVipCriteria({ minTotalAmount, minOrderCount }, session.username);
   revalidatePath("/settings");
   revalidatePath("/stats");
   revalidatePath("/");

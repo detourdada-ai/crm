@@ -14,18 +14,26 @@ export const DEFAULT_VIP_CRITERIA: VipCriteria = {
   minOrderCount: 10,
 };
 
-const SETTINGS_KEY = "vip_criteria";
+// 계정별로 VIP 기준을 따로 관리한다(user1~5 각자 자기 고객 규모에 맞는 기준을
+// 직접 설정). ownerUsername이 없으면(admin의 전체 합산 뷰) 아무도 쓰지 않는
+// 전역 키로 폴백해 사실상 항상 DEFAULT_VIP_CRITERIA를 사용하게 된다 —
+// admin은 더 이상 이 값을 직접 설정하지 않는다.
+const GLOBAL_SETTINGS_KEY = "vip_criteria";
 
-export async function getVipCriteria(): Promise<VipCriteria> {
-  const value = await settingsRepository.get<VipCriteria>(SETTINGS_KEY);
+function settingsKeyFor(ownerUsername?: string): string {
+  return ownerUsername ? `vip_criteria:${ownerUsername}` : GLOBAL_SETTINGS_KEY;
+}
+
+export async function getVipCriteria(ownerUsername?: string): Promise<VipCriteria> {
+  const value = await settingsRepository.get<VipCriteria>(settingsKeyFor(ownerUsername));
   if (!value || typeof value.minTotalAmount !== "number" || typeof value.minOrderCount !== "number") {
     return DEFAULT_VIP_CRITERIA;
   }
   return value;
 }
 
-export async function setVipCriteria(criteria: VipCriteria): Promise<void> {
-  await settingsRepository.set(SETTINGS_KEY, criteria);
+export async function setVipCriteria(criteria: VipCriteria, ownerUsername?: string): Promise<void> {
+  await settingsRepository.set(settingsKeyFor(ownerUsername), criteria);
 }
 
 export interface VipCustomer {
@@ -34,7 +42,7 @@ export interface VipCustomer {
 }
 
 export async function listVipCustomers(ownerUsername?: string): Promise<VipCustomer[]> {
-  const criteria = await getVipCriteria();
+  const criteria = await getVipCriteria(ownerUsername);
   const statsRows = await customerStatsRepository.findVip(criteria.minTotalAmount, criteria.minOrderCount, ownerUsername);
   if (statsRows.length === 0) return [];
 
@@ -50,6 +58,6 @@ export async function listVipCustomers(ownerUsername?: string): Promise<VipCusto
 }
 
 export async function countVipCustomers(ownerUsername?: string): Promise<number> {
-  const criteria = await getVipCriteria();
+  const criteria = await getVipCriteria(ownerUsername);
   return customerStatsRepository.countVip(criteria.minTotalAmount, criteria.minOrderCount, ownerUsername);
 }

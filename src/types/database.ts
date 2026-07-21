@@ -200,6 +200,7 @@ export interface Database {
           vehicle_number: string | null;
           status: DriverStatus;
           rate_per_delivery: number;
+          owner_username: string;
           created_at: string;
           updated_at: string;
         };
@@ -211,6 +212,7 @@ export interface Database {
           vehicle_number?: string | null;
           status?: DriverStatus;
           rate_per_delivery?: number;
+          owner_username?: string;
           created_at?: string;
           updated_at?: string;
         };

@@ -123,11 +123,14 @@ create table if not exists drivers (
   vehicle_number text,
   status text not null default 'active' check (status in ('active', 'inactive')),
   rate_per_delivery numeric(12, 2) not null default 0,
+  -- 계정별 소유 — user1~5는 자신의 기사만, admin은 전체 계정의 기사를 계정별로 조회/관리.
+  owner_username text not null default 'admin',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists idx_drivers_status on drivers (status);
+create index if not exists idx_drivers_owner_username on drivers (owner_username);
 
 drop trigger if exists trg_drivers_updated_at on drivers;
 create trigger trg_drivers_updated_at

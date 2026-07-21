@@ -14,9 +14,10 @@ export interface DeliveryBoardResult {
 /** 배송관리 board: every order delivering on the given day, plus the active driver roster to assign from. */
 export async function getDeliveryBoardAction(dateIso: string): Promise<DeliveryBoardResult> {
   const session = await requireSession();
+  const ownerScope = ownerScopeFor(session);
   const [orders, drivers] = await Promise.all([
-    ordersRepository.findByDeliveryDate(dateIso, ownerScopeFor(session)),
-    driversRepository.listActive(),
+    ordersRepository.findByDeliveryDate(dateIso, ownerScope),
+    driversRepository.listActive(ownerScope),
   ]);
   return { orders, drivers };
 }

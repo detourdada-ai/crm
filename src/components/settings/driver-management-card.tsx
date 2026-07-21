@@ -2,11 +2,12 @@
 
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
@@ -17,11 +18,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { createDriverAction } from "@/actions/drivers";
-import { updateDriverStatusAction } from "@/actions/drivers";
+import { createDriverAction, deleteDriverAction, updateDriverStatusAction } from "@/actions/drivers";
 import type { DriverWithAccount } from "@/actions/drivers";
 
-function CreateDriverDialog() {
+function CreateDriverDialog({ isAdmin, accountUsernames }: { isAdmin: boolean; accountUsernames: string[] }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
@@ -55,6 +55,23 @@ function CreateDriverDialog() {
           <DialogDescription>배송 기사 정보와 로그인 계정을 함께 등록합니다.</DialogDescription>
         </DialogHeader>
         <form ref={formRef} onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
+          {isAdmin ? (
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="ownerUsername">담당 계정</Label>
+              <Select name="ownerUsername" required>
+                <SelectTrigger id="ownerUsername" className="w-full">
+                  <SelectValue placeholder="이 기사가 속할 계정을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accountUsernames.map((username) => (
+                    <SelectItem key={username} value={username}>
+                      {username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
           <div className="space-y-2">
             <Label htmlFor="name">이름</Label>
             <Input id="name" name="name" required />
@@ -111,11 +128,64 @@ function DriverStatusToggle({ driverId, status }: { driverId: string; status: "a
   );
 }
 
-export function DriverManagementCard({ drivers }: { drivers: DriverWithAccount[] }) {
+function DriverDeleteButton({ driverId }: { driverId: string }) {
+  const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function handleDelete() {
+    startTransition(async () => {
+      const result = await deleteDriverAction(driverId);
+      if (!result.ok) {
+        toast.error(result.error ?? "삭제 중 오류가 발생했습니다.");
+        return;
+      }
+      toast.success("기사를 삭제했습니다.");
+      setOpen(false);
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1.5 text-destructive hover:text-destructive">
+          <Trash2 className="size-4" />
+          삭제
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>기사를 삭제하시겠습니까?</DialogTitle>
+          <DialogDescription>
+            배정된 배송 이력이 있는 기사는 삭제할 수 없습니다(비활성화를 사용해주세요). 이력이 없는 기사만 완전히
+            삭제됩니다.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
+            취소
+          </Button>
+          <Button variant="destructive" onClick={handleDelete} disabled={isPending}>
+            {isPending ? "삭제하는 중..." : "삭제"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function DriverManagementCard({
+  drivers,
+  isAdmin,
+  accountUsernames,
+}: {
+  drivers: DriverWithAccount[];
+  isAdmin: boolean;
+  accountUsernames: string[];
+}) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <CreateDriverDialog />
+        <CreateDriverDialog isAdmin={isAdmin} accountUsernames={accountUsernames} />
       </div>
       {drivers.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">등록된 배송 기사가 없습니다.</p>
@@ -123,6 +193,7 @@ export function DriverManagementCard({ drivers }: { drivers: DriverWithAccount[]
         <Table>
           <TableHeader>
             <TableRow>
+              {isAdmin ? <TableHead>담당 계정</TableHead> : null}
               <TableHead>이름</TableHead>
               <TableHead>아이디</TableHead>
               <TableHead>연락처</TableHead>
@@ -135,6 +206,11 @@ export function DriverManagementCard({ drivers }: { drivers: DriverWithAccount[]
           <TableBody>
             {drivers.map((driver) => (
               <TableRow key={driver.id}>
+                {isAdmin ? (
+                  <TableCell>
+                    <Badge variant="secondary">{driver.owner_username}</Badge>
+                  </TableCell>
+                ) : null}
                 <TableCell className="font-medium">{driver.name}</TableCell>
                 <TableCell className="text-muted-foreground">{driver.username ?? "-"}</TableCell>
                 <TableCell>{driver.phone ?? "-"}</TableCell>
@@ -146,7 +222,10 @@ export function DriverManagementCard({ drivers }: { drivers: DriverWithAccount[]
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <DriverStatusToggle driverId={driver.id} status={driver.status} />
+                  <div className="flex gap-2">
+                    <DriverStatusToggle driverId={driver.id} status={driver.status} />
+                    {isAdmin ? <DriverDeleteButton driverId={driver.id} /> : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
