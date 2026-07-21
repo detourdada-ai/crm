@@ -38,6 +38,13 @@ export interface OrderUpdate {
   delivery_status?: DeliveryStatus;
   driver_id?: string | null;
   completed_at?: string | null;
+  recipient_name?: string;
+  phone_snapshot?: string | null;
+  address_snapshot?: string | null;
+  delivery_memo?: string | null;
+  order_date?: string;
+  status?: string;
+  total_amount?: number;
 }
 
 export type OrderSortField =
@@ -260,6 +267,21 @@ export const ordersRepository = {
     const { data, error } = await getSupabaseAdmin().from("order_items").insert(items).select("*");
     if (error) throw error;
     return data ?? [];
+  },
+
+  async updateItem(
+    itemId: string,
+    input: { product_name: string; quantity: number; unit_price: number; amount: number }
+  ): Promise<OrderItem> {
+    const { data, error } = await getSupabaseAdmin().from("order_items").update(input).eq("id", itemId).select("*").single();
+    if (error) throw error;
+    return data as OrderItem;
+  },
+
+  /** Deletes a single order (cascades order_items via FK). Only ever called for order_source='manual' orders — imported Smartstore orders are never deletable from the UI. */
+  async deleteOne(orderId: string): Promise<void> {
+    const { error } = await getSupabaseAdmin().from("orders").delete().eq("id", orderId);
+    if (error) throw error;
   },
 
   async findItemsByOrderIds(orderIds: string[]): Promise<OrderItem[]> {

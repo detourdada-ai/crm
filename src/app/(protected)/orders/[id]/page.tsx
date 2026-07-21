@@ -6,6 +6,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getOrderDetailAction } from "@/actions/orders";
 import { OrderItemRawData } from "@/components/orders/order-item-raw-data";
 import { OrderBagManagement } from "@/components/orders/order-bag-management";
+import { ManualOrderEditDialog } from "@/components/orders/manual-order-edit-dialog";
+import { ManualOrderDeleteButton } from "@/components/orders/manual-order-delete-button";
 import { BackButton } from "@/components/common/back-button";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants/order-status";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
@@ -34,6 +36,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         <h1 className="text-2xl font-semibold">{order.order_number ?? "(수동주문)"}</h1>
         <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
         {order.status ? <Badge variant="secondary">{order.status}</Badge> : null}
+        {order.order_source === "manual" ? (
+          <div className="ml-auto flex gap-2">
+            <ManualOrderEditDialog order={order} item={items[0] ?? null} />
+            <ManualOrderDeleteButton orderId={order.id} />
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

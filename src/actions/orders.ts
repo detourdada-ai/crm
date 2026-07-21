@@ -230,3 +230,100 @@ export async function createManualOrderAction(
     return { ok: false, error: e instanceof Error ? e.message : "주문 등록 중 오류가 발생했습니다." };
   }
 }
+
+export interface UpdateManualOrderState {
+  ok: boolean;
+  error: string | null;
+}
+
+/** 수동 등록 주문(order_source='manual')만 수정 가능 — 임포트로 들어온 스마트스토어 원본 주문은 스냅샷이라 수정 대상이 아니다. */
+export async function updateManualOrderAction(
+  orderId: string,
+  _prevState: UpdateManualOrderState,
+  formData: FormData
+): Promise<UpdateManualOrderState> {
+  const session = await requireSession();
+  const order = await ordersRepository.findById(orderId);
+  if (!order) return { ok: false, error: "주문을 찾을 수 없습니다." };
+  if (session.role !== "admin" && order.owner_username !== session.username) {
+    return { ok: false, error: "이 주문을 수정할 권한이 없습니다." };
+  }
+  if (order.order_source !== "manual") {
+    return { ok: false, error: "엑셀로 등록된 주문은 수정할 수 없습니다." };
+  }
+
+  const name = String(formData.get("name") || "").trim();
+  const rawPhone = String(formData.get("phone") || "").trim() || null;
+  const rawAddress = String(formData.get("address") || "").trim() || null;
+  if (!name) return { ok: false, error: "고객 이름을 입력해주세요." };
+  if (!rawPhone && !rawAddress) return { ok: false, error: "전화번호 또는 주소 중 하나는 입력해주세요." };
+
+  const productName = String(formData.get("productName") || "").trim();
+  if (!productName) return { ok: false, error: "상품명을 입력해주세요." };
+
+  const deliveryMemo = String(formData.get("deliveryMemo") || "").trim() || null;
+  const orderDateRaw = String(formData.get("orderDate") || "").trim();
+  const deliveryDateRaw = String(formData.get("deliveryDate") || "").trim();
+  const status = String(formData.get("status") || "").trim() || "접수완료";
+  const quantity = Math.max(1, Number(formData.get("quantity")) || 1);
+  const unitPrice = Math.max(0, Number(formData.get("unitPrice")) || 0);
+
+  const orderDate = orderDateRaw ? new Date(orderDateRaw).toISOString() : order.order_date;
+  const deliveryDate = deliveryDateRaw ? new Date(deliveryDateRaw).toISOString() : null;
+  const amount = quantity * unitPrice;
+
+  try {
+    await ordersRepository.update(orderId, {
+      recipient_name: name,
+      phone_snapshot: formatPhoneNumber(rawPhone),
+      address_snapshot: cleanAddress(rawAddress),
+      delivery_memo: deliveryMemo,
+      order_date: orderDate,
+      delivery_date: deliveryDate,
+      status,
+      total_amount: amount,
+    });
+
+    const [existingItem] = await ordersRepository.findItemsByOrderIds([orderId]);
+    if (existingItem) {
+      await ordersRepository.updateItem(existingItem.id, { product_name: productName, quantity, unit_price: unitPrice, amount });
+    } else {
+      await ordersRepository.createItems([{ order_id: orderId, product_name: productName, quantity, unit_price: unitPrice, amount }]);
+    }
+
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "주문 수정 중 오류가 발생했습니다." };
+  }
+}
+
+export interface DeleteManualOrderState {
+  ok: boolean;
+  error: string | null;
+}
+
+/** 수동 등록 주문만 삭제 가능. 엑셀 임포트 주문은 업로드 이력 삭제(재처리) 경로로만 제거된다. */
+export async function deleteManualOrderAction(orderId: string): Promise<DeleteManualOrderState> {
+  const session = await requireSession();
+  const order = await ordersRepository.findById(orderId);
+  if (!order) return { ok: false, error: "주문을 찾을 수 없습니다." };
+  if (session.role !== "admin" && order.owner_username !== session.username) {
+    return { ok: false, error: "이 주문을 삭제할 권한이 없습니다." };
+  }
+  if (order.order_source !== "manual") {
+    return { ok: false, error: "엑셀로 등록된 주문은 삭제할 수 없습니다." };
+  }
+
+  try {
+    await ordersRepository.deleteOne(orderId);
+    revalidatePath("/orders");
+    revalidatePath("/customers");
+    revalidatePath("/");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "주문 삭제 중 오류가 발생했습니다." };
+  }
+}
