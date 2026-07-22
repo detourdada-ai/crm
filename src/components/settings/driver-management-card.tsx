@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { createDriverAction, deleteDriverAction, updateDriverStatusAction } from "@/actions/drivers";
 import type { DriverWithAccount } from "@/actions/drivers";
+import { AddressSearchInput } from "@/components/common/address-search-input";
 
 function CreateDriverDialog({ isAdmin, accountUsernames }: { isAdmin: boolean; accountUsernames: string[] }) {
   const [open, setOpen] = useState(false);
@@ -82,7 +83,7 @@ function CreateDriverDialog({ isAdmin, accountUsernames }: { isAdmin: boolean; a
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="address">주소</Label>
-            <Input id="address" name="address" />
+            <AddressSearchInput id="address" name="address" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="vehicleNumber">차량번호</Label>

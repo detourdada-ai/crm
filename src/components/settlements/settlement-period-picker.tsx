@@ -11,14 +11,25 @@ const PERIOD_OPTIONS = [
   { value: "monthly", label: "월별" },
 ];
 
-export function SettlementPeriodPicker({ periodType, date }: { periodType: string; date: string }) {
+export function SettlementPeriodPicker({
+  periodType,
+  date,
+  ownerFilter,
+  accountUsernames,
+}: {
+  periodType: string;
+  date: string;
+  ownerFilter?: string;
+  accountUsernames?: string[];
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams);
-    params.set(key, value);
+    if (value) params.set(key, value);
+    else params.delete(key);
     router.push(`${pathname}?${params.toString()}`);
   }
 
@@ -51,6 +62,24 @@ export function SettlementPeriodPicker({ periodType, date }: { periodType: strin
           onChange={(e) => updateParam("date", e.target.value)}
         />
       </div>
+      {accountUsernames ? (
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">계정 필터</Label>
+          <Select value={ownerFilter || "all"} onValueChange={(v) => updateParam("owner", v === "all" ? "" : v)}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">전체 계정</SelectItem>
+              {accountUsernames.map((username) => (
+                <SelectItem key={username} value={username}>
+                  {username}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { SettlementPeriodPicker } from "@/components/settlements/settlement-peri
 import { SettlementTable } from "@/components/settlements/settlement-table";
 import { getSettlementBoardAction } from "@/actions/settlements";
 import { requireSession } from "@/lib/auth/current-session";
+import { listAccounts } from "@/lib/auth/credentials";
 import { isValidDateString } from "@/lib/utils/date";
 import type { SettlementPeriodType } from "@/lib/services/settlement.service";
 
@@ -15,46 +16,44 @@ function todayIso(): string {
 export default async function SettlementsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; date?: string }>;
+  searchParams: Promise<{ period?: string; date?: string; owner?: string }>;
 }) {
   const session = await requireSession();
+  const isAdmin = session.role === "admin";
 
-  if (session.role !== "admin") {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">정산관리</h1>
-        </div>
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            정산관리는 관리자만 조회할 수 있습니다.
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const { period, date } = await searchParams;
+  const { period, date, owner } = await searchParams;
   const periodType: SettlementPeriodType =
     period === "daily" || period === "weekly" || period === "monthly" ? period : "monthly";
   const referenceDate = isValidDateString(date) ? date : todayIso();
+  const ownerFilter = isAdmin ? owner : undefined;
 
-  const { periodStart, periodEnd, rows } = await getSettlementBoardAction(periodType, referenceDate);
+  const [{ periodStart, periodEnd, rows }, accountUsernames] = await Promise.all([
+    getSettlementBoardAction(periodType, referenceDate, ownerFilter),
+    isAdmin ? listAccounts().then((accounts) => accounts.filter((a) => a.role !== "driver").map((a) => a.username)) : Promise.resolve(undefined),
+  ]);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">정산관리</h1>
-        <p className="text-sm text-muted-foreground">배송완료 건 기준으로 기사별 정산 금액을 계산합니다. 입금은 수동으로 처리합니다.</p>
+        <p className="text-sm text-muted-foreground">
+          배송완료 건 기준으로 기사별 정산 금액을 계산합니다. 입금은 수동으로 처리합니다.
+          {isAdmin ? "" : " 내가 등록한 기사만 표시됩니다."}
+        </p>
       </div>
 
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <SettlementPeriodPicker periodType={periodType} date={referenceDate} />
+          <SettlementPeriodPicker
+            periodType={periodType}
+            date={referenceDate}
+            ownerFilter={ownerFilter}
+            accountUsernames={accountUsernames}
+          />
           <CardDescription>
             정산 기간: {periodStart} ~ {periodEnd}
           </CardDescription>
-          <SettlementTable rows={rows} />
+          <SettlementTable rows={rows} showOwner={isAdmin && !ownerFilter} />
         </CardContent>
       </Card>
     </div>

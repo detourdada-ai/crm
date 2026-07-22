@@ -11,6 +11,12 @@ export interface SettlementUpsert {
 }
 
 export const settlementsRepository = {
+  async findById(id: string): Promise<Settlement | null> {
+    const { data, error } = await getSupabaseAdmin().from("settlements").select("*").eq("id", id).maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
   async listByPeriod(periodStart: string, periodEnd: string): Promise<Settlement[]> {
     const { data, error } = await getSupabaseAdmin()
       .from("settlements")

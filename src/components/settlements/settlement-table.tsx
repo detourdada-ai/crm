@@ -26,7 +26,7 @@ function StatusToggle({ settlementId, status }: { settlementId: string; status: 
   );
 }
 
-export function SettlementTable({ rows }: { rows: SettlementRow[] }) {
+export function SettlementTable({ rows, showOwner = false }: { rows: SettlementRow[]; showOwner?: boolean }) {
   if (rows.length === 0) {
     return <p className="py-12 text-center text-sm text-muted-foreground">등록된 배송 기사가 없습니다.</p>;
   }
@@ -35,6 +35,7 @@ export function SettlementTable({ rows }: { rows: SettlementRow[] }) {
     <Table>
       <TableHeader>
         <TableRow>
+          {showOwner ? <TableHead>담당 계정</TableHead> : null}
           <TableHead>기사명</TableHead>
           <TableHead className="text-right">배송건수</TableHead>
           <TableHead className="text-right">배송금액</TableHead>
@@ -45,6 +46,11 @@ export function SettlementTable({ rows }: { rows: SettlementRow[] }) {
       <TableBody>
         {rows.map(({ driver, settlement }) => (
           <TableRow key={driver.id}>
+            {showOwner ? (
+              <TableCell>
+                <Badge variant="secondary">{driver.owner_username}</Badge>
+              </TableCell>
+            ) : null}
             <TableCell className="font-medium">{driver.name}</TableCell>
             <TableCell className="text-right">{settlement.delivery_count}건</TableCell>
             <TableCell className="text-right">{formatCurrency(settlement.amount)}</TableCell>
