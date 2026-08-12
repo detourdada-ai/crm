@@ -21,3 +21,10 @@ export function getResendClient(): Resend | null {
 export function getFromEmail(): string {
   return process.env.RESEND_FROM_EMAIL || "Ordify <onboarding@resend.dev>";
 }
+
+// Sprint 14-E: the operator's real support address — used both as the
+// Footer's public CS contact and as the fixed `to` for contact-form
+// submissions (never the submitter's own email; see sendContactInquiry).
+export function getSupportEmail(): string {
+  return "detourdada@gmail.com";
+}
