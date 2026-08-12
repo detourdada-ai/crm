@@ -21,7 +21,8 @@ export type MembershipStatus = "active" | "inactive";
 // answer to "let them in or not" (see src/lib/auth/access-control.ts).
 export type AccessType = "NONE" | "BETA" | "SUBSCRIPTION";
 export type AccessKeyType = "BETA" | "SUBSCRIPTION";
-export type AccessKeyStatus = "active" | "revoked";
+// Sprint 12: 'used' — claimed by whichever Seller redeems it via /subscription.
+export type AccessKeyStatus = "active" | "revoked" | "used";
 export type EffectiveAccessStatus = "ACTIVE_BETA" | "ACTIVE_SUBSCRIPTION" | "NONE" | "EXPIRED" | "SUSPENDED";
 
 export interface Plan {

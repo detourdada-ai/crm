@@ -387,9 +387,15 @@ create table if not exists tenant_access_keys (
   tenant_id uuid not null references tenants (id) on delete cascade,
   key_hash text not null unique,
   key_type text not null check (key_type in ('BETA', 'SUBSCRIPTION')),
-  status text not null default 'active' check (status in ('active', 'revoked')),
+  -- Sprint 12: 'used' added — a key is claimed by whichever logged-in
+  -- Seller redeems it first (see redeem_beta_access_key), not by the admin
+  -- who issued it. tenant_id above is kept only as the issuing admin's own
+  -- reference; it is never trusted as the redemption target.
+  status text not null default 'active' check (status in ('active', 'revoked', 'used')),
   issued_at timestamptz not null default now(),
   expires_at timestamptz,
+  used_at timestamptz,
+  used_by text references app_accounts (username) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -435,21 +441,75 @@ end;
 $$ language plpgsql;
 
 -- ----------------------------------------------------------------------------
--- issue_beta_access_key (Sprint 11: admin-issued Beta trial, exactly +5 months)
+-- issue_beta_access_key (Sprint 11: generates a key; Sprint 12: no longer
+-- activates any tenant itself — see redeem_beta_access_key below)
 -- ----------------------------------------------------------------------------
 create or replace function issue_beta_access_key(
   p_tenant_id uuid,
   p_key_hash text
 ) returns table (expires_at timestamptz) as $$
-declare
-  v_expires_at timestamptz := now() + interval '5 months';
 begin
-  insert into tenant_access_keys (tenant_id, key_hash, key_type, expires_at)
-  values (p_tenant_id, p_key_hash, 'BETA', v_expires_at);
+  insert into tenant_access_keys (tenant_id, key_hash, key_type)
+  values (p_tenant_id, p_key_hash, 'BETA');
 
-  update tenants set access_type = 'BETA', access_expires_at = v_expires_at where id = p_tenant_id;
+  return query select null::timestamptz;
+end;
+$$ language plpgsql;
 
-  return query select v_expires_at;
+-- ----------------------------------------------------------------------------
+-- redeem_beta_access_key (Sprint 12: Seller-initiated activation)
+-- ----------------------------------------------------------------------------
+-- Single atomic function call = one Postgres transaction. The
+-- `update ... where status = 'active'` is the compare-and-swap that makes
+-- concurrent redemption of the same key safe: only one caller's UPDATE can
+-- match the row before the other sees status already flipped to 'used'.
+-- Table-qualified column references throughout (tak.expires_at etc.) —
+-- RETURNS TABLE(..., expires_at) otherwise shadows the column of the same
+-- name and every unqualified reference becomes ambiguous (caught by
+-- Sprint 12 QA; see migration 0019).
+create or replace function redeem_beta_access_key(
+  p_username text,
+  p_key_hash text
+) returns table (result text, expires_at timestamptz) as $$
+declare
+  v_tenant_id uuid;
+  v_new_expires_at timestamptz := now() + interval '5 months';
+  v_updated_id uuid;
+begin
+  select m.tenant_id into v_tenant_id
+    from memberships m
+    where m.username = p_username and m.status = 'active'
+    limit 1;
+
+  if v_tenant_id is null then
+    return query select 'no_tenant'::text, null::timestamptz;
+    return;
+  end if;
+
+  update tenant_access_keys as tak
+    set status = 'used', used_at = now(), used_by = p_username
+    where tak.key_hash = p_key_hash
+      and tak.key_type = 'BETA'
+      and tak.status = 'active'
+      and (tak.expires_at is null or tak.expires_at > now())
+    returning tak.id into v_updated_id;
+
+  if v_updated_id is null then
+    if exists (select 1 from tenant_access_keys tak where tak.key_hash = p_key_hash and tak.key_type = 'BETA' and tak.status = 'used') then
+      return query select 'already_used'::text, null::timestamptz;
+      return;
+    elsif exists (select 1 from tenant_access_keys tak where tak.key_hash = p_key_hash and tak.key_type = 'BETA' and tak.expires_at is not null and tak.expires_at <= now()) then
+      return query select 'expired'::text, null::timestamptz;
+      return;
+    else
+      return query select 'invalid'::text, null::timestamptz;
+      return;
+    end if;
+  end if;
+
+  update tenants set access_type = 'BETA', access_expires_at = v_new_expires_at where id = v_tenant_id;
+
+  return query select 'ok'::text, v_new_expires_at;
 end;
 $$ language plpgsql;
 

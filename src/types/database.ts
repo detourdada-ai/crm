@@ -102,7 +102,11 @@ export interface Database {
       };
       issue_beta_access_key: {
         Args: { p_tenant_id: string; p_key_hash: string };
-        Returns: { expires_at: string }[];
+        Returns: { expires_at: string | null }[];
+      };
+      redeem_beta_access_key: {
+        Args: { p_username: string; p_key_hash: string };
+        Returns: { result: string; expires_at: string | null }[];
       };
     };
     Enums: Record<string, never>;
@@ -506,6 +510,8 @@ export interface Database {
           status: AccessKeyStatus;
           issued_at: string;
           expires_at: string | null;
+          used_at: string | null;
+          used_by: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -517,6 +523,8 @@ export interface Database {
           status?: AccessKeyStatus;
           issued_at?: string;
           expires_at?: string | null;
+          used_at?: string | null;
+          used_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
