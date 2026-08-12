@@ -5,8 +5,9 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
 // Next.js 16 renamed `middleware` to `proxy` (same behavior, new name/file).
 // /auth/callback must stay public — Google/Supabase redirect back here
 // before any CRM session cookie exists, so gating it behind requireSession
-// would make the OAuth flow unreachable.
-const PUBLIC_PATHS = ["/login", "/auth/callback"];
+// would make the OAuth flow unreachable. /signup is the same case: a Google
+// identity exists (via Supabase Auth) but no custom session cookie yet.
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/signup"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

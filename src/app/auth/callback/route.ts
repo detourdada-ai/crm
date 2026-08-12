@@ -6,10 +6,15 @@ import { setSessionCookie } from "@/lib/auth/current-session";
 
 /**
  * Sprint 10: Google OAuth landing point. This route NEVER creates an
- * app_accounts / tenants / memberships row — it only ever looks an existing
- * account up by google_email (set in advance via Settings) and, if found,
- * issues the exact same custom session cookie the ID/PW login uses
- * (setSessionCookie). Any Google account not already linked is rejected.
+ * app_accounts / tenants / memberships row itself — it only ever looks an
+ * existing account up by google_email and, if found, issues the exact same
+ * custom session cookie the ID/PW login uses (setSessionCookie).
+ *
+ * Sprint 11: an unregistered Google account is no longer rejected outright —
+ * it's sent to /signup instead. The Supabase Auth session is deliberately
+ * left alive in that case (not signed out here) so /signup's server action
+ * can independently re-derive the verified Google email itself via
+ * supabase.auth.getUser(), rather than trusting a URL query string.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams, origin } = new URL(request.url);
@@ -23,16 +28,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (exchangeError || !data.user?.email) return loginUrl("google_oauth_failed");
 
   const googleEmail = normalizeGoogleEmail(data.user.email);
-
-  // The Supabase Auth session established above is only needed to learn the
-  // Google email — this app's real session transport is the custom cookie
-  // set below, so drop the Supabase side immediately rather than leave two
-  // session mechanisms alive at once.
-  await supabase.auth.signOut();
-
   const account = await accountsRepository.findByGoogleEmail(googleEmail);
-  if (!account) return loginUrl("unregistered_google_account");
 
+  if (!account) {
+    return NextResponse.redirect(`${origin}/signup`);
+  }
+
+  // Only needed to learn the Google email above — this app's real session
+  // transport is the custom cookie set below, so drop the Supabase side now.
+  await supabase.auth.signOut();
   await setSessionCookie(account.username, account.role);
   return NextResponse.redirect(origin);
 }
