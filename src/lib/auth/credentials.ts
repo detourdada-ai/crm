@@ -1,6 +1,7 @@
 import "server-only";
 import { accountsRepository } from "@/lib/repositories/accounts.repository";
 import { hashPassword, verifyPassword } from "./password";
+import { syncSupabaseAuthPassword } from "./supabase-auth-migration";
 
 /**
  * Sprint 1 uses a small hardcoded account directory instead of Supabase Auth
@@ -70,4 +71,8 @@ export async function verifyCurrentPassword(username: string, password: string):
 export async function changePassword(username: string, newPassword: string): Promise<void> {
   await ensureSeeded();
   await accountsRepository.updatePasswordHash(username, hashPassword(newPassword));
+  // Sprint 9: keep a migrated account's Supabase Auth password in sync so its
+  // next login's confirmation sign-in doesn't start failing. Best-effort —
+  // the authoritative password_hash update above already succeeded either way.
+  await syncSupabaseAuthPassword(username, newPassword);
 }

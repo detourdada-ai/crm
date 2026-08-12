@@ -337,6 +337,10 @@ create table if not exists app_accounts (
   -- set only for role = 'driver': links the login to its drivers row so a
   -- driver's session can be scoped to just their own assigned deliveries.
   driver_id uuid references drivers (id) on delete set null,
+  -- Sprint 9: linked lazily on this account's next successful login (see
+  -- ensureSupabaseAuthLinked) — password_hash is kept as-is until every
+  -- account has migrated, so the old login path never breaks mid-transition.
+  auth_user_id uuid unique,
   updated_at timestamptz not null default now()
 );
 

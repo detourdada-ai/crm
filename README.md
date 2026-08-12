@@ -62,6 +62,20 @@ TailwindCSS + shadcn/ui + Supabase.
   계정에도 "정산관리" 메뉴(`/driver/settlements`)를 추가해 본인 배송건수·받을 금액·지급상태를 읽기
   전용으로 확인 가능(지급 처리는 여전히 계정 소유자/admin만). 기사 등록 화면의 주소 입력도 수동 주문
   등록과 동일하게 다음 우편번호 검색을 사용하도록 통일.
+- **Sprint 9 — Authentication Foundation (Lazy Migration)** (완료, DB 마이그레이션 필요 —
+  `0015_auth_user_id.sql`): `app_accounts`에 `auth_user_id`를 추가해 기존 커스텀 scrypt 인증을
+  즉시 폐기하지 않고 계정별로 점진적으로 Supabase Auth와 연결. 로그인 시 기존 비밀번호 검증이
+  성공하면(비밀번호 재설정 불필요) 그 자리에서 평문 비밀번호로 Supabase Auth 사용자를 생성하고
+  `auth_user_id`를 저장(`src/lib/auth/supabase-auth-migration.ts`). username 기반 synthetic
+  email(`${username}@driver.internal`) 사용 — 실제 이메일 불필요. 부분 마이그레이션(Auth User는
+  생겼는데 저장 전에 실패한 경우)과 동시 로그인 레이스는 이메일로 기존 Auth User를 먼저 찾는
+  reconciliation으로 방어. **중요 버그 하나를 통합 테스트로 발견해 수정**: 공유 service-role
+  Supabase 클라이언트(`getSupabaseAdmin()`)에서 직접 `signInWithPassword`를 호출하면 그 클라이언트의
+  인증 상태가 방금 로그인한 일반 사용자로 바뀌어버려 이후 모든 서버 요청이 service role 권한을 잃는
+  심각한 문제가 있었음 — 확인용 sign-in은 항상 별도의 일회성 클라이언트로 처리하도록 수정.
+  `requireSession()`/`ownerScopeFor()`/`tenantScopeFor()`/`requireDriverSession()`과 `proxy.ts`는
+  이번 스프린트에서 전혀 건드리지 않음(호출부 15개 파일 무변경) — 기존 `owner_username` 기반 조회도
+  그대로 유지. Google OAuth·RLS 실전환은 다음 스프린트로 분리.
 
 ## 시작하기
 

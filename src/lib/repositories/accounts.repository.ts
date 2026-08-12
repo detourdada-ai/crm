@@ -7,6 +7,7 @@ export interface AppAccountRow {
   password_hash: string;
   role: Role;
   driver_id: string | null;
+  auth_user_id: string | null;
   updated_at: string;
 }
 
@@ -66,6 +67,12 @@ export const accountsRepository = {
 
   async delete(username: string): Promise<void> {
     const { error } = await getSupabaseAdmin().from("app_accounts").delete().eq("username", username);
+    if (error) throw error;
+  },
+
+  /** Sprint 9: links this account to its (lazily-created) Supabase Auth user. Only ever set once per account. */
+  async setAuthUserId(username: string, authUserId: string): Promise<void> {
+    const { error } = await getSupabaseAdmin().from("app_accounts").update({ auth_user_id: authUserId }).eq("username", username);
     if (error) throw error;
   },
 };

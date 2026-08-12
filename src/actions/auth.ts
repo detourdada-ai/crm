@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { changePassword, verifyCredentials, verifyCurrentPassword } from "@/lib/auth/credentials";
 import { clearSessionCookie, setSessionCookie } from "@/lib/auth/current-session";
 import { requireSession } from "@/lib/auth/current-session";
+import { ensureSupabaseAuthLinked } from "@/lib/auth/supabase-auth-migration";
 
 export interface LoginActionState {
   error: string | null;
@@ -22,6 +23,11 @@ export async function loginAction(_prevState: LoginActionState, formData: FormDa
   if (!account) {
     return { error: "아이디 또는 비밀번호가 올바르지 않습니다." };
   }
+
+  // Sprint 9: lazy Supabase Auth migration. Runs only after the existing
+  // password check already passed, and never blocks this login on failure —
+  // see ensureSupabaseAuthLinked's own doc comment for why.
+  await ensureSupabaseAuthLinked(account.username, password);
 
   await setSessionCookie(account.username, account.role);
   redirect(redirectTo.startsWith("/") ? redirectTo : "/");

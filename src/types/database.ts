@@ -414,6 +414,7 @@ export interface Database {
           password_hash: string;
           role: string;
           driver_id: string | null;
+          auth_user_id: string | null;
           updated_at: string;
         };
         Insert: {
@@ -421,6 +422,7 @@ export interface Database {
           password_hash: string;
           role: string;
           driver_id?: string | null;
+          auth_user_id?: string | null;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["app_accounts"]["Insert"]>;
