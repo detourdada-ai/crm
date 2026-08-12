@@ -129,7 +129,17 @@ export async function checkPriorUnreturnedBagsAction(orderId: string): Promise<P
   return { count: priorOrders.length, orderIds: priorOrders.map((o) => o.id) };
 }
 
-/** Marks the given order's bag returned, plus any additionally-selected prior orders ("전체 회수"). */
+/**
+ * Marks the given order's bag returned, plus any additionally-selected prior orders ("전체 회수").
+ *
+ * Sprint 14-I P1 hotfix: previously only `orderId` (the primary order) was
+ * ownership-checked — `includeOrderIds` was passed straight through to a raw
+ * bulk UPDATE with no verification, letting any Seller flip another Seller's
+ * orders to bag_returned=true. Non-admin callers must now own every id in
+ * `includeOrderIds` too; any mismatch rejects the whole batch (the primary
+ * order's own update also doesn't happen). Empty `includeOrderIds` behaves
+ * exactly as before. `markManyBagsReturned()` re-verifies server-side too.
+ */
 export async function markBagReturnedAction(
   orderId: string,
   bagNumber: string | null,
@@ -142,8 +152,16 @@ export async function markBagReturnedAction(
     return { ok: false, error: "이 주문을 수정할 권한이 없습니다." };
   }
 
+  if (includeOrderIds.length > 0 && session.role !== "admin") {
+    const others = await ordersRepository.findByIds(includeOrderIds);
+    const allOwned = others.length === includeOrderIds.length && others.every((o) => o.owner_username === session.username);
+    if (!allOwned) {
+      return { ok: false, error: "회수 처리할 권한이 없는 주문이 포함되어 있습니다." };
+    }
+  }
+
   await ordersRepository.update(orderId, { bag_number: bagNumber, bag_returned: true });
-  await ordersRepository.markManyBagsReturned(includeOrderIds);
+  await ordersRepository.markManyBagsReturned(includeOrderIds, session.role === "admin" ? undefined : session.username);
   revalidatePath(`/orders/${orderId}`);
   revalidatePath("/orders");
   return { ok: true, error: null };

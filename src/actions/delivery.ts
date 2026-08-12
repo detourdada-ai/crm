@@ -27,12 +27,36 @@ export interface DeliveryActionState {
   error: string | null;
 }
 
-/** Assigns a driver to the selected orders — sets driver_id and moves them to 배송중. */
+/**
+ * Assigns a driver to the selected orders — sets driver_id and moves them to 배송중.
+ *
+ * Sprint 14-I P0 hotfix: previously this only checked "is someone logged
+ * in" before mutating — no verification that the orders or the driver
+ * belonged to the caller's own tenant, letting any Seller reassign another
+ * Seller's orders to another Seller's driver. Non-admin callers must now own
+ * BOTH the driver and every order being assigned; any mismatch rejects the
+ * whole batch (no partial success). Admin keeps the existing unrestricted
+ * behavior. `ordersRepository.assignDriver()` re-verifies the same thing
+ * server-side as a second line of defense.
+ */
 export async function assignDriverAction(orderIds: string[], driverId: string): Promise<DeliveryActionState> {
   try {
-    await requireSession();
+    const session = await requireSession();
     if (orderIds.length === 0) return { ok: false, error: "배정할 주문을 선택해주세요." };
-    await ordersRepository.assignDriver(orderIds, driverId);
+
+    if (session.role !== "admin") {
+      const driver = await driversRepository.findById(driverId);
+      if (!driver || driver.owner_username !== session.username) {
+        return { ok: false, error: "본인의 기사만 배정할 수 있습니다." };
+      }
+      const orders = await ordersRepository.findByIds(orderIds);
+      const allOwned = orders.length === orderIds.length && orders.every((o) => o.owner_username === session.username);
+      if (!allOwned) {
+        return { ok: false, error: "배정 권한이 없는 주문이 포함되어 있습니다." };
+      }
+    }
+
+    await ordersRepository.assignDriver(orderIds, driverId, session.role === "admin" ? undefined : session.username);
     revalidatePath("/delivery");
     return { ok: true, error: null };
   } catch (e) {

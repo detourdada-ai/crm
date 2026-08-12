@@ -91,6 +91,13 @@ export const ordersRepository = {
     return data as Order | null;
   },
 
+  async findByIds(ids: string[]): Promise<Order[]> {
+    if (ids.length === 0) return [];
+    const { data, error } = await getSupabaseAdmin().from("orders").select("*").in("id", ids);
+    if (error) throw error;
+    return (data as Order[]) ?? [];
+  },
+
   async findByOrderNumber(orderNumber: string): Promise<Order | null> {
     const { data, error } = await getSupabaseAdmin()
       .from("orders")
@@ -181,9 +188,30 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
-  /** Assigns a driver to the given orders and moves them into 배송중. */
-  async assignDriver(orderIds: string[], driverId: string): Promise<void> {
+  /**
+   * Assigns a driver to the given orders and moves them into 배송중.
+   *
+   * Sprint 14-I hotfix: `ownerUsername`, when passed (i.e. caller isn't
+   * admin), is a second line of defense on top of the action-layer check —
+   * it re-verifies every order id AND the driver itself belong to that
+   * owner *before* issuing the UPDATE, so a bypassed/buggy action layer
+   * still can't cross-tenant-assign. All-or-nothing: any mismatch throws
+   * and nothing is written.
+   */
+  async assignDriver(orderIds: string[], driverId: string, ownerUsername?: string): Promise<void> {
     if (orderIds.length === 0) return;
+    if (ownerUsername) {
+      const admin = getSupabaseAdmin();
+      const [{ data: owned, error: ordersCheckError }, { data: driver, error: driverCheckError }] = await Promise.all([
+        admin.from("orders").select("id").in("id", orderIds).eq("owner_username", ownerUsername),
+        admin.from("drivers").select("id").eq("id", driverId).eq("owner_username", ownerUsername).maybeSingle(),
+      ]);
+      if (ordersCheckError) throw ordersCheckError;
+      if (driverCheckError) throw driverCheckError;
+      if ((owned?.length ?? 0) !== orderIds.length || !driver) {
+        throw new Error("배정 권한이 없는 주문 또는 기사가 포함되어 있습니다.");
+      }
+    }
     const { error } = await getSupabaseAdmin()
       .from("orders")
       .update({ driver_id: driverId, delivery_status: "배송중" })
@@ -250,8 +278,20 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
-  async markManyBagsReturned(orderIds: string[]): Promise<void> {
+  /** Sprint 14-I P1 hotfix: `ownerUsername`, when passed, is re-verified against every id before the UPDATE runs — second line of defense alongside the action-layer check (see markBagReturnedAction). */
+  async markManyBagsReturned(orderIds: string[], ownerUsername?: string): Promise<void> {
     if (orderIds.length === 0) return;
+    if (ownerUsername) {
+      const { data: owned, error: checkError } = await getSupabaseAdmin()
+        .from("orders")
+        .select("id")
+        .in("id", orderIds)
+        .eq("owner_username", ownerUsername);
+      if (checkError) throw checkError;
+      if ((owned?.length ?? 0) !== orderIds.length) {
+        throw new Error("회수 처리 권한이 없는 주문이 포함되어 있습니다.");
+      }
+    }
     const { error } = await getSupabaseAdmin().from("orders").update({ bag_returned: true }).in("id", orderIds);
     if (error) throw error;
   },
