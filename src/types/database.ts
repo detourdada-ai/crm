@@ -14,6 +14,9 @@ import type {
   TenantStatus,
   MembershipRole,
   MembershipStatus,
+  AccessType,
+  AccessKeyType,
+  AccessKeyStatus,
 } from "./domain";
 
 export interface Database {
@@ -92,6 +95,14 @@ export interface Database {
       order_amount_summary: {
         Args: { p_owner_username: string | null; p_since: string | null };
         Returns: { total_amount: number; order_count: number }[];
+      };
+      create_seller_signup: {
+        Args: { p_username: string; p_company_name: string; p_google_email: string; p_password_hash: string };
+        Returns: { tenant_id: string; username: string }[];
+      };
+      issue_beta_access_key: {
+        Args: { p_tenant_id: string; p_key_hash: string };
+        Returns: { expires_at: string }[];
       };
     };
     Enums: Record<string, never>;
@@ -467,6 +478,8 @@ export interface Database {
           slug: string;
           status: TenantStatus;
           plan_id: string | null;
+          access_type: AccessType;
+          access_expires_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -476,10 +489,38 @@ export interface Database {
           slug: string;
           status?: TenantStatus;
           plan_id?: string | null;
+          access_type?: AccessType;
+          access_expires_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["tenants"]["Insert"]>;
+        Relationships: [];
+      };
+      tenant_access_keys: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          key_hash: string;
+          key_type: AccessKeyType;
+          status: AccessKeyStatus;
+          issued_at: string;
+          expires_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          key_hash: string;
+          key_type: AccessKeyType;
+          status?: AccessKeyStatus;
+          issued_at?: string;
+          expires_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["tenant_access_keys"]["Insert"]>;
         Relationships: [];
       };
       memberships: {

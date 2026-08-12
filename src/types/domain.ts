@@ -15,6 +15,15 @@ export type PlanCode = "STARTER" | "BASIC" | "PRO" | "BUSINESS";
 export type MembershipRole = "OWNER" | "ADMIN" | "STAFF" | "DRIVER";
 export type MembershipStatus = "active" | "inactive";
 
+// Sprint 11: "what they're subscribed to" (plan) vs "can they use the
+// service right now" (access) — kept separate so a Beta trial doesn't need
+// a fake plan row. EffectiveAccessStatus is the computed, request-time
+// answer to "let them in or not" (see src/lib/auth/access-control.ts).
+export type AccessType = "NONE" | "BETA" | "SUBSCRIPTION";
+export type AccessKeyType = "BETA" | "SUBSCRIPTION";
+export type AccessKeyStatus = "active" | "revoked";
+export type EffectiveAccessStatus = "ACTIVE_BETA" | "ACTIVE_SUBSCRIPTION" | "NONE" | "EXPIRED" | "SUSPENDED";
+
 export interface Plan {
   id: UUID;
   code: PlanCode;
@@ -28,6 +37,8 @@ export interface Tenant {
   slug: string;
   status: TenantStatus;
   plan_id: UUID | null;
+  access_type: AccessType;
+  access_expires_at: ISODateString | null;
   created_at: ISODateString;
   updated_at: ISODateString;
 }
