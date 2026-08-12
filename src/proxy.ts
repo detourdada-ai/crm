@@ -7,7 +7,9 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
 // before any CRM session cookie exists, so gating it behind requireSession
 // would make the OAuth flow unreachable. /signup is the same case: a Google
 // identity exists (via Supabase Auth) but no custom session cookie yet.
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/signup"];
+// /api/cron is invoked by Vercel Cron with no session cookie at all — its
+// own route handler enforces the real CRON_SECRET check.
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/signup", "/api/cron"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

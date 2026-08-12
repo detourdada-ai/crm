@@ -15,16 +15,17 @@ export default async function SubscriptionPage() {
   const session = await requireSession();
   const tenant = await tenantsRepository.findByUsername(session.username);
   const status = tenant ? computeAccessStatus(tenant) : "NONE";
+  const now = new Date().getTime();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4">
       <Card className="w-full max-w-sm">
         {status === "ACTIVE_BETA" ? (
-          <BetaActiveContent expiresAt={tenant?.access_expires_at ?? null} />
+          <BetaActiveContent expiresAt={tenant?.access_expires_at ?? null} now={now} />
         ) : status === "ACTIVE_SUBSCRIPTION" ? (
           <SubscriptionActiveContent />
         ) : status === "EXPIRED" ? (
-          <ExpiredContent />
+          <ExpiredContent expiresAt={tenant?.access_expires_at ?? null} />
         ) : status === "SUSPENDED" ? (
           <SuspendedContent />
         ) : (
@@ -62,10 +63,9 @@ function NoneContent() {
   );
 }
 
-function BetaActiveContent({ expiresAt }: { expiresAt: string | null }) {
-  const range = expiresAt
-    ? `~ ${new Date(expiresAt).toISOString().slice(0, 10)}`
-    : "";
+function BetaActiveContent({ expiresAt, now }: { expiresAt: string | null; now: number }) {
+  const endDate = expiresAt ? new Date(expiresAt) : null;
+  const daysLeft = endDate ? Math.max(0, Math.ceil((endDate.getTime() - now) / (1000 * 60 * 60 * 24))) : null;
   return (
     <CardContent className="space-y-4 pt-6">
       <div className="space-y-1.5">
@@ -73,10 +73,15 @@ function BetaActiveContent({ expiresAt }: { expiresAt: string | null }) {
           Beta 이용 중
           <Badge>BETA</Badge>
         </CardTitle>
-        <CardDescription>사용 가능 기간 {range}</CardDescription>
+        {endDate ? (
+          <CardDescription>
+            Beta 종료일 {formatKoreanDate(endDate)}
+            {daysLeft !== null ? ` · 남은 기간 ${daysLeft}일` : null}
+          </CardDescription>
+        ) : null}
       </div>
       <Button asChild className="w-full">
-        <Link href="/">서비스 시작</Link>
+        <Link href="/">Ordify 시작하기</Link>
       </Button>
     </CardContent>
   );
@@ -98,21 +103,23 @@ function SubscriptionActiveContent() {
   );
 }
 
-function ExpiredContent() {
+function ExpiredContent({ expiresAt }: { expiresAt: string | null }) {
   return (
     <CardContent className="space-y-6 pt-6">
       <div className="space-y-1.5">
         <CardTitle className="flex items-center gap-2 text-xl">
-          Beta 기간 종료
+          Beta 이용 기간이 종료되었습니다
           <Badge variant="outline">만료</Badge>
         </CardTitle>
-        <CardDescription>Beta 이용 기간이 종료되었습니다. 서비스를 계속 이용하려면 정식 구독을 시작해주세요.</CardDescription>
+        {expiresAt ? <CardDescription>Beta 종료일 {formatKoreanDate(new Date(expiresAt))}</CardDescription> : null}
+        <CardDescription>정식 서비스 이용 방법은 준비되는 대로 안내드리겠습니다.</CardDescription>
       </div>
-      <Button type="button" variant="outline" className="w-full" disabled>
-        구독 플랜 보기 (준비 중)
-      </Button>
     </CardContent>
   );
+}
+
+function formatKoreanDate(d: Date): string {
+  return `${d.getFullYear()}년 ${String(d.getMonth() + 1).padStart(2, "0")}월 ${String(d.getDate()).padStart(2, "0")}일`;
 }
 
 function SuspendedContent() {

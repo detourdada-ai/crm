@@ -1,11 +1,15 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { normalizeGoogleEmail } from "@/lib/auth/credentials";
 import { accountsRepository } from "@/lib/repositories/accounts.repository";
 import { createSellerSignup } from "@/lib/auth/seller-signup";
 import { setSessionCookie } from "@/lib/auth/current-session";
+import { tenantsRepository } from "@/lib/repositories/tenants.repository";
+import { sendBetaWelcomeEmail } from "@/lib/email/send";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export interface SignupActionState {
   error: string | null;
@@ -42,6 +46,25 @@ export async function signupAction(_prevState: SignupActionState, formData: Form
   }
 
   const { username } = await createSellerSignup(companyName, googleEmail);
+
+  // Best-effort only — a Resend outage or missing API key must never turn a
+  // successful signup into a failure. See sendBetaWelcomeEmail's own doc
+  // comment for why every failure mode there is swallowed.
+  const tenant = await tenantsRepository.findByUsername(username);
+  if (tenant?.access_expires_at) {
+    const headerList = await headers();
+    const host = headerList.get("x-forwarded-host") ?? headerList.get("host");
+    const proto = headerList.get("x-forwarded-proto") ?? "https";
+    const origin = `${proto}://${host}`;
+    const sent = await sendBetaWelcomeEmail(googleEmail, tenant.created_at, tenant.access_expires_at, origin);
+    if (sent) {
+      await getSupabaseAdmin()
+        .from("tenants")
+        .update({ beta_welcome_email_sent_at: new Date().toISOString() })
+        .eq("id", tenant.id);
+    }
+  }
+
   await supabase.auth.signOut();
   await setSessionCookie(username, "user");
   redirect("/");
