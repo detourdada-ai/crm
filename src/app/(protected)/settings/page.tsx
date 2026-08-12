@@ -8,8 +8,20 @@ import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
 import { DriverManagementCard } from "@/components/settings/driver-management-card";
 import { GoogleEmailCell } from "@/components/settings/google-email-cell";
+import { IssueBetaKeyButton } from "@/components/settings/issue-beta-key-button";
 import { listDriversAction } from "@/actions/drivers";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
+import { tenantsRepository } from "@/lib/repositories/tenants.repository";
+import { computeAccessStatus } from "@/lib/auth/access-control";
+import type { EffectiveAccessStatus } from "@/types/domain";
+
+const ACCESS_LABELS: Record<EffectiveAccessStatus, string> = {
+  ACTIVE_BETA: "BETA",
+  ACTIVE_SUBSCRIPTION: "구독중",
+  NONE: "미구독",
+  EXPIRED: "만료",
+  SUSPENDED: "중지",
+};
 
 export default async function SettingsPage() {
   const session = await requireSession();
@@ -62,6 +74,19 @@ export default async function SettingsPage() {
 
   const accountUsernames = accounts.filter((a) => a.role !== "driver").map((a) => a.username);
 
+  // Sprint 11: resolve each seller's current access status for the table
+  // below. Account roster is small, so N lookups via the existing
+  // findByUsername is fine (same reasoning as Sprint 9/10's small-scale scans).
+  const accessStatusByUsername = new Map<string, EffectiveAccessStatus>();
+  await Promise.all(
+    accounts
+      .filter((a) => a.role !== "driver")
+      .map(async (a) => {
+        const tenant = await tenantsRepository.findByUsername(a.username);
+        accessStatusByUsername.set(a.username, tenant ? computeAccessStatus(tenant) : "NONE");
+      })
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -105,6 +130,7 @@ export default async function SettingsPage() {
                 <TableHead>데이터 범위</TableHead>
                 <TableHead>Google 이메일</TableHead>
                 <TableHead>상태</TableHead>
+                <TableHead>이용 권한</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -136,6 +162,18 @@ export default async function SettingsPage() {
                         {account.googleEmail ? "연동됨" : "미연동"}
                       </Badge>
                     ) : null}
+                  </TableCell>
+                  <TableCell>
+                    {account.role === "driver" ? (
+                      <span className="text-sm text-muted-foreground">대상 아님</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Badge variant={accessStatusByUsername.get(account.username) === "ACTIVE_BETA" ? "default" : "outline"}>
+                          {ACCESS_LABELS[accessStatusByUsername.get(account.username) ?? "NONE"]}
+                        </Badge>
+                        <IssueBetaKeyButton username={account.username} />
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
