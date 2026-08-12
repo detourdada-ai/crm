@@ -23,7 +23,7 @@ export interface NavItem {
 // 정산관리는 계정별로 자신이 등록한 기사만 보이므로 일반 계정에도 노출한다
 // (admin은 계정 필터로 특정 계정 또는 전체를 볼 수 있음).
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/orders", label: "주문관리", icon: ShoppingCart },
   { href: "/delivery", label: "배송관리", icon: Truck },
   { href: "/settlements", label: "정산관리", icon: Wallet },

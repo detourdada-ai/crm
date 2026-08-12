@@ -69,7 +69,7 @@ export async function tenantScopeFor(session: SessionPayload): Promise<string> {
 /** Use from driver-only pages/actions (배송관리's driver-facing view). */
 export async function requireDriverSession(): Promise<{ session: SessionPayload; driverId: string }> {
   const session = await requireSession();
-  if (session.role !== "driver") redirect("/");
+  if (session.role !== "driver") redirect("/dashboard");
   const account = await accountsRepository.findByUsername(session.username);
   if (!account?.driver_id) redirect("/login");
   return { session, driverId: account.driver_id };

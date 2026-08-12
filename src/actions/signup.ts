@@ -25,7 +25,7 @@ export async function signupAction(_prevState: SignupActionState, formData: Form
   const companyName = String(formData.get("companyName") || "").trim();
   const agreed = formData.get("agreed") === "on";
 
-  if (!companyName) return { error: "업체명을 입력해주세요." };
+  if (!companyName) return { error: "Workspace 이름을 입력해주세요." };
   if (!agreed) return { error: "서비스 이용약관에 동의해주세요." };
 
   const supabase = await createSupabaseServerClient();
@@ -42,7 +42,7 @@ export async function signupAction(_prevState: SignupActionState, formData: Form
     // rather than error, since the identity check has already passed.
     await supabase.auth.signOut();
     await setSessionCookie(existing.username, existing.role);
-    redirect("/");
+    redirect("/dashboard");
   }
 
   const { username } = await createSellerSignup(companyName, googleEmail);
@@ -67,5 +67,5 @@ export async function signupAction(_prevState: SignupActionState, formData: Form
 
   await supabase.auth.signOut();
   await setSessionCookie(username, "user");
-  redirect("/");
+  redirect("/dashboard");
 }

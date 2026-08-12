@@ -81,7 +81,7 @@ function BetaActiveContent({ expiresAt, now }: { expiresAt: string | null; now: 
         ) : null}
       </div>
       <Button asChild className="w-full">
-        <Link href="/">Ordify 시작하기</Link>
+        <Link href="/dashboard">Ordify 시작하기</Link>
       </Button>
     </CardContent>
   );
@@ -97,7 +97,7 @@ function SubscriptionActiveContent() {
         </CardTitle>
       </div>
       <Button asChild className="w-full">
-        <Link href="/">서비스 시작</Link>
+        <Link href="/dashboard">Ordify 시작하기</Link>
       </Button>
     </CardContent>
   );
