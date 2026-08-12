@@ -9,22 +9,22 @@ import { issueBetaAccessKeyAction } from "@/actions/access-keys";
 
 export function IssueBetaKeyButton({ username }: { username: string }) {
   const [isPending, startTransition] = useTransition();
-  const [result, setResult] = useState<{ key: string; expiresAt: string } | null>(null);
+  const [key, setKey] = useState<string | null>(null);
 
   function issue() {
     startTransition(async () => {
       const res = await issueBetaAccessKeyAction(username);
-      if (!res.ok || !res.key || !res.expiresAt) {
+      if (!res.ok || !res.key) {
         toast.error(res.error ?? "Beta Key 발급 중 오류가 발생했습니다.");
         return;
       }
-      setResult({ key: res.key, expiresAt: res.expiresAt });
+      setKey(res.key);
     });
   }
 
   function copyKey() {
-    if (!result) return;
-    navigator.clipboard.writeText(result.key);
+    if (!key) return;
+    navigator.clipboard.writeText(key);
     toast.success("Key를 복사했습니다.");
   }
 
@@ -33,19 +33,17 @@ export function IssueBetaKeyButton({ username }: { username: string }) {
       <Button size="sm" variant="outline" disabled={isPending} onClick={issue}>
         Beta 발급
       </Button>
-      <Dialog open={result !== null} onOpenChange={(open) => !open && setResult(null)}>
+      <Dialog open={key !== null} onOpenChange={(open) => !open && setKey(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Beta Access Key</DialogTitle>
-            <DialogDescription>
-              이 Key는 지금만 표시됩니다. 안전한 곳에 복사해 두세요.
-            </DialogDescription>
+            <DialogDescription>이 Key는 지금만 표시됩니다. 안전한 곳에 복사해 두세요.</DialogDescription>
           </DialogHeader>
-          {result ? (
+          {key ? (
             <div className="space-y-3">
-              <Input value={result.key} readOnly className="font-mono" />
+              <Input value={key} readOnly className="font-mono" />
               <p className="text-sm text-muted-foreground">
-                발급일 {new Date().toISOString().slice(0, 10)} · 만료일 {result.expiresAt.slice(0, 10)}
+                이 Key는 Beta 테스트용입니다. Seller가 이 Key를 입력해 활성화한 시점부터 5개월간 사용할 수 있습니다.
               </p>
             </div>
           ) : null}
