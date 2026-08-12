@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { signupAction, type SignupActionState } from "@/actions/signup";
 import { Button } from "@/components/ui/button";
@@ -18,12 +19,21 @@ export function SignupForm({ googleEmail }: { googleEmail: string }) {
         <Input id="googleEmail" value={googleEmail} disabled readOnly />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="companyName">업체명</Label>
-        <Input id="companyName" name="companyName" placeholder="업체명을 입력하세요" required />
+        <Label htmlFor="companyName">Workspace 이름</Label>
+        <Input id="companyName" name="companyName" placeholder="매장/업체 이름을 입력하세요" required />
       </div>
       <label className="flex items-center gap-2 text-sm text-muted-foreground">
         <input type="checkbox" name="agreed" required className="size-4 rounded border-input" />
-        서비스 이용약관에 동의합니다.
+        <span>
+          <Link href="/terms" target="_blank" className="underline underline-offset-2">
+            이용약관
+          </Link>
+          {" 및 "}
+          <Link href="/privacy" target="_blank" className="underline underline-offset-2">
+            개인정보처리방침
+          </Link>
+          에 동의합니다.
+        </span>
       </label>
       {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
       <Button type="submit" className="w-full" disabled={isPending}>

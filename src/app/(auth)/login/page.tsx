@@ -21,11 +21,11 @@ export default async function LoginPage({
     <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">CRM</CardTitle>
-          <CardDescription>관리자 계정으로 로그인하세요.</CardDescription>
+          <CardTitle className="text-xl">Ordify</CardTitle>
+          <CardDescription>계정으로 로그인하세요.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <LoginForm redirectTo={from && from.startsWith("/") ? from : "/"} />
+          <LoginForm redirectTo={from && from.startsWith("/") ? from : "/dashboard"} />
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">

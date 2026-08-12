@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CRM",
-  description: "엑셀 업로드로 고객/주문 관리를 자동화하는 CRM",
+  title: "Ordify",
+  description: "주문부터 배송·정산까지 한 곳에서 간편하게 관리하는 Ordify",
 };
 
 export default function RootLayout({
