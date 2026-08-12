@@ -40,6 +40,8 @@ export interface Tenant {
   plan_id: UUID | null;
   access_type: AccessType;
   access_expires_at: ISODateString | null;
+  beta_welcome_email_sent_at: ISODateString | null;
+  beta_ended_email_sent_at: ISODateString | null;
   created_at: ISODateString;
   updated_at: ISODateString;
 }

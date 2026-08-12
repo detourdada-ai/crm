@@ -65,6 +65,9 @@ create table if not exists tenants (
   -- a Beta trial doesn't need a fake plan row.
   access_type text not null default 'NONE' check (access_type in ('NONE', 'BETA', 'SUBSCRIPTION')),
   access_expires_at timestamptz,
+  -- Sprint 14-C: email-dedup tracking only, never read by access control.
+  beta_welcome_email_sent_at timestamptz,
+  beta_ended_email_sent_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

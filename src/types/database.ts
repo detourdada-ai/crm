@@ -484,6 +484,8 @@ export interface Database {
           plan_id: string | null;
           access_type: AccessType;
           access_expires_at: string | null;
+          beta_welcome_email_sent_at: string | null;
+          beta_ended_email_sent_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -495,6 +497,8 @@ export interface Database {
           plan_id?: string | null;
           access_type?: AccessType;
           access_expires_at?: string | null;
+          beta_welcome_email_sent_at?: string | null;
+          beta_ended_email_sent_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
