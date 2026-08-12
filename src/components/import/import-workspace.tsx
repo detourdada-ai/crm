@@ -54,6 +54,14 @@ export function ImportWorkspace() {
         toast.error(result.error);
         return;
       }
+      // Sprint 14-H CASE 4: parsing succeeded (headers exist) but there's no
+      // data to map/import — surface the same "no data" wording as a
+      // genuinely empty file (CASE 2), never the corrupted-file message,
+      // and skip the pointless column-mapping step entirely.
+      if (result.parsed.rows.length === 0) {
+        toast.error("업로드할 데이터가 없습니다.");
+        return;
+      }
       setStage({
         step: "mapping",
         fileName: result.fileName,

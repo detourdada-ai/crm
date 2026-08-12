@@ -38,7 +38,7 @@ export function ColumnMappingForm({
     <div className="space-y-4">
       {initialUnmapped.length > 0 ? (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          자동으로 인식되지 않은 필수 항목이 있습니다. 아래에서 직접 컬럼을 선택해주세요.
+          필수 컬럼을 확인해주세요. 자동으로 인식되지 않은 필수 항목이 있습니다. 아래에서 직접 컬럼을 선택해주세요.
         </p>
       ) : (
         <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
