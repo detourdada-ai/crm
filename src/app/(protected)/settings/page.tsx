@@ -7,6 +7,7 @@ import { getVipCriteria } from "@/lib/services/vip.service";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
 import { DriverManagementCard } from "@/components/settings/driver-management-card";
+import { GoogleEmailCell } from "@/components/settings/google-email-cell";
 import { listDriversAction } from "@/actions/drivers";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
 
@@ -92,16 +93,18 @@ export default async function SettingsPage() {
           <CardTitle>전체 계정 목록</CardTitle>
           <CardDescription>
             관리자는 모든 계정의 고객/주문을 조회할 수 있고, 담당자 계정은 본인이 등록한 고객만 조회할 수
-            있습니다.
+            있습니다. Google 이메일을 연결하면 해당 계정으로 Google 로그인이 가능합니다. (기사 계정 제외)
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>아이디</TableHead>
+                <TableHead>계정</TableHead>
                 <TableHead>역할</TableHead>
                 <TableHead>데이터 범위</TableHead>
+                <TableHead>Google 이메일</TableHead>
+                <TableHead>상태</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -119,6 +122,20 @@ export default async function SettingsPage() {
                       : account.role === "driver"
                         ? "본인 배송 목록만"
                         : "본인이 등록한 고객/주문만"}
+                  </TableCell>
+                  <TableCell>
+                    {account.role === "driver" ? (
+                      <span className="text-sm text-muted-foreground">대상 아님</span>
+                    ) : (
+                      <GoogleEmailCell username={account.username} initialGoogleEmail={account.googleEmail} />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {account.role !== "driver" ? (
+                      <Badge variant={account.googleEmail ? "default" : "outline"}>
+                        {account.googleEmail ? "연동됨" : "미연동"}
+                      </Badge>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))}

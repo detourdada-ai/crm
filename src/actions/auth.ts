@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { changePassword, verifyCredentials, verifyCurrentPassword } from "@/lib/auth/credentials";
+import { changePassword, setGoogleEmailForAccount, verifyCredentials, verifyCurrentPassword } from "@/lib/auth/credentials";
 import { clearSessionCookie, setSessionCookie } from "@/lib/auth/current-session";
 import { requireSession } from "@/lib/auth/current-session";
 import { ensureSupabaseAuthLinked } from "@/lib/auth/supabase-auth-migration";
@@ -86,4 +86,18 @@ export async function changePasswordAction(
 
   await changePassword(targetUsername, newPassword);
   return { ok: true, error: null };
+}
+
+export interface SetGoogleEmailActionState {
+  ok: boolean;
+  error: string | null;
+}
+
+/** Admin-only: links/unlinks an account's Google email for Google OAuth login (Sprint 10). */
+export async function setGoogleEmailAction(targetUsername: string, googleEmail: string): Promise<SetGoogleEmailActionState> {
+  const session = await requireSession();
+  if (session.role !== "admin") {
+    return { ok: false, error: "관리자만 Google 이메일을 관리할 수 있습니다." };
+  }
+  return setGoogleEmailForAccount(targetUsername, googleEmail);
 }
