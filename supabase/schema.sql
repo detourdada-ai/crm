@@ -20,9 +20,54 @@
 --     rows. This is enforced in the app layer (see lib/auth/current-session's
 --     ownerScopeFor + the repository `ownerUsername` filters), not via RLS,
 --     since there is still no per-request Supabase session to key policies to.
+--   * Sprint 8 (SaaS foundation): tenant_id was added alongside owner_username
+--     on the same five tables, backfilled 1:1 from owner_username (admin,
+--     user1..user5 each got their own tenant). owner_username stays the ACTIVE
+--     read/filter boundary for now — tenant_id is populated on new writes and
+--     is meant to become the real boundary once the app adopts Supabase Auth
+--     with a tenant_id JWT claim (see the tenant_isolation RLS policies below,
+--     which are inert today because the app only ever uses the service_role
+--     key, which bypasses RLS).
 -- ============================================================================
 
 create extension if not exists "pgcrypto";
+
+create or replace function set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$ language plpgsql;
+
+-- ----------------------------------------------------------------------------
+-- plans (Sprint 8: reference data only, no feature-flag enforcement yet)
+-- ----------------------------------------------------------------------------
+create table if not exists plans (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique check (code in ('STARTER', 'BASIC', 'PRO', 'BUSINESS')),
+  name text not null,
+  created_at timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------------------
+-- tenants (Sprint 8: one per seller/business; admin also has a legacy tenant
+-- purely to hold data it created before this model existed)
+-- ----------------------------------------------------------------------------
+create table if not exists tenants (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  slug text not null unique,
+  status text not null default 'active' check (status in ('active', 'suspended')),
+  plan_id uuid references plans (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists trg_tenants_updated_at on tenants;
+create trigger trg_tenants_updated_at
+  before update on tenants
+  for each row execute function set_updated_at();
 
 -- ----------------------------------------------------------------------------
 -- customers
@@ -39,6 +84,7 @@ create table if not exists customers (
   memo text,
   tags text[] not null default '{}',
   owner_username text not null default 'admin',
+  tenant_id uuid not null references tenants (id),
   is_favorite boolean not null default false,
   -- 'merged': absorbed into another customer via 동일인 검토 병합. Record is kept
   -- (never deleted) for audit/history; merged_into_id points at the survivor.
@@ -54,6 +100,7 @@ create index if not exists idx_customers_phone on customers (phone);
 create index if not exists idx_customers_address_normalized on customers (address_normalized);
 create index if not exists idx_customers_customer_code on customers (customer_code);
 create index if not exists idx_customers_owner_username on customers (owner_username);
+create index if not exists idx_customers_tenant_id on customers (tenant_id);
 create index if not exists customers_is_favorite_idx on customers (is_favorite) where is_favorite = true;
 
 create or replace function assign_customer_code()
@@ -70,14 +117,6 @@ drop trigger if exists trg_assign_customer_code on customers;
 create trigger trg_assign_customer_code
   before insert on customers
   for each row execute function assign_customer_code();
-
-create or replace function set_updated_at()
-returns trigger as $$
-begin
-  new.updated_at := now();
-  return new;
-end;
-$$ language plpgsql;
 
 drop trigger if exists trg_customers_updated_at on customers;
 create trigger trg_customers_updated_at
@@ -100,11 +139,13 @@ create table if not exists imports (
   column_mapping jsonb,
   error_log jsonb,
   owner_username text not null default 'admin',
+  tenant_id uuid not null references tenants (id),
   created_at timestamptz not null default now()
 );
 
 create index if not exists idx_imports_created_at on imports (created_at desc);
 create index if not exists idx_imports_owner_username on imports (owner_username);
+create index if not exists idx_imports_tenant_id on imports (tenant_id);
 
 -- Set only when the customer was newly created by this import (never for a
 -- reused/matched customer or a manually-entered order). Lets deleting an
@@ -125,12 +166,14 @@ create table if not exists drivers (
   rate_per_delivery numeric(12, 2) not null default 0,
   -- 계정별 소유 — user1~5는 자신의 기사만, admin은 전체 계정의 기사를 계정별로 조회/관리.
   owner_username text not null default 'admin',
+  tenant_id uuid not null references tenants (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists idx_drivers_status on drivers (status);
 create index if not exists idx_drivers_owner_username on drivers (owner_username);
+create index if not exists idx_drivers_tenant_id on drivers (tenant_id);
 
 drop trigger if exists trg_drivers_updated_at on drivers;
 create trigger trg_drivers_updated_at
@@ -179,6 +222,7 @@ create table if not exists orders (
   completed_at timestamptz,
   import_id uuid references imports (id) on delete set null,
   owner_username text not null default 'admin',
+  tenant_id uuid not null references tenants (id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (order_number)
@@ -190,6 +234,7 @@ create index if not exists idx_orders_delivery_date on orders (delivery_date des
 create index if not exists idx_orders_bag_returned on orders (bag_returned) where bag_returned = false;
 create index if not exists idx_orders_import_id on orders (import_id);
 create index if not exists idx_orders_owner_username on orders (owner_username);
+create index if not exists idx_orders_tenant_id on orders (tenant_id);
 create index if not exists idx_orders_driver_id on orders (driver_id);
 create index if not exists idx_orders_delivery_status on orders (delivery_status);
 create index if not exists idx_orders_delivery_area on orders (delivery_area);
@@ -239,6 +284,7 @@ create table if not exists duplicate_candidates (
   reason text not null,
   status text not null default 'pending' check (status in ('pending', 'merged', 'rejected', 'held')),
   owner_username text not null default 'admin',
+  tenant_id uuid not null references tenants (id),
   created_at timestamptz not null default now(),
   resolved_at timestamptz,
   unique (existing_customer_id, new_customer_id)
@@ -246,6 +292,7 @@ create table if not exists duplicate_candidates (
 
 create index if not exists idx_duplicate_candidates_status on duplicate_candidates (status);
 create index if not exists idx_duplicate_candidates_owner_username on duplicate_candidates (owner_username);
+create index if not exists idx_duplicate_candidates_tenant_id on duplicate_candidates (tenant_id);
 
 -- ----------------------------------------------------------------------------
 -- merge_history (audit trail for every approved merge)
@@ -292,6 +339,28 @@ create table if not exists app_accounts (
   driver_id uuid references drivers (id) on delete set null,
   updated_at timestamptz not null default now()
 );
+
+-- ----------------------------------------------------------------------------
+-- memberships (Sprint 8: User -> Tenant with role — OWNER/ADMIN/STAFF/DRIVER)
+-- ----------------------------------------------------------------------------
+create table if not exists memberships (
+  id uuid primary key default gen_random_uuid(),
+  username text not null references app_accounts (username) on delete cascade,
+  tenant_id uuid not null references tenants (id) on delete cascade,
+  role text not null check (role in ('OWNER', 'ADMIN', 'STAFF', 'DRIVER')),
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (username, tenant_id)
+);
+
+create index if not exists idx_memberships_username on memberships (username);
+create index if not exists idx_memberships_tenant_id on memberships (tenant_id);
+
+drop trigger if exists trg_memberships_updated_at on memberships;
+create trigger trg_memberships_updated_at
+  before update on memberships
+  for each row execute function set_updated_at();
 
 -- ----------------------------------------------------------------------------
 -- app_settings (admin-editable thresholds, e.g. VIP criteria)
@@ -458,3 +527,47 @@ alter table customer_change_logs enable row level security;
 alter table app_accounts enable row level security;
 alter table drivers enable row level security;
 alter table settlements enable row level security;
+
+-- ----------------------------------------------------------------------------
+-- Sprint 8: tenant_isolation policies — FUTURE-READY ONLY, not the current
+-- protection layer. The app talks to Supabase exclusively via the
+-- service_role key (no Supabase Auth, no client-side/anon access), and
+-- service_role bypasses RLS entirely. These policies have zero effect today;
+-- real isolation is the owner_username check in each Server Action. They only
+-- start doing anything once/if the app adopts Supabase Auth with a tenant_id
+-- JWT claim. order_items/settlements/merge_history/customer_change_logs
+-- don't have their own tenant_id (still scoped via parent FK) — a future
+-- policy for them needs a parent-join `exists (...)` check instead of a
+-- direct tenant_id comparison.
+-- ----------------------------------------------------------------------------
+alter table tenants enable row level security;
+alter table plans enable row level security;
+alter table memberships enable row level security;
+
+drop policy if exists tenant_isolation on tenants;
+create policy tenant_isolation on tenants
+  for all using (id = (auth.jwt() ->> 'tenant_id')::uuid);
+
+drop policy if exists tenant_isolation on memberships;
+create policy tenant_isolation on memberships
+  for all using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+
+drop policy if exists tenant_isolation on customers;
+create policy tenant_isolation on customers
+  for all using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+
+drop policy if exists tenant_isolation on orders;
+create policy tenant_isolation on orders
+  for all using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+
+drop policy if exists tenant_isolation on drivers;
+create policy tenant_isolation on drivers
+  for all using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+
+drop policy if exists tenant_isolation on imports;
+create policy tenant_isolation on imports
+  for all using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+
+drop policy if exists tenant_isolation on duplicate_candidates;
+create policy tenant_isolation on duplicate_candidates
+  for all using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
