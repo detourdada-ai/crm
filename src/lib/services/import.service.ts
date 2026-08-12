@@ -3,6 +3,7 @@ import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { importsRepository } from "@/lib/repositories/imports.repository";
 import { duplicatesRepository } from "@/lib/repositories/duplicates.repository";
 import { customersRepository } from "@/lib/repositories/customers.repository";
+import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { detectDuplicateCandidates } from "./duplicate-detection.service";
 import { resolveCustomerForImportRow } from "./customer.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
@@ -74,11 +75,15 @@ function parseOptionalDate(value: unknown): string | null {
  * get processed.
  */
 export async function runImport({ fileName, parsed, mapping, ownerUsername }: RunImportInput): Promise<RunImportResult> {
+  const tenant = await tenantsRepository.findByUsername(ownerUsername);
+  if (!tenant) throw new Error(`No tenant membership found for account "${ownerUsername}".`);
+
   const importRecord = await importsRepository.create({
     file_name: fileName,
     status: "processing",
     total_rows: parsed.rows.length,
     owner_username: ownerUsername,
+    tenant_id: tenant.id,
   });
 
   const errors: ImportRowError[] = [];
@@ -193,6 +198,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
           order_source: "import",
           import_id: importRecord.id,
           owner_username: ownerUsername,
+          tenant_id: tenant.id,
         },
       ]);
 
@@ -216,6 +222,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
               confidence: c.confidence,
               reason: c.reason,
               owner_username: ownerUsername,
+              tenant_id: tenant.id,
             }))
           );
           duplicateCandidateCount += created.length;

@@ -4,7 +4,17 @@
  * `supabase gen types typescript`, you can drop this in its place.
  */
 
-import type { CustomerStatus, OrderSource, DeliveryStatus, DriverStatus, SettlementStatus } from "./domain";
+import type {
+  CustomerStatus,
+  OrderSource,
+  DeliveryStatus,
+  DriverStatus,
+  SettlementStatus,
+  PlanCode,
+  TenantStatus,
+  MembershipRole,
+  MembershipStatus,
+} from "./domain";
 
 export interface Database {
   public: {
@@ -51,6 +61,7 @@ export interface Database {
           memo: string | null;
           tags: string[];
           owner_username: string;
+          tenant_id: string;
           is_favorite: boolean;
           status: CustomerStatus;
           merged_into_id: string | null;
@@ -96,6 +107,7 @@ export interface Database {
           memo: string | null;
           tags: string[];
           owner_username: string;
+          tenant_id: string;
           is_favorite: boolean;
           status: CustomerStatus;
           merged_into_id: string | null;
@@ -114,6 +126,7 @@ export interface Database {
           memo?: string | null;
           tags?: string[];
           owner_username?: string;
+          tenant_id: string;
           is_favorite?: boolean;
           status?: CustomerStatus;
           merged_into_id?: string | null;
@@ -154,6 +167,7 @@ export interface Database {
           completed_at: string | null;
           import_id: string | null;
           owner_username: string;
+          tenant_id: string;
           created_at: string;
           updated_at: string;
         };
@@ -185,6 +199,7 @@ export interface Database {
           completed_at?: string | null;
           import_id?: string | null;
           owner_username?: string;
+          tenant_id: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -201,6 +216,7 @@ export interface Database {
           status: DriverStatus;
           rate_per_delivery: number;
           owner_username: string;
+          tenant_id: string;
           created_at: string;
           updated_at: string;
         };
@@ -213,6 +229,7 @@ export interface Database {
           status?: DriverStatus;
           rate_per_delivery?: number;
           owner_username?: string;
+          tenant_id: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -291,6 +308,7 @@ export interface Database {
           column_mapping: Record<string, string> | null;
           error_log: unknown | null;
           owner_username: string;
+          tenant_id: string;
           created_at: string;
         };
         Insert: {
@@ -306,6 +324,7 @@ export interface Database {
           column_mapping?: Record<string, string> | null;
           error_log?: unknown | null;
           owner_username?: string;
+          tenant_id: string;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["imports"]["Insert"]>;
@@ -322,6 +341,7 @@ export interface Database {
           reason: string;
           status: string;
           owner_username: string;
+          tenant_id: string;
           created_at: string;
           resolved_at: string | null;
         };
@@ -335,6 +355,7 @@ export interface Database {
           reason: string;
           status?: string;
           owner_username?: string;
+          tenant_id: string;
           created_at?: string;
           resolved_at?: string | null;
         };
@@ -417,6 +438,66 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["app_settings"]["Insert"]>;
+        Relationships: [];
+      };
+      plans: {
+        Row: {
+          id: string;
+          code: PlanCode;
+          name: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: PlanCode;
+          name: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["plans"]["Insert"]>;
+        Relationships: [];
+      };
+      tenants: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          status: TenantStatus;
+          plan_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          slug: string;
+          status?: TenantStatus;
+          plan_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["tenants"]["Insert"]>;
+        Relationships: [];
+      };
+      memberships: {
+        Row: {
+          id: string;
+          username: string;
+          tenant_id: string;
+          role: MembershipRole;
+          status: MembershipStatus;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          username: string;
+          tenant_id: string;
+          role: MembershipRole;
+          status?: MembershipStatus;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["memberships"]["Insert"]>;
         Relationships: [];
       };
     };

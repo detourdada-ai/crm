@@ -6,6 +6,42 @@
 export type UUID = string;
 export type ISODateString = string;
 
+// Sprint 8 (SaaS foundation): tenant_id runs in parallel with owner_username
+// on the tables below. owner_username stays the ACTIVE read/filter boundary
+// for now — tenant_id is populated on new writes, preparing a future cutover
+// (see supabase/migrations/0014_saas_foundation.sql for the full rationale).
+export type TenantStatus = "active" | "suspended";
+export type PlanCode = "STARTER" | "BASIC" | "PRO" | "BUSINESS";
+export type MembershipRole = "OWNER" | "ADMIN" | "STAFF" | "DRIVER";
+export type MembershipStatus = "active" | "inactive";
+
+export interface Plan {
+  id: UUID;
+  code: PlanCode;
+  name: string;
+  created_at: ISODateString;
+}
+
+export interface Tenant {
+  id: UUID;
+  name: string;
+  slug: string;
+  status: TenantStatus;
+  plan_id: UUID | null;
+  created_at: ISODateString;
+  updated_at: ISODateString;
+}
+
+export interface Membership {
+  id: UUID;
+  username: string;
+  tenant_id: UUID;
+  role: MembershipRole;
+  status: MembershipStatus;
+  created_at: ISODateString;
+  updated_at: ISODateString;
+}
+
 export type DuplicateMatchType =
   | "exact_duplicate" // CASE0: name+phone+address_normalized all identical (retroactive scan)
   | "phone_changed" // CASE1: same name+address, different phone
@@ -30,6 +66,7 @@ export interface Customer {
   memo: string | null;
   tags: string[];
   owner_username: string; // account that owns/manages this customer; "admin" sees all
+  tenant_id: UUID; // Sprint 8: parallel structure, not yet the active read boundary
   is_favorite: boolean;
   status: CustomerStatus;
   merged_into_id: UUID | null; // set when status = "merged"; points at the surviving customer
@@ -78,6 +115,7 @@ export interface Order {
   completed_at: ISODateString | null;
   import_id: UUID | null;
   owner_username: string;
+  tenant_id: UUID;
   created_at: ISODateString;
   updated_at: ISODateString;
 }
@@ -93,6 +131,7 @@ export interface Driver {
   status: DriverStatus;
   rate_per_delivery: number;
   owner_username: string;
+  tenant_id: UUID;
   created_at: ISODateString;
   updated_at: ISODateString;
 }
@@ -151,6 +190,7 @@ export interface ImportRecord {
   column_mapping: Record<string, string> | null;
   error_log: ImportRowError[] | null;
   owner_username: string;
+  tenant_id: UUID;
   created_at: ISODateString;
 }
 
@@ -170,6 +210,7 @@ export interface DuplicateCandidate {
   reason: string;
   status: DuplicateStatus;
   owner_username: string;
+  tenant_id: UUID;
   created_at: ISODateString;
   resolved_at: ISODateString | null;
 }

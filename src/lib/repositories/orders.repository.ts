@@ -29,6 +29,7 @@ export interface OrderInsert {
   completed_at?: string | null;
   import_id?: string | null;
   owner_username: string;
+  tenant_id: string;
 }
 
 export interface OrderUpdate {

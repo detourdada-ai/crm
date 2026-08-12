@@ -28,6 +28,7 @@ export interface CustomerInsert {
   memo?: string | null;
   tags?: string[];
   owner_username: string;
+  tenant_id: string;
   created_by_import_id?: string | null;
   bag_no?: string | null;
 }
@@ -151,11 +152,11 @@ export const customersRepository = {
 
   /** Every non-merged customer's identity fields, for the retroactive exact-duplicate scan (grouped in JS — table is small enough that a DB-side GROUP BY isn't worth the extra RPC). */
   async findAllForDedupScan(): Promise<
-    Pick<Customer, "id" | "name" | "phone" | "address_normalized" | "owner_username">[]
+    Pick<Customer, "id" | "name" | "phone" | "address_normalized" | "owner_username" | "tenant_id">[]
   > {
     const { data, error } = await getSupabaseAdmin()
       .from("customers")
-      .select("id, name, phone, address_normalized, owner_username")
+      .select("id, name, phone, address_normalized, owner_username, tenant_id")
       .neq("status", "merged")
       .not("phone", "is", null)
       .not("address_normalized", "is", null);

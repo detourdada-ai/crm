@@ -6,7 +6,7 @@ import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { resolveCustomerForImportRow } from "@/lib/services/customer.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress } from "@/lib/utils/address";
-import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
+import { ownerScopeFor, requireSession, tenantScopeFor } from "@/lib/auth/current-session";
 import type { Order, OrderItem, DeliveryStatus } from "@/types/domain";
 
 export async function listOrdersAction(page = 1, pageSize = 20) {
@@ -187,6 +187,7 @@ export async function createManualOrderAction(
   const amount = quantity * unitPrice;
 
   try {
+    const tenantId = await tenantScopeFor(session);
     const { customer } = await resolveCustomerForImportRow({
       name,
       rawPhone,
@@ -209,6 +210,7 @@ export async function createManualOrderAction(
         delivery_date: deliveryDate,
         order_source: "manual",
         owner_username: session.username,
+        tenant_id: tenantId,
       },
     ]);
 

@@ -7,6 +7,7 @@ export interface ImportInsert {
   status?: ImportStatus;
   total_rows?: number;
   owner_username: string;
+  tenant_id: string;
 }
 
 export interface ImportUpdate {

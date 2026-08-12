@@ -1,6 +1,7 @@
 import "server-only";
 import { customersRepository } from "@/lib/repositories/customers.repository";
 import { changeLogRepository, type ChangeLogInsert } from "@/lib/repositories/change-log.repository";
+import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress, normalizeAddressForCompare } from "@/lib/utils/address";
 import type { Customer, CustomerStatus } from "@/types/domain";
@@ -52,12 +53,16 @@ export async function resolveCustomerForImportRow(input: ImportCustomerInput): P
     }
   }
 
+  const tenant = await tenantsRepository.findByUsername(input.ownerUsername);
+  if (!tenant) throw new Error(`No tenant membership found for account "${input.ownerUsername}".`);
+
   const created = await customersRepository.create({
     name,
     phone,
     address,
     address_normalized: addressNormalized,
     owner_username: input.ownerUsername,
+    tenant_id: tenant.id,
     created_by_import_id: input.importId ?? null,
     bag_no: input.bagNo ?? null,
   });

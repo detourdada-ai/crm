@@ -10,6 +10,7 @@ export interface DriverInsert {
   status?: DriverStatus;
   rate_per_delivery?: number;
   owner_username: string;
+  tenant_id: string;
 }
 
 export interface DriverUpdate {

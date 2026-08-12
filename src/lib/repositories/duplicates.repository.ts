@@ -10,6 +10,7 @@ export interface DuplicateCandidateInsert {
   confidence: string;
   reason: string;
   owner_username: string;
+  tenant_id: string;
 }
 
 export const duplicatesRepository = {

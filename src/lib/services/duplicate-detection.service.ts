@@ -151,6 +151,7 @@ export async function scanForExactDuplicates(): Promise<DedupScanResult> {
         confidence: "HIGH",
         reason: "이름/전화번호/주소가 완전히 동일한 중복 고객 (자동 감지)",
         owner_username: dupe.owner_username,
+        tenant_id: dupe.tenant_id,
       });
     }
   }
