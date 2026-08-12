@@ -9,11 +9,12 @@ import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
 import { DriverManagementCard } from "@/components/settings/driver-management-card";
 import { GoogleEmailCell } from "@/components/settings/google-email-cell";
 import { IssueBetaKeyButton } from "@/components/settings/issue-beta-key-button";
+import { ExtendBetaButton } from "@/components/settings/extend-beta-button";
 import { listDriversAction } from "@/actions/drivers";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { computeAccessStatus } from "@/lib/auth/access-control";
-import type { EffectiveAccessStatus } from "@/types/domain";
+import type { EffectiveAccessStatus, Tenant } from "@/types/domain";
 
 const ACCESS_LABELS: Record<EffectiveAccessStatus, string> = {
   ACTIVE_BETA: "BETA",
@@ -78,14 +79,17 @@ export default async function SettingsPage() {
   // below. Account roster is small, so N lookups via the existing
   // findByUsername is fine (same reasoning as Sprint 9/10's small-scale scans).
   const accessStatusByUsername = new Map<string, EffectiveAccessStatus>();
+  const tenantByUsername = new Map<string, Tenant | null>();
   await Promise.all(
     accounts
       .filter((a) => a.role !== "driver")
       .map(async (a) => {
         const tenant = await tenantsRepository.findByUsername(a.username);
+        tenantByUsername.set(a.username, tenant);
         accessStatusByUsername.set(a.username, tenant ? computeAccessStatus(tenant) : "NONE");
       })
   );
+  const sellerAccounts = accounts.filter((a) => a.role === "user");
 
   return (
     <div className="space-y-6">
@@ -184,6 +188,49 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Beta 운영</CardTitle>
+          <CardDescription>
+            Seller별 Beta 시작일/종료일과 현재 이용 상태입니다. 필요 시 종료일을 30일 연장할 수 있습니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>계정</TableHead>
+                <TableHead>Google 이메일</TableHead>
+                <TableHead>Beta 시작일</TableHead>
+                <TableHead>Beta 종료일</TableHead>
+                <TableHead>상태</TableHead>
+                <TableHead>연장</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sellerAccounts.map((account) => {
+                const tenant = tenantByUsername.get(account.username) ?? null;
+                const status = accessStatusByUsername.get(account.username) ?? "NONE";
+                return (
+                  <TableRow key={account.username}>
+                    <TableCell className="font-medium">{account.username}</TableCell>
+                    <TableCell className="text-muted-foreground">{account.googleEmail ?? "-"}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(tenant?.created_at ?? null)}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(tenant?.access_expires_at ?? null)}</TableCell>
+                    <TableCell>
+                      <Badge variant={status === "ACTIVE_BETA" ? "default" : "outline"}>{ACCESS_LABELS[status]}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <ExtendBetaButton username={account.username} />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>기사관리</CardTitle>
           <CardDescription>
             전체 계정의 배송 기사를 계정별로 조회/등록/수정할 수 있습니다. 배정 이력이 없는 기사는 완전히 삭제할
@@ -210,4 +257,10 @@ export default async function SettingsPage() {
       </Card>
     </div>
   );
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
 }

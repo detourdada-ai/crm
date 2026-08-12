@@ -28,4 +28,13 @@ export const tenantsRepository = {
     if (tenantError) throw tenantError;
     return tenant;
   },
+
+  /** Sprint 14-D: admin-issued Beta extension (see migration 0023's extend_beta_access). */
+  async extendBetaAccess(tenantId: string, days: number): Promise<{ accessExpiresAt: string | null }> {
+    const { data, error } = await getSupabaseAdmin().rpc("extend_beta_access", { p_tenant_id: tenantId, p_days: days });
+    if (error) throw error;
+    const row = data?.[0];
+    if (!row) throw new Error("extend_beta_access returned no row.");
+    return { accessExpiresAt: row.access_expires_at };
+  },
 };

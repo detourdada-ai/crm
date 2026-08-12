@@ -74,5 +74,34 @@ export async function redeemAccessKeyAction(rawKey: string): Promise<RedeemAcces
     return { ok: false, error: REDEEM_ERROR_MESSAGES[result] };
   }
 
-  redirect("/");
+  redirect("/dashboard");
+}
+
+export interface ExtendBetaAccessActionState {
+  ok: boolean;
+  error: string | null;
+  accessExpiresAt?: string | null;
+}
+
+/**
+ * Admin-only. targetUsername is resolved to a tenant server-side via the
+ * existing tenantsRepository lookup — the client never supplies a tenant_id
+ * or an access_expires_at value directly.
+ */
+export async function extendBetaAccessAction(targetUsername: string, days: number): Promise<ExtendBetaAccessActionState> {
+  const session = await requireSession();
+  if (session.role !== "admin") {
+    return { ok: false, error: "관리자만 Beta 기간을 연장할 수 있습니다." };
+  }
+  if (!Number.isInteger(days) || days <= 0) {
+    return { ok: false, error: "연장 일수가 올바르지 않습니다." };
+  }
+
+  const tenant = await tenantsRepository.findByUsername(targetUsername);
+  if (!tenant) {
+    return { ok: false, error: "해당 계정의 tenant를 찾을 수 없습니다." };
+  }
+
+  const { accessExpiresAt } = await tenantsRepository.extendBetaAccess(tenant.id, days);
+  return { ok: true, error: null, accessExpiresAt };
 }

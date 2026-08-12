@@ -108,6 +108,10 @@ export interface Database {
         Args: { p_username: string; p_key_hash: string };
         Returns: { result: string; expires_at: string | null }[];
       };
+      extend_beta_access: {
+        Args: { p_tenant_id: string; p_days: number };
+        Returns: { access_expires_at: string | null }[];
+      };
     };
     Enums: Record<string, never>;
     Tables: {

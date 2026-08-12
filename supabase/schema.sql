@@ -519,6 +519,34 @@ end;
 $$ language plpgsql;
 
 -- ----------------------------------------------------------------------------
+-- extend_beta_access (Sprint 14-D: admin-issued Beta extension)
+-- ----------------------------------------------------------------------------
+-- Single atomic UPDATE (not a read-then-write from the app) avoids a race
+-- between two admins extending the same tenant. Extends on top of a
+-- still-future access_expires_at; starts counting from now() if the tenant
+-- is NONE or already EXPIRED (access_type is set to BETA either way).
+create or replace function extend_beta_access(
+  p_tenant_id uuid,
+  p_days int
+) returns table (access_expires_at timestamptz) as $$
+declare
+  v_new_expires_at timestamptz;
+begin
+  update tenants as t
+    set access_type = 'BETA',
+        access_expires_at = case
+          when t.access_expires_at is null or t.access_expires_at <= now()
+            then now() + (p_days || ' days')::interval
+          else t.access_expires_at + (p_days || ' days')::interval
+        end
+    where t.id = p_tenant_id
+    returning t.access_expires_at into v_new_expires_at;
+
+  return query select v_new_expires_at;
+end;
+$$ language plpgsql;
+
+-- ----------------------------------------------------------------------------
 -- app_settings (admin-editable thresholds, e.g. VIP criteria)
 -- ----------------------------------------------------------------------------
 create table if not exists app_settings (
