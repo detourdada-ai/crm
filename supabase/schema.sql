@@ -519,7 +519,11 @@ end;
 $$ language plpgsql;
 
 -- ----------------------------------------------------------------------------
--- extend_beta_access (Sprint 14-D: admin-issued Beta extension)
+-- extend_beta_access (Sprint 14-D: admin-issued Beta extension;
+-- Sprint 14-H: also resets beta_ended_email_sent_at so a re-extended Beta
+-- period's own eventual expiry can trigger a fresh Ending email — see
+-- migration 0024. beta_welcome_email_sent_at is untouched: it's the one-time
+-- signup email and extension must never re-trigger it.)
 -- ----------------------------------------------------------------------------
 -- Single atomic UPDATE (not a read-then-write from the app) avoids a race
 -- between two admins extending the same tenant. Extends on top of a
@@ -538,7 +542,8 @@ begin
           when t.access_expires_at is null or t.access_expires_at <= now()
             then now() + (p_days || ' days')::interval
           else t.access_expires_at + (p_days || ' days')::interval
-        end
+        end,
+        beta_ended_email_sent_at = null
     where t.id = p_tenant_id
     returning t.access_expires_at into v_new_expires_at;
 
