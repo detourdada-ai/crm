@@ -408,7 +408,9 @@ create trigger trg_tenant_access_keys_updated_at
   for each row execute function set_updated_at();
 
 -- ----------------------------------------------------------------------------
--- create_seller_signup (Sprint 11: atomic tenant + app_account + membership)
+-- create_seller_signup (Sprint 11: atomic tenant + app_account + membership;
+-- Sprint 14-B: Beta Open — signup now auto-grants BETA for 1 calendar month
+-- instead of starting at NONE, so ordinary Beta signups never need a Key)
 -- ----------------------------------------------------------------------------
 -- A single PL/pgSQL function call is one implicit transaction in Postgres —
 -- if any insert below fails (e.g. a unique violation), the whole call errors
@@ -426,8 +428,8 @@ declare
 begin
   select id into v_plan_id from plans where code = 'STARTER' limit 1;
 
-  insert into tenants (name, slug, plan_id, access_type)
-  values (p_company_name, p_username, v_plan_id, 'NONE')
+  insert into tenants (name, slug, plan_id, access_type, access_expires_at)
+  values (p_company_name, p_username, v_plan_id, 'BETA', now() + interval '1 month')
   returning id into v_tenant_id;
 
   insert into app_accounts (username, password_hash, role, google_email)
