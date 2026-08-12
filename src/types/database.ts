@@ -415,6 +415,7 @@ export interface Database {
           role: string;
           driver_id: string | null;
           auth_user_id: string | null;
+          google_email: string | null;
           updated_at: string;
         };
         Insert: {
@@ -423,6 +424,7 @@ export interface Database {
           role: string;
           driver_id?: string | null;
           auth_user_id?: string | null;
+          google_email?: string | null;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["app_accounts"]["Insert"]>;

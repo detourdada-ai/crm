@@ -8,6 +8,7 @@ export interface AppAccountRow {
   role: Role;
   driver_id: string | null;
   auth_user_id: string | null;
+  google_email: string | null;
   updated_at: string;
 }
 
@@ -73,6 +74,26 @@ export const accountsRepository = {
   /** Sprint 9: links this account to its (lazily-created) Supabase Auth user. Only ever set once per account. */
   async setAuthUserId(username: string, authUserId: string): Promise<void> {
     const { error } = await getSupabaseAdmin().from("app_accounts").update({ auth_user_id: authUserId }).eq("username", username);
+    if (error) throw error;
+  },
+
+  /** Sprint 10: Google OAuth callback looks accounts up by this — caller must already trim+lowercase. */
+  async findByGoogleEmail(googleEmail: string): Promise<AppAccountRow | null> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("app_accounts")
+      .select("*")
+      .eq("google_email", googleEmail)
+      .maybeSingle();
+    if (error) throw error;
+    return data as AppAccountRow | null;
+  },
+
+  /** Sprint 10: admin-only Settings mapping. Pass null to unlink. Caller must already trim+lowercase a non-null value. */
+  async setGoogleEmail(username: string, googleEmail: string | null): Promise<void> {
+    const { error } = await getSupabaseAdmin()
+      .from("app_accounts")
+      .update({ google_email: googleEmail, updated_at: new Date().toISOString() })
+      .eq("username", username);
     if (error) throw error;
   },
 };

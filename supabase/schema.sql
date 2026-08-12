@@ -341,6 +341,10 @@ create table if not exists app_accounts (
   -- ensureSupabaseAuthLinked) — password_hash is kept as-is until every
   -- account has migrated, so the old login path never breaks mid-transition.
   auth_user_id uuid unique,
+  -- Sprint 10: links this account to a Google account for OAuth login.
+  -- Set only via the admin-only Settings UI — never written by the OAuth
+  -- callback itself, which only ever looks accounts up by this column.
+  google_email text unique,
   updated_at timestamptz not null default now()
 );
 
