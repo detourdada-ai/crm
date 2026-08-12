@@ -1,6 +1,6 @@
 import "server-only";
-import { getResendClient, getFromEmail } from "./client";
-import { betaWelcomeEmail, betaEndingEmail } from "./templates";
+import { getResendClient, getFromEmail, getSupportEmail } from "./client";
+import { betaWelcomeEmail, betaEndingEmail, contactInquiryEmail } from "./templates";
 
 /**
  * Sprint 14-C: every failure mode here (missing API key, network error,
@@ -27,6 +27,35 @@ export async function sendBetaEndingEmail(toEmail: string, endAtIso: string, app
     if (!client) return false;
     const { subject, html } = betaEndingEmail(endAtIso, appUrl);
     const { error } = await client.emails.send({ from: getFromEmail(), to: toEmail, subject, html });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sprint 14-E: `to` is always the operator's own support address, never the
+ * submitter's — their email only ever appears as Reply-To, so a reply from
+ * the operator's mail client goes straight back to them.
+ */
+export async function sendContactInquiry(input: {
+  name: string;
+  email: string;
+  category: string;
+  message: string;
+  submittedAtIso: string;
+}): Promise<boolean> {
+  try {
+    const client = getResendClient();
+    if (!client) return false;
+    const { subject, html } = contactInquiryEmail(input);
+    const { error } = await client.emails.send({
+      from: getFromEmail(),
+      to: getSupportEmail(),
+      replyTo: input.email,
+      subject,
+      html,
+    });
     return !error;
   } catch {
     return false;

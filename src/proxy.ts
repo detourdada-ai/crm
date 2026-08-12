@@ -17,8 +17,9 @@ const PUBLIC_PATHS = ["/", "/login", "/auth/callback", "/signup", "/api/cron"];
 // Legal pages: unlike PUBLIC_PATHS, a logged-in visitor should NOT be
 // redirected away from these — they're referenced from Settings/signup
 // regardless of auth state, and there's no reason to bounce someone reading
-// Terms just because they happen to have a session.
-const ALWAYS_ACCESSIBLE_PATHS = ["/terms", "/privacy"];
+// Terms just because they happen to have a session. /contact is the same
+// case — a logged-in Seller should be able to reach support too.
+const ALWAYS_ACCESSIBLE_PATHS = ["/terms", "/privacy", "/contact"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
