@@ -38,5 +38,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // transport is the custom cookie set below, so drop the Supabase side now.
   await supabase.auth.signOut();
   await setSessionCookie(account.username, account.role);
-  return NextResponse.redirect(origin);
+  return NextResponse.redirect(`${origin}/dashboard`);
 }
