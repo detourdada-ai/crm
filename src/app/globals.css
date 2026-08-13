@@ -39,6 +39,12 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-dark: var(--brand-primary-dark);
+  --color-brand-primary-light: var(--brand-primary-light);
+  --color-surface: var(--surface);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,43 +55,54 @@
 }
 
 :root {
-  /* Sprint 8: less-white SaaS admin palette. Page background/sidebar are now
-     visibly darker than --card (still pure white), so cards float instead of
-     blending into the page; borders/muted are darker for clearer table and
-     card edges. Dark mode / component files untouched — these tokens flow
-     into every page automatically. */
-  --background: oklch(0.965 0.004 150);
-  --foreground: oklch(0.18 0.01 145);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.01 145);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.01 145);
-  --primary: oklch(0.44 0.11 155);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.96 0.012 150);
-  --secondary-foreground: oklch(0.3 0.03 155);
-  --muted: oklch(0.93 0.01 150);
-  --muted-foreground: oklch(0.5 0.02 155);
-  --accent: oklch(0.93 0.035 152);
-  --accent-foreground: oklch(0.3 0.06 155);
+  /* Ordify 1.0 브랜드 팔레트 (Sprint 14-I UI/UX 리뉴얼): "Product Green" —
+     로고(Ordify-logo1.svg)의 #059669/#047857/#10B981과 정확히 맞춘 SaaS
+     톤. 페이지 배경(#F5F7F6)과 카드(#FFFFFF)를 뚜렷이 구분해 카드가
+     떠 보이게 하고, 반찬가게 느낌의 진한 녹색 대신 절제된 Product Green을
+     사용한다. 다크 모드는 이번 리뉴얼 범위 밖 — 미변경. */
+  --background: #f5f7f6;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #059669;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #ecfdf5;
+  --accent-foreground: #047857;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.85 0.014 150);
-  --input: oklch(0.85 0.014 150);
-  --ring: oklch(0.58 0.1 155);
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #059669;
   --chart-1: oklch(0.58 0.12 155);
   --chart-2: oklch(0.65 0.15 220);
   --chart-3: oklch(0.7 0.16 60);
   --chart-4: oklch(0.62 0.19 20);
   --chart-5: oklch(0.55 0.16 300);
   --radius: 0.625rem;
-  --sidebar: oklch(0.94 0.008 150);
-  --sidebar-foreground: oklch(0.18 0.01 145);
-  --sidebar-primary: oklch(0.44 0.11 155);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.93 0.035 152);
-  --sidebar-accent-foreground: oklch(0.3 0.06 155);
-  --sidebar-border: oklch(0.85 0.014 150);
-  --sidebar-ring: oklch(0.58 0.1 155);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #059669;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ecfdf5;
+  --sidebar-accent-foreground: #047857;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #059669;
+
+  /* Semantic brand aliases (Sprint 14-I) — same values as above, named for
+     direct use where a component wants to reach for "brand green" or
+     "muted text" explicitly rather than through a shadcn slot. */
+  --brand-primary: #059669;
+  --brand-primary-dark: #047857;
+  --brand-primary-light: #10b981;
+  --surface: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
 }
 
 .dark {
