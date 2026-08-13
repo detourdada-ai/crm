@@ -34,7 +34,7 @@ export default async function SettingsPage() {
     const vipCriteria = await getVipCriteria(session.username);
     return (
       <div className="space-y-6">
-        <PageHeader title="설정" description="비밀번호 변경 및 내 계정 설정" />
+        <PageHeader title="설정" description="서비스 운영에 필요한 정보를 관리하세요." />
 
         <Card>
           <CardHeader>
@@ -91,7 +91,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="설정" description="계정 및 시스템 설정" />
+      <PageHeader title="설정" description="서비스 운영에 필요한 정보를 관리하세요." />
 
       <Card>
         <CardHeader>

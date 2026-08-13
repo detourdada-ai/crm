@@ -15,6 +15,7 @@ import { WeekdayOrderChart } from "@/components/dashboard/weekday-order-chart";
 import { TopProductsTable } from "@/components/dashboard/top-products-table";
 import { CustomerRankingTable } from "@/components/dashboard/customer-ranking-table";
 import { InactiveCustomerTable } from "@/components/dashboard/inactive-customer-table";
+import { PageHeader } from "@/components/common/page-header";
 import { formatCurrency } from "@/lib/constants/order-status";
 
 export default async function StatsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
@@ -38,10 +39,7 @@ export default async function StatsPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">통계</h1>
-        <p className="text-sm text-muted-foreground">주문과 고객 데이터를 분석하세요.</p>
-      </div>
+      <PageHeader title="통계" description="주문과 고객 데이터를 한눈에 확인하세요." />
 
       <Tabs defaultValue={defaultTab}>
         <TabsList>
