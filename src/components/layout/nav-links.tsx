@@ -16,8 +16,8 @@ function NavLink({ item, isActive, onNavigate }: { item: NavItem; isActive: bool
       href={item.href}
       onClick={onNavigate}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-        isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+        isActive ? "bg-primary-soft text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
       )}
     >
       <Icon className="size-4" />
@@ -40,8 +40,8 @@ function NavSectionBlock({
   withDivider?: boolean;
 }) {
   return (
-    <div className={cn("mt-3 flex flex-col gap-1 first:mt-0", withDivider && "mt-3 border-t pt-3")}>
-      <span className="px-3 text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase">{entry.section}</span>
+    <div className={cn("mt-5 flex flex-col gap-0.5 first:mt-0", withDivider && "mt-5 border-t pt-4")}>
+      <span className="px-3 pb-1 text-xs font-semibold tracking-wide text-muted-foreground/70 uppercase">{entry.section}</span>
       {entry.items
         .filter((item) => !item.adminOnly || isAdmin)
         .map((item) => (
@@ -54,10 +54,12 @@ function NavSectionBlock({
 /** Sprint 14-I UI/UX 리뉴얼 2차 (Phase UI-1): 로그아웃/계정 정보를 상단 헤더가 아니라 사이드바 하단으로 옮긴다 — 데스크톱 Sidebar와 모바일 Sheet 둘 다 이 컴포넌트를 쓰므로 한 곳에서만 렌더링한다. */
 function AccountFooter({ username, roleLabel }: { username: string; roleLabel: string }) {
   return (
-    <div className="flex flex-col gap-2 border-t pt-3">
-      <div className="flex items-center gap-2 px-3 text-sm">
-        <span className="font-medium text-foreground">{username}</span>
-        <Badge variant="outline">{roleLabel}</Badge>
+    <div className="mt-3 flex flex-col gap-1 rounded-lg border border-border bg-muted/40 p-2">
+      <div className="flex items-center gap-2 px-1.5 py-1 text-sm">
+        <span className="truncate font-medium text-foreground">{username}</span>
+        <Badge variant="outline" className="shrink-0">
+          {roleLabel}
+        </Badge>
       </div>
       <form action={logoutAction}>
         <Button type="submit" variant="ghost" size="sm" className="w-full justify-start gap-2 text-muted-foreground">
