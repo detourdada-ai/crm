@@ -2,10 +2,12 @@ import { Card, CardContent, CardDescription } from "@/components/ui/card";
 import { SettlementPeriodPicker } from "@/components/settlements/settlement-period-picker";
 import { SettlementTable } from "@/components/settlements/settlement-table";
 import { PageHeader } from "@/components/common/page-header";
+import { KpiCard } from "@/components/dashboard/kpi-card";
 import { getSettlementBoardAction } from "@/actions/settlements";
 import { requireSession } from "@/lib/auth/current-session";
 import { listAccounts } from "@/lib/auth/credentials";
 import { isValidDateString } from "@/lib/utils/date";
+import { formatCurrency } from "@/lib/constants/order-status";
 import type { SettlementPeriodType } from "@/lib/services/settlement.service";
 
 function todayIso(): string {
@@ -28,19 +30,32 @@ export default async function SettlementsPage({
   const referenceDate = isValidDateString(date) ? date : todayIso();
   const ownerFilter = isAdmin ? owner : undefined;
 
-  const [{ periodStart, periodEnd, rows }, accountUsernames] = await Promise.all([
+  const [{ periodStart, periodEnd, rows }, accountUsernames, monthly] = await Promise.all([
     getSettlementBoardAction(periodType, referenceDate, ownerFilter),
     isAdmin ? listAccounts().then((accounts) => accounts.filter((a) => a.role !== "driver").map((a) => a.username)) : Promise.resolve(undefined),
+    getSettlementBoardAction("monthly", todayIso(), ownerFilter),
   ]);
+
+  const pendingCount = rows.filter((r) => r.settlement.status !== "paid" && r.settlement.amount > 0).length;
+  const paidCount = rows.filter((r) => r.settlement.status === "paid").length;
+  const monthlyPaidAmount = monthly.rows
+    .filter((r) => r.settlement.status === "paid")
+    .reduce((sum, r) => sum + r.settlement.amount, 0);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="정산관리"
-        description={`기사별 배송 실적과 정산 상태를 관리하세요.${isAdmin ? "" : " 내가 등록한 기사만 표시됩니다."}`}
+        title="정산"
+        description={`배송 완료된 주문을 기준으로 정산을 확인하세요.${isAdmin ? "" : " 내가 등록한 기사만 표시됩니다."}`}
       />
 
-      <Card>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <KpiCard label="정산 대기" value={pendingCount} cta="확인" href="#list" />
+        <KpiCard label="정산 완료" value={paidCount} cta="확인" href="#list" />
+        <KpiCard label="이번 달 정산액" value={formatCurrency(monthlyPaidAmount)} unit="" cta="상세 보기" href="#list" />
+      </div>
+
+      <Card id="list">
         <CardContent className="space-y-4 pt-6">
           <SettlementPeriodPicker
             periodType={periodType}
