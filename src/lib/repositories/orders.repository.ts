@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { Order, OrderItem, OrderSource, DeliveryStatus } from "@/types/domain";
 
 export interface OrderInsert {
+  id?: string; // client-generated (crypto.randomUUID()) for batch import — lets order_items reference the order before the actual insert round-trip
   customer_id: string;
   order_number?: string | null;
   order_date: string;
@@ -106,6 +107,26 @@ export const ordersRepository = {
       .maybeSingle();
     if (error) throw error;
     return data as Order | null;
+  },
+
+  /**
+   * Batch import: which of these order_numbers already exist, checked in a
+   * handful of round-trips instead of one findByOrderNumber call per row.
+   * PostgREST sends `.in()` filters as a GET query string, which hits
+   * Node's ~16KB header-size limit somewhere past ~1000 order numbers — so
+   * this chunks the check rather than sending it all as a single filter.
+   */
+  async findExistingOrderNumbers(orderNumbers: string[]): Promise<Set<string>> {
+    if (orderNumbers.length === 0) return new Set();
+    const CHUNK_SIZE = 300;
+    const found = new Set<string>();
+    for (let i = 0; i < orderNumbers.length; i += CHUNK_SIZE) {
+      const chunk = orderNumbers.slice(i, i + CHUNK_SIZE);
+      const { data, error } = await getSupabaseAdmin().from("orders").select("order_number").in("order_number", chunk);
+      if (error) throw error;
+      for (const r of data ?? []) found.add(r.order_number as string);
+    }
+    return found;
   },
 
   async findByCustomerId(customerId: string): Promise<Order[]> {

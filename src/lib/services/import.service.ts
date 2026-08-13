@@ -1,16 +1,16 @@
 import "server-only";
-import { ordersRepository } from "@/lib/repositories/orders.repository";
+import { randomUUID } from "node:crypto";
+import { ordersRepository, type OrderInsert, type OrderItemInsert } from "@/lib/repositories/orders.repository";
 import { importsRepository } from "@/lib/repositories/imports.repository";
-import { duplicatesRepository } from "@/lib/repositories/duplicates.repository";
-import { customersRepository } from "@/lib/repositories/customers.repository";
+import { duplicatesRepository, type DuplicateCandidateInsert } from "@/lib/repositories/duplicates.repository";
+import { customersRepository, type CustomerInsert } from "@/lib/repositories/customers.repository";
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
-import { detectDuplicateCandidates } from "./duplicate-detection.service";
-import { resolveCustomerForImportRow } from "./customer.service";
+import { isSimilarButNotIdenticalName } from "@/lib/utils/similarity";
 import { formatPhoneNumber } from "@/lib/utils/phone";
-import { cleanAddress } from "@/lib/utils/address";
+import { cleanAddress, normalizeAddressForCompare } from "@/lib/utils/address";
 import { parseDeliveryDateFromOption, parseDeliveryAreaFromOption } from "@/lib/utils/delivery-date";
 import type { ParsedSheet, ColumnMapping } from "@/types/excel";
-import type { ImportRowError, ImportSummary } from "@/types/domain";
+import type { Customer, ImportRowError, ImportSummary } from "@/types/domain";
 
 export interface RunImportInput {
   fileName: string;
@@ -61,6 +61,129 @@ function parseOptionalDate(value: unknown): string | null {
   return null;
 }
 
+interface DetectedCandidate {
+  existingCustomerId: string;
+  matchType: string;
+  confidence: "HIGH" | "MEDIUM";
+  reason: string;
+}
+
+/**
+ * In-memory index over an owner's customer pool, used to replicate
+ * customer.service.ts's resolveCustomerForImportRow + duplicate-
+ * detection.service.ts's detectDuplicateCandidates matching rules WITHOUT a
+ * DB round trip per row (see Sprint 14-I perf investigation: the previous
+ * per-row implementation did ~9 sequential round trips/row, ~900ms/row,
+ * making 500+ row files take minutes). The matching PREDICATES are copied
+ * verbatim from those two functions — only how the candidate data is
+ * fetched changes (once for the whole file, not once per row). New
+ * customers are indexed immediately as they're "created" in memory so a
+ * later row in the SAME file can still match an earlier row's new customer,
+ * exactly like the old sequential DB-backed version could.
+ */
+class CustomerPoolIndex {
+  private byPhone = new Map<string, Customer[]>();
+  private byNameAddress = new Map<string, Customer[]>();
+  private byAddress = new Map<string, Customer[]>();
+
+  constructor(initial: Customer[]) {
+    for (const c of initial) this.add(c);
+  }
+
+  add(c: Customer): void {
+    if (c.phone) {
+      const list = this.byPhone.get(c.phone) ?? [];
+      list.push(c);
+      this.byPhone.set(c.phone, list);
+    }
+    if (c.address_normalized) {
+      const nameAddrKey = `${c.name}::${c.address_normalized}`;
+      const list1 = this.byNameAddress.get(nameAddrKey) ?? [];
+      list1.push(c);
+      this.byNameAddress.set(nameAddrKey, list1);
+
+      const list2 = this.byAddress.get(c.address_normalized) ?? [];
+      list2.push(c);
+      this.byAddress.set(c.address_normalized, list2);
+    }
+  }
+
+  /** Mirrors resolveCustomerForImportRow's exact-match rule: same phone + same name + same normalized address. */
+  findExactMatch(name: string, phone: string | null, addressNormalized: string | null): Customer | null {
+    if (!phone) return null;
+    const samePhone = this.byPhone.get(phone) ?? [];
+    return samePhone.find((c) => c.name === name && c.address_normalized === addressNormalized) ?? null;
+  }
+
+  /** Mirrors detectDuplicateCandidates's CASE1-5 rules verbatim, just reading from the in-memory index instead of issuing 2-3 queries. */
+  detectCandidates(newCustomerId: string, name: string, phone: string | null, addressNormalized: string | null): DetectedCandidate[] {
+    const matched = new Map<string, DetectedCandidate>();
+    const addOnce = (existingId: string, candidate: DetectedCandidate) => {
+      if (existingId === newCustomerId) return;
+      if (!matched.has(existingId)) matched.set(existingId, candidate);
+    };
+
+    if (phone) {
+      const samePhone = this.byPhone.get(phone) ?? [];
+      for (const existing of samePhone) {
+        if (existing.id === newCustomerId) continue;
+        if (existing.name === name && existing.address_normalized !== addressNormalized) {
+          addOnce(existing.id, {
+            existingCustomerId: existing.id,
+            matchType: "shipping_changed",
+            confidence: "HIGH",
+            reason: `이름/전화번호 동일, 주소 다름 → 배송지 변경 가능성 (기존 주소: ${existing.address ?? "-"})`,
+          });
+        }
+      }
+      for (const existing of samePhone) {
+        if (existing.id === newCustomerId) continue;
+        if (existing.address_normalized !== addressNormalized) {
+          addOnce(existing.id, {
+            existingCustomerId: existing.id,
+            matchType: "address_changed",
+            confidence: "HIGH",
+            reason: `전화번호 동일, 주소 다름 → 주소 변경 가능성 (기존 주소: ${existing.address ?? "-"})`,
+          });
+        }
+      }
+    }
+
+    if (addressNormalized) {
+      const sameNameAddress = this.byNameAddress.get(`${name}::${addressNormalized}`) ?? [];
+      for (const existing of sameNameAddress) {
+        if (existing.id === newCustomerId) continue;
+        if (existing.phone !== phone) {
+          addOnce(existing.id, {
+            existingCustomerId: existing.id,
+            matchType: "phone_changed",
+            confidence: "HIGH",
+            reason: `이름/주소 동일, 전화번호 다름 → 휴대폰 번호 변경 가능성 (기존 번호: ${existing.phone ?? "-"})`,
+          });
+        }
+      }
+
+      const sameAddress = this.byAddress.get(addressNormalized) ?? [];
+      for (const existing of sameAddress) {
+        if (existing.id === newCustomerId) continue;
+        if (existing.phone !== phone && isSimilarButNotIdenticalName(existing.name, name)) {
+          const looksLikeSamePerson = existing.name.length === name.length;
+          addOnce(existing.id, {
+            existingCustomerId: existing.id,
+            matchType: looksLikeSamePerson ? "phone_changed_likely" : "family",
+            confidence: "MEDIUM",
+            reason: `주소 동일, 이름 유사(${existing.name} ↔ ${name}), 전화번호 다름 → ${
+              looksLikeSamePerson ? "휴대폰 번호 변경 가능성" : "가족 구성원 가능성"
+            }`,
+          });
+        }
+      }
+    }
+
+    return Array.from(matched.values());
+  }
+}
+
 /**
  * Executes the full excel/csv import pipeline: groups rows into orders
  * (a smartstore export has one row per product line, so multiple rows can
@@ -73,6 +196,11 @@ function parseOptionalDate(value: unknown): string | null {
  * not re-created). This is how "재처리" (reprocess) works from the Import
  * History screen — re-upload the file and only the previously failed rows
  * get processed.
+ *
+ * Sprint 14-I: rewritten from "~9 DB round trips per row, sequential" to
+ * "~8-10 round trips for the whole file, regardless of row count" — see
+ * CustomerPoolIndex above. Matching/dedup RULES are byte-for-byte identical
+ * to before; only how the data backing them is fetched changed.
  */
 export async function runImport({ fileName, parsed, mapping, ownerUsername }: RunImportInput): Promise<RunImportResult> {
   const tenant = await tenantsRepository.findByUsername(ownerUsername);
@@ -89,7 +217,6 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   const errors: ImportRowError[] = [];
   let newCustomers = 0;
   let existingCustomers = 0;
-  let duplicateCandidateCount = 0;
   let successRows = 0;
 
   const groups = new Map<string, Record<string, unknown>[]>();
@@ -104,10 +231,23 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     groups.set(orderNumber, list);
   });
 
+  // ---------- Phase 1: batch-fetch everything the per-row logic used to query individually ----------
+  const [existingOrderNumbers, ownerCustomers] = await Promise.all([
+    ordersRepository.findExistingOrderNumbers(Array.from(groups.keys())),
+    customersRepository.findAllByOwner(ownerUsername),
+  ]);
+  const pool = new CustomerPoolIndex(ownerCustomers);
+
+  // ---------- Phase 2: pure in-memory pass over every group — zero DB calls in this loop ----------
+  const newCustomerInserts: CustomerInsert[] = [];
+  const newOrderInserts: OrderInsert[] = [];
+  const newItemInserts: OrderItemInsert[] = [];
+  const newDuplicateInserts: DuplicateCandidateInsert[] = [];
+  const bagNoUpdates: { id: string; bagNo: string }[] = [];
+
   for (const [orderNumber, rows] of groups) {
     try {
-      const already = await ordersRepository.findByOrderNumber(orderNumber);
-      if (already) {
+      if (existingOrderNumbers.has(orderNumber)) {
         successRows += rows.length;
         continue;
       }
@@ -140,16 +280,57 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         continue;
       }
 
-      const { customer, isNew } = await resolveCustomerForImportRow({
-        name,
-        rawPhone,
-        rawAddress,
-        ownerUsername,
-        importId: importRecord.id,
-        bagNo,
-      });
-      if (isNew) newCustomers += 1;
-      else existingCustomers += 1;
+      const phone = formatPhoneNumber(rawPhone);
+      const address = cleanAddress(rawAddress);
+      const addressNormalized = normalizeAddressForCompare(rawAddress);
+
+      let customerId: string;
+      let isNew: boolean;
+      const exactMatch = pool.findExactMatch(name, phone, addressNormalized);
+      if (exactMatch) {
+        customerId = exactMatch.id;
+        isNew = false;
+        existingCustomers += 1;
+        if (bagNo && !exactMatch.bag_no) {
+          bagNoUpdates.push({ id: exactMatch.id, bagNo });
+          exactMatch.bag_no = bagNo; // reflect immediately so later rows in this file see it as already set
+        }
+      } else {
+        customerId = randomUUID();
+        isNew = true;
+        newCustomers += 1;
+        const newCustomer: Customer = {
+          id: customerId,
+          customer_code: "",
+          name,
+          phone,
+          address,
+          address_normalized: addressNormalized,
+          memo: null,
+          tags: [],
+          owner_username: ownerUsername,
+          tenant_id: tenant.id,
+          is_favorite: false,
+          status: "active",
+          merged_into_id: null,
+          bag_no: bagNo,
+          created_by_import_id: importRecord.id,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        newCustomerInserts.push({
+          id: customerId,
+          name,
+          phone,
+          address,
+          address_normalized: addressNormalized,
+          owner_username: ownerUsername,
+          tenant_id: tenant.id,
+          created_by_import_id: importRecord.id,
+          bag_no: bagNo,
+        });
+        pool.add(newCustomer);
+      }
 
       const items = rows.map((row) => ({
         product_order_number: cellToString(getMapped(row, mapping, "product_order_number")) || null,
@@ -175,57 +356,49 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         .map((item) => parseDeliveryAreaFromOption(item.option_name))
         .find((a) => a !== null) ?? null;
 
-      const [order] = await ordersRepository.createMany([
-        {
-          customer_id: customer.id,
-          order_number: orderNumber,
-          order_date: orderDate,
-          status: orderStatus,
-          total_amount: totalAmount,
-          recipient_name: name,
-          phone_snapshot: formatPhoneNumber(rawPhone),
-          address_snapshot: cleanAddress(rawAddress),
-          zipcode,
-          delivery_memo: deliveryMemo,
-          courier,
-          tracking_number: trackingNumber,
-          sales_channel: salesChannel,
-          buyer_name: buyerName,
-          buyer_id: buyerId,
-          shipped_at: shippedAt,
-          delivery_date: deliveryDate,
-          delivery_area: deliveryArea,
-          order_source: "import",
-          import_id: importRecord.id,
-          owner_username: ownerUsername,
-          tenant_id: tenant.id,
-        },
-      ]);
-
-      await ordersRepository.createItems(items.map((item) => ({ ...item, order_id: order.id })));
+      const orderId = randomUUID();
+      newOrderInserts.push({
+        id: orderId,
+        customer_id: customerId,
+        order_number: orderNumber,
+        order_date: orderDate,
+        status: orderStatus,
+        total_amount: totalAmount,
+        recipient_name: name,
+        phone_snapshot: formatPhoneNumber(rawPhone),
+        address_snapshot: cleanAddress(rawAddress),
+        zipcode,
+        delivery_memo: deliveryMemo,
+        courier,
+        tracking_number: trackingNumber,
+        sales_channel: salesChannel,
+        buyer_name: buyerName,
+        buyer_id: buyerId,
+        shipped_at: shippedAt,
+        delivery_date: deliveryDate,
+        delivery_area: deliveryArea,
+        order_source: "import",
+        import_id: importRecord.id,
+        owner_username: ownerUsername,
+        tenant_id: tenant.id,
+      });
+      for (const item of items) {
+        newItemInserts.push({ ...item, order_id: orderId });
+      }
 
       if (isNew) {
-        const candidates = await detectDuplicateCandidates({
-          newCustomerId: customer.id,
-          name: customer.name,
-          phone: customer.phone,
-          addressNormalized: customer.address_normalized,
-          ownerUsername,
-        });
-        if (candidates.length > 0) {
-          const created = await duplicatesRepository.createMany(
-            candidates.map((c) => ({
-              existing_customer_id: c.existingCustomerId,
-              new_customer_id: customer.id,
-              import_id: importRecord.id,
-              match_type: c.matchType,
-              confidence: c.confidence,
-              reason: c.reason,
-              owner_username: ownerUsername,
-              tenant_id: tenant.id,
-            }))
-          );
-          duplicateCandidateCount += created.length;
+        const candidates = pool.detectCandidates(customerId, name, phone, addressNormalized);
+        for (const c of candidates) {
+          newDuplicateInserts.push({
+            existing_customer_id: c.existingCustomerId,
+            new_customer_id: customerId,
+            import_id: importRecord.id,
+            match_type: c.matchType,
+            confidence: c.confidence,
+            reason: c.reason,
+            owner_username: ownerUsername,
+            tenant_id: tenant.id,
+          });
         }
       }
 
@@ -237,6 +410,25 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         raw: rows[0],
       });
     }
+  }
+
+  // ---------- Phase 3: flush everything in a handful of batch writes (customers -> orders -> items, in FK order) ----------
+  if (newCustomerInserts.length > 0) {
+    await customersRepository.createMany(newCustomerInserts);
+  }
+  if (newOrderInserts.length > 0) {
+    await ordersRepository.createMany(newOrderInserts);
+  }
+  if (newItemInserts.length > 0) {
+    await ordersRepository.createItems(newItemInserts);
+  }
+  let duplicateCandidateCount = 0;
+  if (newDuplicateInserts.length > 0) {
+    const created = await duplicatesRepository.createMany(newDuplicateInserts);
+    duplicateCandidateCount = created.length;
+  }
+  for (const u of bagNoUpdates) {
+    await customersRepository.update(u.id, { bag_no: u.bagNo });
   }
 
   const failedRows = parsed.rows.length - successRows;

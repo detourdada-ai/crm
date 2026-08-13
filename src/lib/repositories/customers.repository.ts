@@ -21,6 +21,7 @@ export interface CustomerSearchParams {
 }
 
 export interface CustomerInsert {
+  id?: string; // client-generated (crypto.randomUUID()) for batch import — lets order rows reference the customer before the actual insert round-trip
   name: string;
   phone?: string | null;
   address?: string | null;
@@ -118,6 +119,21 @@ export const customersRepository = {
     const { data, error } = await getSupabaseAdmin().from("customers").insert(input).select("*").single();
     if (error) throw error;
     return data;
+  },
+
+  /** Batch import: one INSERT for every new customer discovered in a file, instead of one round-trip per row. */
+  async createMany(inputs: CustomerInsert[]): Promise<Customer[]> {
+    if (inputs.length === 0) return [];
+    const { data, error } = await getSupabaseAdmin().from("customers").insert(inputs).select("*");
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  /** Batch import: the owner's entire customer pool fetched once, then matched in memory (name/phone/address dedup rules unchanged) instead of 2-3 lookup queries per row. */
+  async findAllByOwner(ownerUsername: string): Promise<Customer[]> {
+    const { data, error } = await getSupabaseAdmin().from("customers").select("*").eq("owner_username", ownerUsername);
+    if (error) throw error;
+    return data ?? [];
   },
 
   async update(id: string, input: CustomerUpdate): Promise<Customer> {
