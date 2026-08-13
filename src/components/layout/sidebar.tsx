@@ -1,6 +1,7 @@
 import { OrdifyLogo } from "@/components/brand/ordify-logo";
 import { NavLinks } from "./nav-links";
 import { getSession } from "@/lib/auth/current-session";
+import { ROLE_LABELS } from "@/lib/constants/role-labels";
 
 export async function Sidebar() {
   const session = await getSession();
@@ -12,8 +13,13 @@ export async function Sidebar() {
       <div className="flex h-14 items-center border-b px-4">
         <OrdifyLogo variant="full" />
       </div>
-      <div className="flex-1 overflow-y-auto p-3">
-        <NavLinks isDriver={isDriver} isAdmin={isAdmin} />
+      <div className="flex flex-1 flex-col overflow-y-auto p-3">
+        <NavLinks
+          isDriver={isDriver}
+          isAdmin={isAdmin}
+          username={session?.username}
+          roleLabel={session ? ROLE_LABELS[session.role] : undefined}
+        />
       </div>
     </aside>
   );

@@ -1,13 +1,12 @@
-import { Menu, LogOut } from "lucide-react";
-import { logoutAction } from "@/actions/auth";
+import { Menu } from "lucide-react";
 import { getSession } from "@/lib/auth/current-session";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { NavLinks } from "./nav-links";
 import { OrdifyLogo } from "@/components/brand/ordify-logo";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
 
+/** Sprint 14-I UI/UX 리뉴얼 2차 (Phase UI-1): 계정 정보/로그아웃은 이제 NavLinks 하단(Sidebar/Sheet 공용)에서만 노출한다 — 상단 바는 모바일 메뉴 진입점 역할만 한다. */
 export async function Header() {
   const session = await getSession();
   const isDriver = session?.role === "driver";
@@ -22,12 +21,17 @@ export async function Header() {
             <span className="sr-only">메뉴 열기</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-60 p-0">
+        <SheetContent side="left" className="flex w-60 flex-col p-0">
           <SheetTitle className="flex h-14 items-center border-b px-4">
             <OrdifyLogo variant="full" />
           </SheetTitle>
-          <div className="p-3">
-            <NavLinks isDriver={isDriver} isAdmin={isAdmin} />
+          <div className="flex flex-1 flex-col overflow-y-auto p-3">
+            <NavLinks
+              isDriver={isDriver}
+              isAdmin={isAdmin}
+              username={session?.username}
+              roleLabel={session ? ROLE_LABELS[session.role] : undefined}
+            />
           </div>
         </SheetContent>
       </Sheet>
@@ -35,20 +39,6 @@ export async function Header() {
       <OrdifyLogo variant="mark" className="md:hidden" />
 
       <div className="flex-1" />
-
-      {session ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{session.username}</span>
-          <Badge variant="outline">{ROLE_LABELS[session.role]}</Badge>
-        </div>
-      ) : null}
-
-      <form action={logoutAction}>
-        <Button type="submit" variant="ghost" size="sm">
-          <LogOut className="size-4" />
-          로그아웃
-        </Button>
-      </form>
     </header>
   );
 }

@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV_ENTRIES, NAV_SETTINGS_ITEM, DRIVER_NAV_ITEMS, isNavSection, type NavItem } from "@/lib/constants/nav";
+import { LogOut } from "lucide-react";
+import { NAV_ENTRIES, NAV_HELP_ENTRY, DRIVER_NAV_ITEMS, isNavSection, type NavItem } from "@/lib/constants/nav";
+import { logoutAction } from "@/actions/auth";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 function NavLink({ item, isActive, onNavigate }: { item: NavItem; isActive: boolean; onNavigate?: () => void }) {
@@ -22,51 +26,93 @@ function NavLink({ item, isActive, onNavigate }: { item: NavItem; isActive: bool
   );
 }
 
+function NavSectionBlock({
+  entry,
+  isActive,
+  isAdmin,
+  onNavigate,
+  withDivider = false,
+}: {
+  entry: { section: string; items: NavItem[] };
+  isActive: (href: string) => boolean;
+  isAdmin: boolean;
+  onNavigate?: () => void;
+  withDivider?: boolean;
+}) {
+  return (
+    <div className={cn("mt-3 flex flex-col gap-1 first:mt-0", withDivider && "mt-3 border-t pt-3")}>
+      <span className="px-3 text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase">{entry.section}</span>
+      {entry.items
+        .filter((item) => !item.adminOnly || isAdmin)
+        .map((item) => (
+          <NavLink key={item.href} item={item} isActive={isActive(item.href)} onNavigate={onNavigate} />
+        ))}
+    </div>
+  );
+}
+
+/** Sprint 14-I UI/UX 리뉴얼 2차 (Phase UI-1): 로그아웃/계정 정보를 상단 헤더가 아니라 사이드바 하단으로 옮긴다 — 데스크톱 Sidebar와 모바일 Sheet 둘 다 이 컴포넌트를 쓰므로 한 곳에서만 렌더링한다. */
+function AccountFooter({ username, roleLabel }: { username: string; roleLabel: string }) {
+  return (
+    <div className="flex flex-col gap-2 border-t pt-3">
+      <div className="flex items-center gap-2 px-3 text-sm">
+        <span className="font-medium text-foreground">{username}</span>
+        <Badge variant="outline">{roleLabel}</Badge>
+      </div>
+      <form action={logoutAction}>
+        <Button type="submit" variant="ghost" size="sm" className="w-full justify-start gap-2 text-muted-foreground">
+          <LogOut className="size-4" />
+          로그아웃
+        </Button>
+      </form>
+    </div>
+  );
+}
+
 export function NavLinks({
   onNavigate,
   isDriver = false,
   isAdmin = false,
+  username,
+  roleLabel,
 }: {
   onNavigate?: () => void;
   isDriver?: boolean;
   isAdmin?: boolean;
+  username?: string;
+  roleLabel?: string;
 }) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
   if (isDriver) {
     return (
-      <nav className="flex flex-col gap-1">
-        {DRIVER_NAV_ITEMS.map((item) => (
-          <NavLink key={item.href} item={item} isActive={isActive(item.href)} onNavigate={onNavigate} />
-        ))}
+      <nav className="flex h-full flex-col gap-4">
+        <div className="flex flex-1 flex-col gap-1">
+          {DRIVER_NAV_ITEMS.map((item) => (
+            <NavLink key={item.href} item={item} isActive={isActive(item.href)} onNavigate={onNavigate} />
+          ))}
+        </div>
+        {username && roleLabel ? <AccountFooter username={username} roleLabel={roleLabel} /> : null}
       </nav>
     );
   }
 
   return (
-    <nav className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        {NAV_ENTRIES.map((entry) =>
-          isNavSection(entry) ? (
-            <div key={entry.section} className="mt-3 flex flex-col gap-1 first:mt-0">
-              <span className="px-3 text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase">
-                {entry.section}
-              </span>
-              {entry.items
-                .filter((item) => !item.adminOnly || isAdmin)
-                .map((item) => (
-                  <NavLink key={item.href} item={item} isActive={isActive(item.href)} onNavigate={onNavigate} />
-                ))}
-            </div>
-          ) : !entry.adminOnly || isAdmin ? (
-            <NavLink key={entry.href} item={entry} isActive={isActive(entry.href)} onNavigate={onNavigate} />
-          ) : null
-        )}
+    <nav className="flex h-full flex-col gap-4">
+      <div className="flex-1">
+        <div className="flex flex-col gap-1">
+          {NAV_ENTRIES.map((entry) =>
+            isNavSection(entry) ? (
+              <NavSectionBlock key={entry.section} entry={entry} isActive={isActive} isAdmin={isAdmin} onNavigate={onNavigate} />
+            ) : !entry.adminOnly || isAdmin ? (
+              <NavLink key={entry.href} item={entry} isActive={isActive(entry.href)} onNavigate={onNavigate} />
+            ) : null
+          )}
+        </div>
+        <NavSectionBlock entry={NAV_HELP_ENTRY} isActive={isActive} isAdmin={isAdmin} onNavigate={onNavigate} withDivider />
       </div>
-      <div className="flex flex-col gap-1 border-t pt-3">
-        <NavLink item={NAV_SETTINGS_ITEM} isActive={isActive(NAV_SETTINGS_ITEM.href)} onNavigate={onNavigate} />
-      </div>
+      {username && roleLabel ? <AccountFooter username={username} roleLabel={roleLabel} /> : null}
     </nav>
   );
 }
