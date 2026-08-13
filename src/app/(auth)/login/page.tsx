@@ -1,7 +1,11 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LoginForm } from "@/components/auth/login-form";
+import { OrdifyLogo } from "@/components/brand/ordify-logo";
 import { signInWithGoogleAction } from "@/actions/google-auth";
+import { getSession } from "@/lib/auth/current-session";
 
 const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
   unregistered_google_account: "등록되지 않은 Google 계정입니다. 관리자에게 문의해주세요.",
@@ -14,15 +18,23 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ from?: string; error?: string }>;
 }) {
+  // Sprint 14-I UI/UX 리뉴얼 2차 (Phase UI-3): 이미 로그인된 사용자가
+  // /login에 접근하면 바로 업무 화면으로 — 로그인 폼을 다시 보여주지 않는다.
+  const session = await getSession();
+  if (session) redirect("/dashboard");
+
   const { from, error } = await searchParams;
   const googleError = error ? GOOGLE_ERROR_MESSAGES[error] : null;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-xl">Ordify</CardTitle>
-          <CardDescription>계정으로 로그인하세요.</CardDescription>
+        <CardHeader className="items-center text-center">
+          <Link href="/">
+            <OrdifyLogo variant="full" className="h-6" />
+          </Link>
+          <CardTitle className="mt-3 text-xl">Ordify에 로그인하세요.</CardTitle>
+          <CardDescription>주문부터 배송·정산까지, 오늘의 업무를 이어가세요.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <LoginForm redirectTo={from && from.startsWith("/") ? from : "/dashboard"} />
@@ -43,6 +55,13 @@ export default async function LoginPage({
               Google로 로그인
             </Button>
           </form>
+
+          <p className="text-center text-sm text-muted-foreground">
+            Ordify가 처음이신가요?{" "}
+            <Link href="/" className="font-medium text-primary hover:underline">
+              무료로 시작하기
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>
