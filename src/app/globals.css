@@ -45,6 +45,25 @@
   --color-surface: var(--surface);
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
+
+  /* Role-based tokens (Sprint 14-I UI/UX 리뉴얼 2차, Phase UI-2) */
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-text-strong: var(--text-strong);
+  --color-text-default: var(--text-default);
+  --color-text-disabled: var(--text-disabled);
+  --color-border-strong: var(--border-strong);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -103,6 +122,27 @@
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #64748b;
+
+  /* Role-based design tokens (Sprint 14-I UI/UX 리뉴얼 2차, Phase UI-2) —
+     SMPLY류 SaaS 제품에서 가져올 것은 "예쁜 색" 자체가 아니라 여백/위계
+     구조라는 CEO 판단에 따라, 색은 절제하고("Green = Action" 외에는
+     Neutral 위주) 텍스트/보더 위계를 명확히 하는 데 집중한다. */
+  --primary-hover: #047857;
+  --primary-soft: #ecfdf5;
+  --surface-elevated: #ffffff;
+  --text-strong: #0f172a;
+  --text-default: #1e293b;
+  --text-disabled: #94a3b8;
+  --border-strong: #cbd5e1;
+  --success: #16a34a;
+  --success-foreground: #ffffff;
+  --success-soft: #f0fdf4;
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+  --warning-soft: #fffbeb;
+  --info: #2563eb;
+  --info-foreground: #ffffff;
+  --info-soft: #eff6ff;
 }
 
 .dark {

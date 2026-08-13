@@ -20,7 +20,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       <Sidebar />
       <div className="flex min-h-screen flex-1 flex-col">
         <Header />
-        <main className="flex-1 overflow-y-auto bg-muted/20 p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto bg-background p-4 md:p-6">{children}</main>
       </div>
     </div>
   );
