@@ -10,6 +10,7 @@ import { DriverManagementCard } from "@/components/settings/driver-management-ca
 import { GoogleEmailCell } from "@/components/settings/google-email-cell";
 import { IssueBetaKeyButton } from "@/components/settings/issue-beta-key-button";
 import { ExtendBetaButton } from "@/components/settings/extend-beta-button";
+import { PageHeader } from "@/components/common/page-header";
 import { listDriversAction } from "@/actions/drivers";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
@@ -33,10 +34,7 @@ export default async function SettingsPage() {
     const vipCriteria = await getVipCriteria(session.username);
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">설정</h1>
-          <p className="text-sm text-muted-foreground">비밀번호 변경 및 내 계정 설정</p>
-        </div>
+        <PageHeader title="설정" description="비밀번호 변경 및 내 계정 설정" />
 
         <Card>
           <CardHeader>
@@ -93,10 +91,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">설정</h1>
-        <p className="text-sm text-muted-foreground">계정 및 시스템 설정</p>
-      </div>
+      <PageHeader title="설정" description="계정 및 시스템 설정" />
 
       <Card>
         <CardHeader>

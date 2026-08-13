@@ -1,8 +1,11 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { CustomerSearchBar } from "@/components/customers/customer-search-bar";
 import { CustomerListTable, type CustomerListRow } from "@/components/customers/customer-list-table";
+import { DuplicateReviewDialog } from "@/components/customers/duplicate-review-dialog";
 import { PaginationControls } from "@/components/common/pagination-controls";
+import { PageHeader } from "@/components/common/page-header";
 import { searchCustomersAction } from "@/actions/customers";
+import { listPendingDuplicatesAction } from "@/actions/duplicates";
 import { requireSession } from "@/lib/auth/current-session";
 import type { CustomerSortField } from "@/lib/repositories/customers.repository";
 
@@ -15,17 +18,19 @@ export default async function CustomersPage({
 }) {
   const { q, page: pageParam, sort, dir } = await searchParams;
   const page = Number(pageParam) > 0 ? Number(pageParam) : 1;
-  const [session, { customers, total }] = await Promise.all([
+  const [session, { customers, total }, duplicateViews] = await Promise.all([
     requireSession(),
     searchCustomersAction(q ?? "", page, sort as CustomerSortField | undefined, dir === "asc"),
+    listPendingDuplicatesAction(),
   ]);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">고객관리</h1>
-        <p className="text-sm text-muted-foreground">이름, 전화번호, 주소, 고객번호로 검색할 수 있습니다.</p>
-      </div>
+      <PageHeader
+        title="고객관리"
+        description="고객 정보를 확인하고 관리하세요."
+        action={<DuplicateReviewDialog views={duplicateViews} />}
+      />
 
       <CustomerSearchBar />
 

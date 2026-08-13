@@ -59,6 +59,7 @@ export async function mergeDuplicateAction(candidateId: string): Promise<Duplica
     const session = await requireSession();
     await mergeDuplicateCandidate(candidateId, session);
     revalidatePath("/duplicates");
+    revalidatePath("/customers");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof MergeError ? e.message : "병합 중 오류가 발생했습니다." };
@@ -70,6 +71,7 @@ export async function rejectDuplicateAction(candidateId: string): Promise<Duplic
     const session = await requireSession();
     await rejectDuplicateCandidate(candidateId, session);
     revalidatePath("/duplicates");
+    revalidatePath("/customers");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof MergeError ? e.message : "처리 중 오류가 발생했습니다." };
@@ -81,6 +83,7 @@ export async function holdDuplicateAction(candidateId: string): Promise<Duplicat
     const session = await requireSession();
     await holdDuplicateCandidate(candidateId, session);
     revalidatePath("/duplicates");
+    revalidatePath("/customers");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof MergeError ? e.message : "처리 중 오류가 발생했습니다." };

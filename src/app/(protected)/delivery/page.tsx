@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { DeliveryBoard } from "@/components/delivery/delivery-board";
 import { DeliveryDatePicker } from "@/components/delivery/delivery-date-picker";
+import { PageHeader } from "@/components/common/page-header";
 import { getDeliveryBoardAction } from "@/actions/delivery";
 import { isValidDateString } from "@/lib/utils/date";
 
@@ -22,10 +23,7 @@ export default async function DeliveryPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">배송관리</h1>
-        <p className="text-sm text-muted-foreground">배송일 기준으로 주문을 확인하고 담당 기사를 배정합니다.</p>
-      </div>
+      <PageHeader title="배송관리" description="오늘 배송해야 할 주문을 확인하고 관리하세요." />
 
       <Card>
         <CardContent className="space-y-4 pt-6">

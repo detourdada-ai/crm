@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription } from "@/components/ui/card";
 import { SettlementPeriodPicker } from "@/components/settlements/settlement-period-picker";
 import { SettlementTable } from "@/components/settlements/settlement-table";
+import { PageHeader } from "@/components/common/page-header";
 import { getSettlementBoardAction } from "@/actions/settlements";
 import { requireSession } from "@/lib/auth/current-session";
 import { listAccounts } from "@/lib/auth/credentials";
@@ -34,13 +35,10 @@ export default async function SettlementsPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">정산관리</h1>
-        <p className="text-sm text-muted-foreground">
-          배송완료 건 기준으로 기사별 정산 금액을 계산합니다. 입금은 수동으로 처리합니다.
-          {isAdmin ? "" : " 내가 등록한 기사만 표시됩니다."}
-        </p>
-      </div>
+      <PageHeader
+        title="정산관리"
+        description={`기사별 배송 실적과 정산 상태를 관리하세요.${isAdmin ? "" : " 내가 등록한 기사만 표시됩니다."}`}
+      />
 
       <Card>
         <CardContent className="space-y-4 pt-6">
