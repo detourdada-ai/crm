@@ -31,9 +31,9 @@ export default async function LoginPage({
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <Link href="/">
-            <OrdifyLogo variant="full" className="h-6" />
+            <OrdifyLogo variant="full" className="h-8" />
           </Link>
-          <CardTitle className="mt-3 text-xl">다시 업무로 돌아오세요.</CardTitle>
+          <CardTitle className="mt-4 text-xl">다시 업무로 돌아오세요.</CardTitle>
           <CardDescription className="sr-only">Ordify 계정으로 로그인하세요.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
