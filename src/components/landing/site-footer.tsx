@@ -22,7 +22,7 @@ export function SiteFooter() {
       <div className="mx-auto max-w-6xl">
         <div className="grid gap-10 sm:grid-cols-[1.5fr_1fr_1fr]">
           <div>
-            <OrdifyLogo variant="full" className="h-6" />
+            <OrdifyLogo variant="full" className="h-7" />
             <p className="mt-3 max-w-xs text-sm text-muted-foreground">
               주문부터 배송·정산까지
               <br />한 곳에서 간편하게.

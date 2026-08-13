@@ -41,10 +41,10 @@ export function OrdifyLogo({
         <circle cx="40" cy="70" r="4" fill="#047857" />
       </g>
       <text
-        x="105"
-        y="58"
+        x="98"
+        y="64"
         fontFamily="system-ui, -apple-system, sans-serif"
-        fontSize="42"
+        fontSize="54"
         fontWeight="800"
         fill="#0F172A"
         letterSpacing="-0.03em"

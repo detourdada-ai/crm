@@ -1,95 +1,126 @@
-import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ProductPreview, PreviewStat, PreviewRow } from "./product-preview";
+import { ProductPreview, PreviewStat, PreviewRow, PreviewFlowRow } from "./product-preview";
 
-function MockSearchBar({ placeholder }: { placeholder: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted-foreground">
-      <Search className="size-4" />
-      {placeholder}
-    </div>
-  );
-}
-
+/** 주문 목록에서 하나를 선택하면 상세 팝업이 뜬다는 것 — Ordify의 대표적인 주문 처리 동작. */
 function OrdersPreview() {
   return (
-    <ProductPreview path="/orders">
-      <div className="flex items-center justify-between gap-3">
+    <ProductPreview title="Ordify 주문관리">
+      <div className="relative">
         <div className="flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full bg-primary px-3 py-1.5 font-medium text-primary-foreground">전체 128</span>
-          <span className="rounded-full bg-muted px-3 py-1.5 font-medium text-muted-foreground">배송대기 32</span>
-          <span className="rounded-full bg-muted px-3 py-1.5 font-medium text-muted-foreground">배송중 41</span>
-          <span className="rounded-full bg-muted px-3 py-1.5 font-medium text-muted-foreground">완료 55</span>
+          <span className="rounded-full bg-primary px-3 py-1.5 font-medium text-primary-foreground">전체</span>
+          <span className="rounded-full bg-muted px-3 py-1.5 font-medium text-muted-foreground">신규</span>
+          <span className="rounded-full bg-muted px-3 py-1.5 font-medium text-muted-foreground">처리중</span>
         </div>
-        <Button size="sm" className="hidden shrink-0 sm:inline-flex">
-          + 주문 등록
-        </Button>
-      </div>
-      <div className="mt-3">
-        <MockSearchBar placeholder="주문번호, 고객명으로 검색" />
-      </div>
-      <div className="mt-4">
-        <PreviewRow primary="김민수 · 반찬 3종 세트" secondary="ORD-1023 · 32,000원 · 오늘 배송" badge="배송대기" />
-        <PreviewRow primary="이지은 · 국물요리 세트" secondary="ORD-1022 · 45,000원 · 오늘 배송" badge="배송중" badgeTone="primary" />
-        <PreviewRow primary="박철수 · 밑반찬 모음" secondary="ORD-1021 · 28,000원 · 내일 배송" badge="완료" badgeTone="success" />
+        <div className="mt-4">
+          <PreviewRow primary="김민수 · 상품 A" secondary="신규 주문" badge="신규" badgeTone="primary" />
+          <PreviewRow primary="박지현 · 상품 B" secondary="배송 준비 중" badge="처리중" />
+          <PreviewRow primary="이수진 · 상품 C" secondary="배송 준비 완료" badge="배송준비" badgeTone="success" />
+        </div>
+
+        <div
+          className="animate-in fade-in-0 slide-in-from-bottom-2 absolute right-0 bottom-0 w-48 rounded-xl border border-border bg-surface p-3 text-left shadow-lg duration-500 sm:right-2 sm:bottom-2"
+        >
+          <p className="text-xs font-semibold text-text-strong">주문 상세</p>
+          <p className="mt-2 text-xs text-muted-foreground">상품 A</p>
+          <p className="text-xs text-muted-foreground">서울시 강남구 ...</p>
+          <Button size="sm" className="mt-2 h-7 w-full text-xs">
+            배송 준비
+          </Button>
+        </div>
       </div>
     </ProductPreview>
   );
 }
 
+/** 주문을 기사에게 배정하는 동작이 Ordify 배송관리의 핵심 — 배정 UI를 직접 보여준다. */
 function DeliveryPreview() {
   return (
-    <ProductPreview path="/delivery">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-medium text-muted-foreground">8월 13일 배송</p>
-        <Button size="sm" variant="outline" className="hidden shrink-0 sm:inline-flex">
-          기사 배정
+    <ProductPreview title="Ordify 배송관리">
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <PreviewStat label="배송 대기" value="8" />
+        <PreviewStat label="배송중" value="5" />
+        <PreviewStat label="완료" value="21" />
+      </div>
+      <div className="mt-4 rounded-xl border border-border bg-surface p-4">
+        <p className="text-xs font-medium text-muted-foreground">김민수 주문</p>
+        <p className="mt-1 text-sm text-text-strong">배송기사: 홍길동</p>
+        <Button size="sm" variant="outline" className="mt-3 h-8 w-full">
+          배송 배정
         </Button>
       </div>
-      <div className="mt-4">
-        <PreviewRow primary="김기사" secondary="담당 12건 · 강남·서초" badge="배송중" badgeTone="primary" />
-        <PreviewRow primary="이기사" secondary="담당 9건 · 송파·강동" badge="배송대기" />
-        <PreviewRow primary="박기사" secondary="담당 15건 · 마포·서대문" badge="완료" badgeTone="success" />
-      </div>
     </ProductPreview>
   );
 }
 
+/** 고객이 단순 주소록이 아니라 "주문 이력과 연결된 사람"이라는 것을 보여준다. */
 function CustomersPreview() {
   return (
-    <ProductPreview path="/customers">
-      <MockSearchBar placeholder="이름, 전화번호로 검색" />
-      <div className="mt-4">
-        <PreviewRow primary="김민수 · 010-****-1234" secondary="주문 14회 · 총 812,000원 · 최근 8/10" badge="VIP" badgeTone="primary" />
-        <PreviewRow primary="이영희 · 010-****-5678" secondary="주문 6회 · 총 214,000원 · 최근 8/9" badge="재구매" />
-        <PreviewRow primary="박철수 · 010-****-9012" secondary="주문 2회 · 총 56,000원 · 최근 7/28" badge="일반" />
+    <ProductPreview title="Ordify 고객관리">
+      <p className="text-sm font-semibold text-text-strong">김민수</p>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <PreviewStat label="최근 주문" value="8회" />
+        <PreviewStat label="누적 구매" value="324,000원" />
       </div>
+      <p className="mt-3 text-xs text-muted-foreground">최근 주문 · 2026.08.12</p>
+      <Button size="sm" variant="outline" className="mt-3 h-8 w-full">
+        주문 이력 보기
+      </Button>
     </ProductPreview>
   );
 }
 
+/** 배송완료 → 정산대상 → 정산완료로 이어지는 흐름 자체를 보여준다. */
 function SettlementPreview() {
   return (
-    <ProductPreview path="/settlements">
-      <div className="grid grid-cols-3 gap-3">
-        <PreviewStat label="정산 대기" value="12건" />
-        <PreviewStat label="정산 완료" value="38건" />
-        <PreviewStat label="이번 달 정산액" value="₩1,240,000" />
+    <ProductPreview title="Ordify 정산관리">
+      <div className="grid grid-cols-2 gap-3">
+        <PreviewStat label="정산 대기" value="₩1,240,000" />
+        <PreviewStat label="정산 완료" value="₩3,820,000" />
       </div>
-      <div className="mt-5">
-        <PreviewRow primary="김기사" secondary="배송 42건" badge="정산완료" badgeTone="success" />
-        <PreviewRow primary="이기사" secondary="배송 31건" badge="정산대기" />
+      <div className="mt-4">
+        <PreviewFlowRow
+          primary="김기사 · 배송 42건"
+          secondary="이번 달 정산"
+          steps={["배송완료", "정산대상", "정산완료"]}
+          activeIndex={2}
+        />
+        <PreviewFlowRow
+          primary="이기사 · 배송 31건"
+          secondary="이번 달 정산"
+          steps={["배송완료", "정산대상", "정산완료"]}
+          activeIndex={1}
+        />
       </div>
     </ProductPreview>
   );
 }
 
 const FEATURES = [
-  { eyebrow: "주문 관리", headline: "주문이 들어오면 바로 정리됩니다.", description: "엑셀 주문도 한 곳에서 불러오고, 처리해야 할 주문을 빠르게 확인할 수 있습니다.", preview: OrdersPreview },
-  { eyebrow: "배송 관리", headline: "배송할 주문을 한눈에 확인하세요.", description: "배송일별로 정리된 주문을 기사에게 빠르게 배정합니다.", preview: DeliveryPreview },
-  { eyebrow: "고객 관리", headline: "구매 고객을 자동으로 모아 관리합니다.", description: "동일 고객을 자동으로 연결하고, VIP와 재구매 고객을 바로 알아봅니다.", preview: CustomersPreview },
-  { eyebrow: "기사 정산", headline: "배송 완료부터 기사 정산까지 연결됩니다.", description: "배송 완료 건수를 기준으로 기사별 정산 금액을 자동 집계합니다.", preview: SettlementPreview },
+  {
+    eyebrow: "주문 관리",
+    headline: "주문을 선택하면 바로 처리할 수 있어요.",
+    description: "들어온 주문을 확인하고, 상세 내용을 보고 바로 다음 단계로 넘깁니다.",
+    preview: OrdersPreview,
+  },
+  {
+    eyebrow: "배송 관리",
+    headline: "배송할 주문을 기사에게 바로 배정하세요.",
+    description: "배송일별로 정리된 주문을 확인하고, 담당 기사를 몇 번의 클릭으로 배정합니다.",
+    preview: DeliveryPreview,
+  },
+  {
+    eyebrow: "고객 관리",
+    headline: "고객마다 쌓인 주문 이력을 바로 확인합니다.",
+    description: "동일 고객을 자동으로 연결하고, 얼마나 자주·많이 구매했는지 한눈에 보여줍니다.",
+    preview: CustomersPreview,
+  },
+  {
+    eyebrow: "기사 정산",
+    headline: "배송 완료부터 정산 완료까지 이어집니다.",
+    description: "배송 완료 건수를 기준으로 기사별 정산 금액이 자동으로 집계됩니다.",
+    preview: SettlementPreview,
+  },
 ];
 
 export function FeatureShowcase() {

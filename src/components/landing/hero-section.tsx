@@ -1,20 +1,20 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ProductPreview, PreviewStat, PreviewRow } from "./product-preview";
+import { ProductPreview, PreviewAction, PreviewFlowRow } from "./product-preview";
 
 export function HeroSection() {
   return (
     <section id="product" className="mx-auto max-w-5xl px-4 pt-20 pb-24 text-center sm:px-6 sm:pt-28">
       <h1 className="text-4xl font-bold tracking-tight text-text-strong sm:text-5xl md:text-6xl">
-        주문부터 정산까지,
+        주문이 들어오면,
         <br />
-        복잡한 판매 업무를 한 곳에서.
+        배송부터 정산까지 한곳에서.
       </h1>
       <p className="mx-auto mt-6 max-w-xl text-lg text-muted-foreground">
-        엑셀 주문부터 배송·고객·정산까지
+        포스기 없이 주문을 관리하는 작은 가게부터
         <br />
-        Ordify가 판매자의 반복 업무를 정리합니다.
+        온라인 판매자까지, 복잡한 판매 업무를 간단하게.
       </p>
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
         <Button asChild size="lg" className="gap-2">
@@ -29,19 +29,33 @@ export function HeroSection() {
       </Badge>
 
       <div className="mx-auto mt-16 max-w-5xl">
-        <ProductPreview path="/dashboard" withSidebar>
-          <p className="text-left text-sm text-muted-foreground">좋은 아침입니다 — 오늘 처리할 업무를 확인하세요.</p>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <PreviewStat label="오늘 주문" value="12건" />
-            <PreviewStat label="배송 대기" value="5건" />
-            <PreviewStat label="배송중" value="3건" />
-            <PreviewStat label="정산 대기" value="2건" />
+        <ProductPreview title="Ordify 대시보드" withSidebar>
+          <p className="text-left text-sm font-semibold text-text-strong">오늘의 업무</p>
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <PreviewAction label="주문 확인" value="12건" cta="확인하기" />
+            <PreviewAction label="배송 준비" value="8건" cta="확인하기" />
+            <PreviewAction label="정산 확인" value="5건" cta="확인하기" />
           </div>
-          <p className="mt-6 text-left text-xs font-medium text-muted-foreground">오늘의 배송</p>
+          <p className="mt-6 text-left text-xs font-medium text-muted-foreground">최근 주문</p>
           <div className="mt-1">
-            <PreviewRow primary="김민수" secondary="12건 · 강남구 일대" badge="배송중" badgeTone="primary" />
-            <PreviewRow primary="이영희" secondary="8건 · 송파구 일대" badge="배송대기" />
-            <PreviewRow primary="박철수" secondary="15건 · 마포구 일대" badge="완료" badgeTone="success" />
+            <PreviewFlowRow
+              primary="김민수 · 반찬 3종 세트"
+              secondary="ORD-1023"
+              steps={["주문접수", "배송준비", "배송중"]}
+              activeIndex={1}
+            />
+            <PreviewFlowRow
+              primary="박지현 · 국물요리 세트"
+              secondary="ORD-1022"
+              steps={["주문접수", "배송준비", "배송중"]}
+              activeIndex={2}
+            />
+            <PreviewFlowRow
+              primary="이수진 · 밑반찬 모음"
+              secondary="ORD-1021"
+              steps={["배송중", "배송완료"]}
+              activeIndex={1}
+            />
           </div>
         </ProductPreview>
       </div>

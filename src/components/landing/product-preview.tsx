@@ -1,24 +1,23 @@
 import type { ReactNode } from "react";
-import { LayoutDashboard, ShoppingCart, Truck, Users, Wallet, BarChart3 } from "lucide-react";
+import { ArrowRight, LayoutDashboard, ShoppingCart, Truck, Users, Wallet, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MINI_NAV_ICONS = [LayoutDashboard, ShoppingCart, Truck, Users, Wallet, BarChart3];
 
 /**
- * Sprint 14-I UI/UX 리뉴얼 2차: 랜딩에서 제품 UI 자체가 주인공이 되는 실제
- * 화면 프레임 — 작은 "미리보기" 배지로 눈길을 끄는 대신, 실제 브라우저
- * 스크린샷처럼 보이도록 주소창 스타일 상단바 + (선택) 실제 앱과 동일한
- * 얇은 sidebar 스트립까지 재현한다. 내용은 실제 화면 구조(Dashboard/
- * Orders/Delivery/Settlement/Customers)를 그대로 재현한 예시 데이터 —
- * 이름/전화번호 등은 전부 가상값.
+ * Sprint 14-I UI/UX 리뉴얼 (STEP 1-B): 랜딩에서 제품 UI 자체가 주인공이
+ * 되는 실제 화면 프레임 — 브라우저 주소창 대신 "Ordify 화면 이름"만 짧게
+ * 표시한다(실제 URL을 보여주는 건 제품 설명에 도움이 안 된다는 판단).
+ * 내용은 실제 화면 구조를 재현한 예시 데이터 — 이름/전화번호/금액 등은
+ * 전부 가상값.
  */
 export function ProductPreview({
-  path,
+  title,
   children,
   className,
   withSidebar = false,
 }: {
-  path: string;
+  title: string;
   children: ReactNode;
   className?: string;
   withSidebar?: boolean;
@@ -36,7 +35,7 @@ export function ProductPreview({
           <span className="size-2.5 rounded-full bg-border-strong" />
           <span className="size-2.5 rounded-full bg-border-strong" />
         </div>
-        <span className="mx-auto rounded-md bg-background px-3 py-1 text-xs text-muted-foreground">app.ordify.co{path}</span>
+        <span className="text-xs font-semibold text-text-strong">{title}</span>
       </div>
       <div className="flex bg-background">
         {withSidebar ? (
@@ -70,6 +69,20 @@ export function PreviewStat({ label, value }: { label: string; value: string }) 
   );
 }
 
+/** "숫자 → 다음 행동" 블록 — Dashboard 프리뷰의 "오늘의 업무" 등, 상태만이 아니라 무엇을 해야 하는지까지 보여줄 때 쓴다. */
+export function PreviewAction({ label, value, cta }: { label: string; value: string; cta: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface px-4 py-3.5">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-text-strong">{value}</p>
+      <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary">
+        {cta}
+        <ArrowRight className="size-3" />
+      </span>
+    </div>
+  );
+}
+
 export function PreviewRow({
   primary,
   secondary,
@@ -94,6 +107,43 @@ export function PreviewRow({
         <p className="truncate text-xs text-muted-foreground">{secondary}</p>
       </div>
       <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-medium", badgeClass)}>{badge}</span>
+    </div>
+  );
+}
+
+/** 상태가 한 단계 → 다음 단계로 넘어가는 흐름 자체를 보여주는 row — "주문접수 → 배송준비" 처럼 진행 중인 업무 흐름을 시각화한다. */
+export function PreviewFlowRow({
+  primary,
+  secondary,
+  steps,
+  activeIndex,
+}: {
+  primary: string;
+  secondary: string;
+  steps: string[];
+  activeIndex: number;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border py-3 text-sm last:border-0">
+      <div className="min-w-0">
+        <p className="truncate font-medium text-text-strong">{primary}</p>
+        <p className="truncate text-xs text-muted-foreground">{secondary}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        {steps.map((step, i) => (
+          <span key={step} className="flex items-center gap-1">
+            <span
+              className={cn(
+                "rounded-full px-2 py-1 text-[11px] font-medium",
+                i === activeIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground/70"
+              )}
+            >
+              {step}
+            </span>
+            {i < steps.length - 1 ? <ArrowRight className="size-3 text-border-strong" /> : null}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
