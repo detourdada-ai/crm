@@ -33,8 +33,8 @@ export default async function LoginPage({
           <Link href="/">
             <OrdifyLogo variant="full" className="h-6" />
           </Link>
-          <CardTitle className="mt-3 text-xl">Ordify에 로그인하세요.</CardTitle>
-          <CardDescription>주문부터 배송·정산까지, 오늘의 업무를 이어가세요.</CardDescription>
+          <CardTitle className="mt-3 text-xl">다시 업무로 돌아오세요.</CardTitle>
+          <CardDescription className="sr-only">Ordify 계정으로 로그인하세요.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <LoginForm redirectTo={from && from.startsWith("/") ? from : "/dashboard"} />

@@ -83,17 +83,17 @@ export default async function OrdersPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="주문관리"
-        description="주문을 확인하고 배송 준비를 관리하세요."
-        action={<ManualOrderButton />}
-      />
+      <PageHeader title="주문" description="오늘 들어온 주문을 확인하고 처리하세요." />
 
       <OrderStatusChips counts={chipCounts} active={activeStatus} buildHref={buildStatusHref} />
 
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <OrderFilterBar orderDateFrom={orderDateFrom} orderDateTo={orderDateTo} deliveryDate={deliveryDate} />
+        <ManualOrderButton />
+      </div>
+
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <OrderFilterBar orderDateFrom={orderDateFrom} orderDateTo={orderDateTo} deliveryDate={deliveryDate} />
           <OrderTable
             orders={orders}
             itemSummaries={itemSummaries}

@@ -8,7 +8,7 @@ export interface OrderStatusChipCount {
   count: number;
 }
 
-/** Quick status-filter shortcuts above the order table — mirrors the existing 상태 select in OrderFilterBar, just faster to reach. */
+/** 상단 요약 KPI — 화면에 들어오자마자 "지금 몇 건이 어떤 상태인지"부터 보이도록, 필터 영역보다 먼저 큰 박스로 보여준다. 클릭하면 해당 상태로 필터링. */
 export function OrderStatusChips({
   counts,
   active,
@@ -19,19 +19,22 @@ export function OrderStatusChips({
   buildHref: (status: DeliveryStatus | "all") => string;
 }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {counts.map((c) => (
         <Link
           key={c.status}
           href={buildHref(c.status)}
           className={cn(
-            "rounded-full border px-3 py-1 text-sm font-medium transition-colors",
-            active === c.status
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
+            "rounded-xl border px-4 py-3.5 transition-colors",
+            active === c.status ? "border-primary bg-primary-soft" : "border-border bg-surface hover:bg-accent/40"
           )}
         >
-          {c.label} {c.count}
+          <p className={cn("text-xs font-medium", active === c.status ? "text-primary" : "text-muted-foreground")}>
+            {c.label}
+          </p>
+          <p className={cn("mt-1 text-2xl font-bold", active === c.status ? "text-primary" : "text-text-strong")}>
+            {c.count}
+          </p>
         </Link>
       ))}
     </div>
