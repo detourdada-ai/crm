@@ -1,10 +1,11 @@
-import { Menu, LogOut, Utensils } from "lucide-react";
+import { Menu, LogOut } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import { getSession } from "@/lib/auth/current-session";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { NavLinks } from "./nav-links";
+import { OrdifyLogo } from "@/components/brand/ordify-logo";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
 
 export async function Header() {
@@ -22,15 +23,16 @@ export async function Header() {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-60 p-0">
-          <SheetTitle className="flex h-14 items-center gap-2 border-b px-4 text-lg font-semibold">
-            <Utensils className="size-5 text-primary" />
-            CRM
+          <SheetTitle className="flex h-14 items-center border-b px-4">
+            <OrdifyLogo variant="full" />
           </SheetTitle>
           <div className="p-3">
             <NavLinks isDriver={isDriver} isAdmin={isAdmin} />
           </div>
         </SheetContent>
       </Sheet>
+
+      <OrdifyLogo variant="mark" className="md:hidden" />
 
       <div className="flex-1" />
 
