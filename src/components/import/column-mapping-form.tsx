@@ -110,7 +110,7 @@ export function ColumnMappingForm({
           ))}
         </div>
         <Button disabled={!canConfirm || isSubmitting} onClick={() => onConfirm(mapping)}>
-          {isSubmitting ? "가져오는 중..." : `${parsed.rows.length}행 가져오기`}
+          {isSubmitting ? "처리 중..." : `${parsed.rows.length}행 가져오기`}
         </Button>
       </div>
     </div>

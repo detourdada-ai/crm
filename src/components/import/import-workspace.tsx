@@ -90,7 +90,10 @@ export function ImportWorkspace() {
   return (
     <>
       {isBusy ? (
-        <ImportLoadingOverlay message={isAnalyzing ? "파일을 분석하는 중입니다..." : "엑셀 데이터를 등록하는 중입니다..."} />
+        <ImportLoadingOverlay
+          message={isAnalyzing ? "파일을 확인하고 있습니다..." : "엑셀 주문을 처리하고 있습니다..."}
+          hint={isAnalyzing ? undefined : "파일 크기에 따라 시간이 걸릴 수 있습니다."}
+        />
       ) : null}
       {stage.step === "done" ? (
         <div className="space-y-4">
@@ -104,7 +107,8 @@ export function ImportWorkspace() {
           <CardHeader>
             <CardTitle>컬럼 매핑 확인 — {stage.fileName}</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <LargeFileNotice rowCount={stage.parsed.rows.length} />
             <ColumnMappingForm
               parsed={stage.parsed}
               initialMapping={stage.mapping}
@@ -120,4 +124,31 @@ export function ImportWorkspace() {
       )}
     </>
   );
+}
+
+// Sprint 14-I: thresholds are based on real measurements after the batch-
+// import rewrite (100~5,000행 실측: 1~8초) — not a guess. Under 5,000행 the
+// upload is fast enough that no warning is shown at all; over that
+// (untested territory) we suggest splitting rather than promise a time.
+const LARGE_FILE_HEADS_UP_THRESHOLD = 1000;
+const LARGE_FILE_SPLIT_SUGGESTION_THRESHOLD = 5000;
+
+function LargeFileNotice({ rowCount }: { rowCount: number }) {
+  if (rowCount > LARGE_FILE_SPLIT_SUGGESTION_THRESHOLD) {
+    const half = Math.ceil(rowCount / 2);
+    return (
+      <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        💡 주문이 매우 많습니다 ({rowCount.toLocaleString()}건). 파일을 나누어 등록하면 더 안정적으로 처리할 수
+        있습니다. 예: {rowCount.toLocaleString()}건 → {half.toLocaleString()}건씩 2개 파일로 나누어 업로드
+      </p>
+    );
+  }
+  if (rowCount > LARGE_FILE_HEADS_UP_THRESHOLD) {
+    return (
+      <p className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+        총 {rowCount.toLocaleString()}건입니다. 등록에 몇 초 정도 걸릴 수 있습니다.
+      </p>
+    );
+  }
+  return null;
 }

@@ -2,14 +2,20 @@
 
 import { Loader2 } from "lucide-react";
 
-export function ImportLoadingOverlay({ message }: { message: string }) {
+export function ImportLoadingOverlay({ message, hint }: { message: string; hint?: string }) {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/90 backdrop-blur-sm">
+    <div
+      role="alert"
+      aria-live="assertive"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/95 backdrop-blur-sm"
+    >
       <Loader2 className="size-10 animate-spin text-primary" />
-      <p className="text-base font-medium">{message}</p>
-      <p className="text-sm text-muted-foreground">
-        처리가 끝날 때까지 창을 닫거나 새로고침하지 마세요. 중복 등록을 막기 위해 다른 조작은 잠시 막혀 있습니다.
+      <p className="text-lg font-semibold">{message}</p>
+      {hint ? <p className="text-sm text-muted-foreground">{hint}</p> : null}
+      <p className="max-w-sm text-center text-sm font-medium text-destructive">
+        처리가 완료될 때까지 이 페이지를 닫거나 새로고침하지 마세요.
       </p>
+      <p className="text-xs text-muted-foreground">중복 등록을 막기 위해 다른 조작은 잠시 막혀 있습니다.</p>
     </div>
   );
 }
