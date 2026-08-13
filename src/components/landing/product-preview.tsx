@@ -1,14 +1,28 @@
 import type { ReactNode } from "react";
+import { LayoutDashboard, ShoppingCart, Truck, Users, Wallet, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const MINI_NAV_ICONS = [LayoutDashboard, ShoppingCart, Truck, Users, Wallet, BarChart3];
 
 /**
  * Sprint 14-I UI/UX 리뉴얼 2차: 랜딩에서 제품 UI 자체가 주인공이 되는 실제
  * 화면 프레임 — 작은 "미리보기" 배지로 눈길을 끄는 대신, 실제 브라우저
- * 스크린샷처럼 보이도록 주소창 스타일 상단바만 남긴다. 내용은 실제 화면
- * 구조(Dashboard/Orders/Delivery/Settlement/Customers)를 그대로 재현한
- * 예시 데이터 — 이름/전화번호 등은 전부 가상값.
+ * 스크린샷처럼 보이도록 주소창 스타일 상단바 + (선택) 실제 앱과 동일한
+ * 얇은 sidebar 스트립까지 재현한다. 내용은 실제 화면 구조(Dashboard/
+ * Orders/Delivery/Settlement/Customers)를 그대로 재현한 예시 데이터 —
+ * 이름/전화번호 등은 전부 가상값.
  */
-export function ProductPreview({ path, children, className }: { path: string; children: ReactNode; className?: string }) {
+export function ProductPreview({
+  path,
+  children,
+  className,
+  withSidebar = false,
+}: {
+  path: string;
+  children: ReactNode;
+  className?: string;
+  withSidebar?: boolean;
+}) {
   return (
     <div
       className={cn(
@@ -24,7 +38,25 @@ export function ProductPreview({ path, children, className }: { path: string; ch
         </div>
         <span className="mx-auto rounded-md bg-background px-3 py-1 text-xs text-muted-foreground">app.ordify.co{path}</span>
       </div>
-      <div className="bg-background p-5 sm:p-8">{children}</div>
+      <div className="flex bg-background">
+        {withSidebar ? (
+          <div className="hidden w-14 shrink-0 flex-col items-center gap-3 border-r border-border bg-surface py-4 sm:flex">
+            <div className="size-6 rounded-full bg-primary" />
+            {MINI_NAV_ICONS.map((Icon, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-lg",
+                  i === 0 ? "bg-primary-soft text-primary" : "text-muted-foreground/50"
+                )}
+              >
+                <Icon className="size-4" />
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div className="flex-1 p-5 sm:p-8">{children}</div>
+      </div>
     </div>
   );
 }

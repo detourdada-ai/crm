@@ -16,7 +16,7 @@ export function SiteHeader() {
     <header className="sticky top-0 z-10 border-b border-border bg-surface/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
         <Link href="/">
-          <OrdifyLogo variant="full" className="h-6" />
+          <OrdifyLogo variant="full" className="h-8" />
         </Link>
         <nav className="hidden flex-1 items-center gap-6 md:flex">
           {NAV_LINKS.map((link) => (
@@ -46,7 +46,7 @@ export function SiteHeader() {
           </SheetTrigger>
           <SheetContent side="right" className="w-72">
             <SheetTitle className="flex h-14 items-center border-b px-4">
-              <OrdifyLogo variant="full" className="h-5" />
+              <OrdifyLogo variant="full" className="h-6" />
             </SheetTitle>
             <nav className="flex flex-col gap-1 px-3">
               {NAV_LINKS.map((link) => (

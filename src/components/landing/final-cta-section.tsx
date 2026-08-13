@@ -9,7 +9,7 @@ export function FinalCtaSection() {
           오늘 해야 할 일을
           <br />더 쉽게.
         </h2>
-        <p className="mt-3 text-white/70">Ordify Beta를 지금 무료로 시작해보세요.</p>
+        <p className="mt-3 text-white/70">주문부터 배송, 고객, 정산까지 Ordify에서 한 번에 관리하세요.</p>
         <div className="mt-8 flex flex-col items-center gap-3">
           <Button asChild size="lg">
             <Link href="/login">무료로 시작하기</Link>
