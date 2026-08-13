@@ -1,12 +1,15 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { OrderTable } from "@/components/orders/order-table";
 import { OrderFilterBar } from "@/components/orders/order-filter-bar";
+import { OrderStatusChips, type OrderStatusChipCount } from "@/components/orders/order-status-chips";
 import { ManualOrderButton } from "@/components/orders/manual-order-button";
 import { PaginationControls } from "@/components/common/pagination-controls";
+import { PageHeader } from "@/components/common/page-header";
 import { searchOrdersAction } from "@/actions/orders";
 import { requireSession } from "@/lib/auth/current-session";
 import { resolvePeriodRange } from "@/lib/services/settlement.service";
 import { isValidDateString } from "@/lib/utils/date";
+import { DELIVERY_STATUS_OPTIONS } from "@/lib/constants/delivery-status";
 import type { OrderSortField } from "@/lib/repositories/orders.repository";
 import type { DeliveryStatus } from "@/types/domain";
 
@@ -42,30 +45,51 @@ export default async function OrdersPage({
   const orderDateTo = isValidDateString(params.orderDateTo) ? params.orderDateTo : thisWeek.end;
   const deliveryDate = isValidDateString(params.deliveryDate) ? params.deliveryDate : todayIso();
 
-  const [session, { orders, total, itemSummaries, driverNames }] = await Promise.all([
+  const activeStatus = (params.deliveryStatus as DeliveryStatus | undefined) ?? "all";
+  const commonDateFilter = { orderDateFrom, orderDateTo, deliveryDate };
+
+  const [session, { orders, total, itemSummaries, driverNames }, ...statusCounts] = await Promise.all([
     requireSession(),
     searchOrdersAction({
       page,
       pageSize: PAGE_SIZE,
       deliveryStatus: params.deliveryStatus as DeliveryStatus | undefined,
       bagReturned: params.bagReturned === "true" ? true : params.bagReturned === "false" ? false : undefined,
-      orderDateFrom,
-      orderDateTo,
-      deliveryDate,
+      ...commonDateFilter,
       sortBy: (params.sort as OrderSortField) || "delivery_date",
       sortAscending: params.dir === "asc",
     }),
+    searchOrdersAction({ pageSize: 1, ...commonDateFilter }),
+    ...DELIVERY_STATUS_OPTIONS.map((status) => searchOrdersAction({ pageSize: 1, deliveryStatus: status, ...commonDateFilter })),
   ]);
+
+  const chipCounts: OrderStatusChipCount[] = [
+    { status: "all", label: "전체", count: statusCounts[0].total },
+    ...DELIVERY_STATUS_OPTIONS.map((status, i) => ({ status, label: status, count: statusCounts[i + 1].total })),
+  ];
+
+  function buildStatusHref(status: DeliveryStatus | "all") {
+    const search = new URLSearchParams();
+    if (params.orderDateFrom) search.set("orderDateFrom", params.orderDateFrom);
+    if (params.orderDateTo) search.set("orderDateTo", params.orderDateTo);
+    if (params.deliveryDate) search.set("deliveryDate", params.deliveryDate);
+    if (params.bagReturned) search.set("bagReturned", params.bagReturned);
+    if (params.sort) search.set("sort", params.sort);
+    if (params.dir) search.set("dir", params.dir);
+    if (status !== "all") search.set("deliveryStatus", status);
+    const qs = search.toString();
+    return qs ? `/orders?${qs}` : "/orders";
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-semibold">주문관리</h1>
-          <p className="text-sm text-muted-foreground">엑셀 업로드 또는 수동 등록으로 생성된 전체 주문 목록입니다.</p>
-        </div>
-        <ManualOrderButton />
-      </div>
+      <PageHeader
+        title="주문관리"
+        description="주문을 확인하고 배송 준비를 관리하세요."
+        action={<ManualOrderButton />}
+      />
+
+      <OrderStatusChips counts={chipCounts} active={activeStatus} buildHref={buildStatusHref} />
 
       <Card>
         <CardContent className="space-y-4 pt-6">
