@@ -174,31 +174,42 @@ export interface PreviewTableRow {
   highlighted?: boolean;
 }
 
-/** 주문번호/고객/상품/배송일/상태 컬럼을 가진 실제 업무 테이블 형태의 주문 목록 — Hero Product Preview의 핵심 구성요소. */
-export function PreviewTable({ rows }: { rows: PreviewTableRow[] }) {
+export type PreviewTableColumn = "order" | "customer" | "item" | "deliveryDate" | "status";
+
+/**
+ * 주문번호/고객/상품/배송일/상태 컬럼을 가진 실제 업무 테이블 형태의 주문 목록.
+ * `highlightColumns`로 지정한 컬럼은 헤더/셀에 배경색을 줘서 "여기를 보면 된다"는
+ * 최소한의 강조를 표시한다 — 랜딩에서 이미지만 보고도 핵심 정보를 짚어낼 수 있게 한다.
+ */
+export function PreviewTable({ rows, highlightColumns = [] }: { rows: PreviewTableRow[]; highlightColumns?: PreviewTableColumn[] }) {
+  const isHighlighted = (col: PreviewTableColumn) => highlightColumns.includes(col);
+  const headerClass = (col: PreviewTableColumn) =>
+    cn("px-3 py-2 font-medium", isHighlighted(col) && "bg-primary-soft text-primary");
+  const cellClass = (col: PreviewTableColumn) => cn("px-3 py-2.5", isHighlighted(col) && "bg-primary-soft/40");
+
   return (
     <div className="overflow-hidden rounded-xl border border-border">
       <table className="w-full text-left text-sm">
         <thead className="bg-secondary/60 text-xs text-muted-foreground">
           <tr>
-            <th className="px-3 py-2 font-medium">주문</th>
-            <th className="px-3 py-2 font-medium">고객</th>
-            <th className="px-3 py-2 font-medium">상품</th>
-            <th className="hidden px-3 py-2 font-medium sm:table-cell">배송일</th>
-            <th className="px-3 py-2 text-right font-medium">상태</th>
+            <th className={headerClass("order")}>주문</th>
+            <th className={headerClass("customer")}>고객</th>
+            <th className={headerClass("item")}>상품</th>
+            <th className={cn("hidden sm:table-cell", headerClass("deliveryDate"))}>배송일</th>
+            <th className={cn("text-right", headerClass("status"))}>상태</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr
               key={row.order}
-              className={cn("border-t border-border transition-colors duration-300", row.highlighted && "bg-primary-soft/40")}
+              className={cn("border-t border-border transition-colors duration-300", row.highlighted && "bg-primary-soft/20")}
             >
-              <td className="px-3 py-2.5 font-medium text-text-strong">{row.order}</td>
-              <td className="px-3 py-2.5 text-muted-foreground">{row.customer}</td>
-              <td className="px-3 py-2.5 text-muted-foreground">{row.item}</td>
-              <td className="hidden px-3 py-2.5 text-muted-foreground sm:table-cell">{row.deliveryDate}</td>
-              <td className="px-3 py-2.5 text-right">
+              <td className={cn(cellClass("order"), "font-medium text-text-strong")}>{row.order}</td>
+              <td className={cn(cellClass("customer"), "text-text-strong font-medium")}>{row.customer}</td>
+              <td className={cn(cellClass("item"), "text-muted-foreground")}>{row.item}</td>
+              <td className={cn(cellClass("deliveryDate"), "hidden text-muted-foreground sm:table-cell")}>{row.deliveryDate}</td>
+              <td className={cn(cellClass("status"), "text-right")}>
                 <span className={cn("inline-block rounded-full px-2.5 py-1 text-xs font-medium", badgeToneClass(row.statusTone ?? "neutral"))}>
                   {row.status}
                 </span>
