@@ -213,7 +213,11 @@ const FEATURES = [
 export function FeatureShowcase() {
   return (
     <section id="features" className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-      <div className="space-y-28">
+      <div className="text-center">
+        <span className="text-xs font-semibold tracking-wide text-primary uppercase">제품 살펴보기</span>
+        <h2 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">실제 화면은 이렇게 동작합니다</h2>
+      </div>
+      <div className="mt-16 space-y-28">
         {FEATURES.map((feature, i) => (
           <div
             key={feature.headline}

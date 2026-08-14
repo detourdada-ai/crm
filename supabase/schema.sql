@@ -796,3 +796,65 @@ create policy tenant_isolation on imports
 drop policy if exists tenant_isolation on duplicate_candidates;
 create policy tenant_isolation on duplicate_candidates
   for all using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+
+-- ----------------------------------------------------------------------------
+-- Beta 고객 모집 전환: 플랫폼 레벨(테넌트 무관) 공개 폼 저장소.
+-- ----------------------------------------------------------------------------
+create table if not exists beta_recruit_applications (
+  id uuid primary key default gen_random_uuid(),
+  company_name text not null,
+  business_type text not null,
+  avg_daily_orders text,
+  order_channels text[] not null default '{}',
+  delivery_method text,
+  staff_count text,
+  driver_count text,
+  current_order_management text,
+  current_delivery_management text,
+  uses_excel boolean not null default false,
+  uses_kakao_sms boolean not null default false,
+  biggest_pain_point text not null,
+  contact_name text not null,
+  contact_phone text not null,
+  contact_email text,
+  created_at timestamptz not null default now(),
+  status text not null default '신규'
+    check (status in ('신규', '연락예정', '인터뷰완료', 'Beta후보', 'Beta참여', '보류')),
+  interview_notes text,
+  problem text,
+  current_solution text,
+  frequency text,
+  severity text,
+  current_workaround text,
+  product_fit text,
+  problem_categories text[] not null default '{}'
+);
+
+create index if not exists idx_beta_recruit_applications_created_at on beta_recruit_applications (created_at desc);
+create index if not exists idx_beta_recruit_applications_status on beta_recruit_applications (status);
+
+create table if not exists inquiries (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  contact text not null,
+  title text not null,
+  message text not null,
+  status text not null default '접수' check (status in ('접수', '확인중', '답변완료')),
+  admin_reply text,
+  replied_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  category text not null default '기타'
+    check (category in ('버그', '사용법', '불편사항', '기능요청', '기타'))
+);
+
+create index if not exists idx_inquiries_created_at on inquiries (created_at desc);
+create index if not exists idx_inquiries_status on inquiries (status);
+
+drop trigger if exists trg_inquiries_updated_at on inquiries;
+create trigger trg_inquiries_updated_at
+  before update on inquiries
+  for each row execute function set_updated_at();
+
+alter table beta_recruit_applications enable row level security;
+alter table inquiries enable row level security;

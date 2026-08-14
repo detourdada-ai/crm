@@ -8,18 +8,16 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
 // would make the OAuth flow unreachable. /signup is the same case: a Google
 // identity exists (via Supabase Auth) but no custom session cookie yet.
 // /api/cron is invoked by Vercel Cron with no session cookie at all — its
-// own route handler enforces the real CRON_SECRET check. Sprint 14-D: "/" is
-// the public Landing page (Dashboard moved to /dashboard), so it needs the
-// same no-session-required treatment; a logged-in visitor is bounced to
-// their actual home page by the isPublicPath branch below, same as /login.
+// own route handler enforces the real CRON_SECRET check. "/" is the public
+// Landing page (Dashboard moved to /dashboard).
 const PUBLIC_PATHS = ["/", "/login", "/auth/callback", "/signup", "/api/cron"];
 
 // Legal pages: unlike PUBLIC_PATHS, a logged-in visitor should NOT be
 // redirected away from these — they're referenced from Settings/signup
 // regardless of auth state, and there's no reason to bounce someone reading
-// Terms just because they happen to have a session. /contact is the same
-// case — a logged-in Seller should be able to reach support too.
-const ALWAYS_ACCESSIBLE_PATHS = ["/terms", "/privacy", "/contact"];
+// Terms just because they happen to have a session. /contact/inquiries are
+// the same case — a logged-in Seller should be able to reach support too.
+const ALWAYS_ACCESSIBLE_PATHS = ["/terms", "/privacy", "/contact", "/inquiries"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -37,7 +35,10 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (session && isPublicPath) {
+  // "/" is an explicit exception: it stays a stable Landing entry point even
+  // when logged in — the user must click "서비스 가기" to enter the app.
+  // /login, /signup etc. still bounce a logged-in visitor away as before.
+  if (session && isPublicPath && pathname !== "/") {
     return NextResponse.redirect(new URL(session.role === "driver" ? "/driver" : "/dashboard", request.url));
   }
 

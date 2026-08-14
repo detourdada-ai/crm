@@ -268,3 +268,71 @@ export interface CustomerStats {
 export interface CustomerWithStats extends Customer {
   stats: CustomerStats;
 }
+
+// Beta 고객 모집 전환: 플랫폼 레벨(테넌트 무관) 공개 폼 2종.
+// Phase 9: 지원 진행 상태 + 인터뷰 결과 기록 + 문제 분류(모집 지원 검증 워크플로우).
+export type RecruitApplicationStatus = "신규" | "연락예정" | "인터뷰완료" | "Beta후보" | "Beta참여" | "보류";
+
+// Section 8: 문제 반복성 파악용 고정 10개 카테고리 (기능 분류가 아니라 패턴 발견 목적).
+export const PROBLEM_CATEGORIES = [
+  "주문접수",
+  "고객관리",
+  "주문정리",
+  "담당자배정",
+  "배송관리",
+  "배송상태",
+  "완료관리",
+  "고객문의",
+  "정산",
+  "기타",
+] as const;
+export type ProblemCategory = (typeof PROBLEM_CATEGORIES)[number];
+
+export interface BetaRecruitApplication {
+  id: UUID;
+  company_name: string;
+  business_type: string;
+  avg_daily_orders: string | null;
+  order_channels: string[];
+  delivery_method: string | null;
+  staff_count: string | null;
+  driver_count: string | null;
+  current_order_management: string | null;
+  current_delivery_management: string | null;
+  uses_excel: boolean;
+  uses_kakao_sms: boolean;
+  biggest_pain_point: string;
+  contact_name: string;
+  contact_phone: string;
+  contact_email: string | null;
+  created_at: ISODateString;
+  status: RecruitApplicationStatus;
+  interview_notes: string | null;
+  // Section 7: 구조화된 인터뷰 결과 기록.
+  problem: string | null;
+  current_solution: string | null;
+  frequency: string | null;
+  severity: string | null;
+  current_workaround: string | null;
+  product_fit: string | null;
+  problem_categories: ProblemCategory[];
+}
+
+export type InquiryStatus = "접수" | "확인중" | "답변완료";
+// Phase 9 Section 16: 문의 유형 분류 — "기능요청"은 바로 개발하지 않고 인터뷰 데이터와
+// 교차 참조하기 위한 분류일 뿐, 별도 처리 로직을 갖지 않는다.
+export type InquiryCategory = "버그" | "사용법" | "불편사항" | "기능요청" | "기타";
+
+export interface Inquiry {
+  id: UUID;
+  name: string;
+  contact: string;
+  title: string;
+  message: string;
+  status: InquiryStatus;
+  admin_reply: string | null;
+  replied_at: ISODateString | null;
+  created_at: ISODateString;
+  updated_at: ISODateString;
+  category: InquiryCategory;
+}

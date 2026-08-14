@@ -6,6 +6,7 @@ import { LoginForm } from "@/components/auth/login-form";
 import { OrdifyLogo } from "@/components/brand/ordify-logo";
 import { signInWithGoogleAction } from "@/actions/google-auth";
 import { getSession } from "@/lib/auth/current-session";
+import { GOOGLE_LOGIN_VISIBLE } from "@/lib/constants/auth-flags";
 
 const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
   unregistered_google_account: "등록되지 않은 Google 계정입니다. 관리자에게 문의해주세요.",
@@ -43,27 +44,31 @@ export default async function LoginPage({
         <CardContent className="space-y-4">
           <LoginForm redirectTo={from && from.startsWith("/") ? from : "/dashboard"} />
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">또는</span>
-            </div>
-          </div>
+          {GOOGLE_LOGIN_VISIBLE ? (
+            <>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">또는</span>
+                </div>
+              </div>
 
-          {googleError ? <p className="text-sm text-destructive">{googleError}</p> : null}
+              {googleError ? <p className="text-sm text-destructive">{googleError}</p> : null}
 
-          <form action={signInWithGoogleAction}>
-            <Button type="submit" variant="outline" className="w-full">
-              Google로 로그인
-            </Button>
-          </form>
+              <form action={signInWithGoogleAction}>
+                <Button type="submit" variant="outline" className="w-full">
+                  Google로 로그인
+                </Button>
+              </form>
+            </>
+          ) : null}
 
           <p className="text-center text-sm text-muted-foreground">
-            주문:한장이 처음이신가요?{" "}
-            <Link href="/" className="font-medium text-primary hover:underline">
-              무료로 시작하기
+            궁금한 점이 있으신가요?{" "}
+            <Link href="/#recruit" className="font-medium text-primary hover:underline">
+              사장님 모집에 참여하기
             </Link>
           </p>
         </CardContent>

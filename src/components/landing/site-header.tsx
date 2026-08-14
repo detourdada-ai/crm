@@ -1,17 +1,16 @@
 import Link from "next/link";
-import { Menu } from "lucide-react";
+import { Menu, ArrowRight } from "lucide-react";
 import { OrdifyLogo } from "@/components/brand/ordify-logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import type { SessionPayload } from "@/lib/auth/session";
 
 const NAV_LINKS = [
-  { href: "#product", label: "제품" },
-  { href: "#features", label: "기능" },
-  { href: "#flow", label: "사용 방법" },
-  { href: "/contact", label: "문의하기" },
+  { href: "#service", label: "서비스 소개" },
+  { href: "#recruit", label: "사장님 모집" },
 ];
 
-export function SiteHeader() {
+export function SiteHeader({ session }: { session: SessionPayload | null }) {
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-surface/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
@@ -25,18 +24,29 @@ export function SiteHeader() {
             </a>
           ))}
         </nav>
-        <div className="ml-auto hidden items-center gap-2 md:flex">
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/login">로그인</Link>
-          </Button>
-          <Button asChild size="sm">
-            <Link href="/login">무료로 시작하기</Link>
-          </Button>
+        <div className="ml-auto hidden items-center gap-3 md:flex">
+          {session ? (
+            <>
+              <span className="text-sm text-muted-foreground">
+                {session.username} <span className="text-muted-foreground/60">· 로그인됨</span>
+              </span>
+              <Button asChild size="sm" className="gap-1.5">
+                <Link href="/dashboard">
+                  서비스 가기
+                  <ArrowRight className="size-4" />
+                </Link>
+              </Button>
+            </>
+          ) : (
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/login">로그인</Link>
+            </Button>
+          )}
         </div>
 
-        {/* Sprint 14-I UI/UX 리뉴얼 2차: 모바일에서 nav 링크가 사라지고 로고만
-            남아 있던 문제 — 내부 SaaS 화면의 Sheet 패턴을 그대로 재사용해
-            햄버거로 제품/기능/사용 방법/문의 + 로그인/시작하기를 노출한다. */}
+        {/* Beta 고객 모집 전환: 모바일 우선순위 — 비로그인은 "사장님 모집"
+            참여가 1순위(로그인은 보조), 로그인 상태는 "서비스 가기"가
+            1순위다. */}
         <Sheet>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="ml-auto md:hidden">
@@ -60,12 +70,28 @@ export function SiteHeader() {
               ))}
             </nav>
             <div className="mt-auto flex flex-col gap-2 border-t border-border p-3">
-              <Button asChild variant="outline">
-                <Link href="/login">로그인</Link>
-              </Button>
-              <Button asChild>
-                <Link href="/login">무료로 시작하기</Link>
-              </Button>
+              {session ? (
+                <>
+                  <p className="px-1 text-sm text-muted-foreground">
+                    {session.username} <span className="text-muted-foreground/60">· 로그인됨</span>
+                  </p>
+                  <Button asChild className="gap-1.5">
+                    <Link href="/dashboard">
+                      서비스 가기
+                      <ArrowRight className="size-4" />
+                    </Link>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button asChild>
+                    <a href="#recruit">사장님 모집에 참여하기</a>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href="/login">로그인</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </SheetContent>
         </Sheet>

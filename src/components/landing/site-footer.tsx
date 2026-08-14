@@ -30,18 +30,18 @@ export function SiteFooter() {
             <p className="text-sm font-semibold text-text-strong">서비스</p>
             <ul className="mt-3 space-y-2">
               <li>
-                <a href="#product" className="hover:text-foreground">
-                  제품
+                <a href="#service" className="hover:text-foreground">
+                  서비스 소개
                 </a>
               </li>
               <li>
-                <a href="#features" className="hover:text-foreground">
-                  기능
+                <a href="#recruit" className="hover:text-foreground">
+                  사장님 모집
                 </a>
               </li>
               <li>
-                <Link href="/contact" className="hover:text-foreground">
-                  문의하기
+                <Link href="/inquiries" className="hover:text-foreground">
+                  문의 게시판
                 </Link>
               </li>
             </ul>

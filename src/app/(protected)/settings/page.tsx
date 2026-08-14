@@ -10,8 +10,12 @@ import { DriverManagementCard } from "@/components/settings/driver-management-ca
 import { GoogleEmailCell } from "@/components/settings/google-email-cell";
 import { IssueBetaKeyButton } from "@/components/settings/issue-beta-key-button";
 import { ExtendBetaButton } from "@/components/settings/extend-beta-button";
+import { RecruitApplicationsTable } from "@/components/settings/recruit-applications-table";
+import { InquiryAdminList } from "@/components/settings/inquiry-admin-list";
 import { PageHeader } from "@/components/common/page-header";
 import { listDriversAction } from "@/actions/drivers";
+import { listBetaRecruitApplicationsAction } from "@/actions/beta-recruit";
+import { listInquiriesAction } from "@/actions/inquiries";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { computeAccessStatus } from "@/lib/auth/access-control";
@@ -30,6 +34,9 @@ export default async function SettingsPage() {
   const session = await requireSession();
   const isAdmin = session.role === "admin";
   const [accounts, drivers] = await Promise.all([listAccounts(), listDriversAction()]);
+  const [recruitApplications, inquiries] = isAdmin
+    ? await Promise.all([listBetaRecruitApplicationsAction(), listInquiriesAction()])
+    : [[], []];
 
   if (!isAdmin) {
     const vipCriteria = await getVipCriteria(session.username);
@@ -235,6 +242,26 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <DriverManagementCard drivers={drivers} isAdmin accountUsernames={accountUsernames} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Beta 모집 지원</CardTitle>
+          <CardDescription>Landing &ldquo;사장님 모집&rdquo; 폼으로 접수된 지원 내역입니다. 최신순입니다.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RecruitApplicationsTable applications={recruitApplications} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>문의 게시판 관리</CardTitle>
+          <CardDescription>문의 게시판에 등록된 문의를 확인하고 답변합니다. 답변을 등록하면 상태가 답변완료로 바뀝니다.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <InquiryAdminList inquiries={inquiries} />
         </CardContent>
       </Card>
 

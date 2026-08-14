@@ -1,49 +1,48 @@
-import { ShoppingCart, Truck, Users, Wallet } from "lucide-react";
+import { ShoppingCart, UserCheck, ListChecks, CheckCircle2 } from "lucide-react";
 
 const STEPS = [
   {
     icon: ShoppingCart,
     number: "01",
     label: "주문",
-    headline: "들어온 주문을 한곳에서",
-    description: "전화, 온라인, 수동 주문을 하나의 목록에서 확인합니다.",
-    bullets: ["주문 목록", "주문 상태", "주문 상세 Popup"],
+    headline: "주문을 한 곳에서 확인",
+    description: "스마트스토어 / 전화 / 문자 등 다양한 주문을 최종적으로 표준 주문 데이터로 관리합니다.",
+    bullets: ["주문 목록", "주문 상태", "주문 상세"],
   },
   {
-    icon: Truck,
+    icon: UserCheck,
     number: "02",
-    label: "배송",
-    headline: "오늘 배송할 일을 한눈에",
-    description: "배송할 주문과 진행 상태를 한곳에서 확인합니다.",
-    bullets: ["배송 예정", "기사 배정", "배송중", "완료"],
+    label: "담당자",
+    headline: "담당자를 정한다",
+    description: "직원이나 기사에게 주문을 배정합니다.",
+    bullets: ["담당자 배정", "기사 배정", "재배정"],
   },
   {
-    icon: Users,
+    icon: ListChecks,
     number: "03",
-    label: "고객",
-    headline: "주문이 고객 기록으로 이어집니다",
-    description: "주문 이력이 고객 정보와 함께 쌓입니다.",
-    bullets: ["고객 목록", "최근 주문", "주문 횟수", "고객 상세"],
+    label: "처리",
+    headline: "처리한다",
+    description: "준비 → 작업중 → 배송중 등 실제 업무 상태를 관리합니다.",
+    bullets: ["준비", "작업중", "배송중"],
   },
   {
-    icon: Wallet,
+    icon: CheckCircle2,
     number: "04",
-    label: "정산",
-    headline: "판매 금액을 쉽게 확인합니다",
-    description: "주문과 함께 매출과 정산 내역을 확인합니다.",
-    bullets: ["정산 예정", "정산 완료", "이번 달 금액"],
+    label: "완료",
+    headline: "완료한다",
+    description: "완료 여부를 기록하고 필요하면 고객에게 상태를 안내합니다.",
+    bullets: ["완료 기록", "고객 안내"],
   },
 ];
 
-/** Ordify의 핵심 가치인 주문→배송→고객→정산 흐름을 Landing의 독립 섹션으로 크게 보여준다. */
+/** Section 9 "서비스 설명" — 주문→담당자→처리→완료를 제품의 Core로 보여준다. */
 export function FlowSection() {
   return (
-    <section id="flow" className="border-y border-border bg-secondary/40 py-24">
+    <section id="service" className="border-y border-border bg-secondary/40 py-24">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h2 className="text-center text-2xl font-bold text-text-strong sm:text-3xl">
-          주문부터 정산까지,
-          <br />
-          하나의 흐름으로.
+        <p className="text-center text-xs font-semibold tracking-wide text-primary uppercase">주문이 들어오면</p>
+        <h2 className="mt-2 text-center text-2xl font-bold text-text-strong sm:text-3xl">
+          주문 → 담당자 → 처리 → 완료
         </h2>
 
         <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,36 +1,52 @@
-import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/landing/site-header";
 import { HeroSection } from "@/components/landing/hero-section";
+import { RecruitIntro } from "@/components/landing/recruit-intro";
+import { TargetAudience } from "@/components/landing/target-audience";
+import { IndustryScenarios } from "@/components/landing/industry-scenarios";
 import { FlowSection } from "@/components/landing/flow-section";
+import { SmartstorePositioning } from "@/components/landing/smartstore-positioning";
 import { FeatureShowcase } from "@/components/landing/feature-showcase";
-import { SellerScenarios } from "@/components/landing/seller-scenarios";
+import { ComparisonSection } from "@/components/landing/comparison-section";
 import { FinalCtaSection } from "@/components/landing/final-cta-section";
+import { FaqSection } from "@/components/landing/faq-section";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { getSession } from "@/lib/auth/current-session";
 
-// Sprint 14-I UI/UX 리뉴얼 2차 (Phase UI-3): public Landing at "/" —
-// "기능 목록"이 아니라 주문→배송→고객→정산으로 이어지는 하나의 운영 흐름을
-// 실제 제품 화면(목업)으로 보여주는 SaaS 랜딩. Dashboard는 /dashboard.
+// Beta 고객 모집 전환: Landing의 목적이 "가입시키기"에서 "실제 필요한
+// 사업자를 찾고 이야기를 듣는 것"으로 바뀌었다 — 섹션 순서는 Hero(문제
+// 공감) → 모집 인트로 → 대상 명확화 → 업종별 시나리오 → 서비스 설명
+// (주문→담당자→처리→완료) → 스마트스토어 포지셔닝 → 제품 살펴보기 →
+// 기존 방식과 비교 → 모집 CTA(폼) → FAQ 순으로, "5초 안에 내 사업과
+// 관련있는지 판단 → 공감 → 모집 참여"라는 하나의 흐름을 따른다.
+// 실제 고객 인터뷰가 아직 없으므로 허위 후기 섹션은 넣지 않는다.
 //
 // STEP-6: explicitly force-dynamic (never statically cached/prerendered) so
 // a browser or intermediary can never serve a stale snapshot of this page
 // while a user is mid-OAuth-redirect back into the app.
+//
+// Landing/Dashboard 진입 구조 개선: "/"는 로그인 여부와 무관하게 항상
+// Landing을 그대로 보여준다 — 로그인 상태에서도 자동으로 /dashboard로
+// 보내지 않는다(proxy.ts의 미들웨어 redirect도 "/"는 제외하도록 변경됨).
+// 로그인한 사용자는 SiteHeader의 "서비스 가기" 버튼을 직접 눌러야 진입한다.
 export const dynamic = "force-dynamic";
 
 export default async function LandingPage() {
-  // 이미 로그인된 사용자는 랜딩을 다시 볼 필요가 없다 — 바로 업무 화면으로.
   const session = await getSession();
-  if (session) redirect("/dashboard");
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader />
+      <SiteHeader session={session} />
       <main className="flex-1">
         <HeroSection />
+        <RecruitIntro />
+        <TargetAudience />
+        <IndustryScenarios />
         <FlowSection />
+        <SmartstorePositioning />
         <FeatureShowcase />
-        <SellerScenarios />
+        <ComparisonSection />
         <FinalCtaSection />
+        <FaqSection />
       </main>
       <SiteFooter />
     </div>

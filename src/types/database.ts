@@ -17,6 +17,10 @@ import type {
   AccessType,
   AccessKeyType,
   AccessKeyStatus,
+  InquiryStatus,
+  InquiryCategory,
+  RecruitApplicationStatus,
+  ProblemCategory,
 } from "./domain";
 
 export interface Database {
@@ -289,6 +293,96 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["settlements"]["Insert"]>;
+        Relationships: [];
+      };
+      beta_recruit_applications: {
+        Row: {
+          id: string;
+          company_name: string;
+          business_type: string;
+          avg_daily_orders: string | null;
+          order_channels: string[];
+          delivery_method: string | null;
+          staff_count: string | null;
+          driver_count: string | null;
+          current_order_management: string | null;
+          current_delivery_management: string | null;
+          uses_excel: boolean;
+          uses_kakao_sms: boolean;
+          biggest_pain_point: string;
+          contact_name: string;
+          contact_phone: string;
+          contact_email: string | null;
+          created_at: string;
+          status: RecruitApplicationStatus;
+          interview_notes: string | null;
+          problem: string | null;
+          current_solution: string | null;
+          frequency: string | null;
+          severity: string | null;
+          current_workaround: string | null;
+          product_fit: string | null;
+          problem_categories: ProblemCategory[];
+        };
+        Insert: {
+          id?: string;
+          company_name: string;
+          business_type: string;
+          avg_daily_orders?: string | null;
+          order_channels?: string[];
+          delivery_method?: string | null;
+          staff_count?: string | null;
+          driver_count?: string | null;
+          current_order_management?: string | null;
+          current_delivery_management?: string | null;
+          uses_excel?: boolean;
+          uses_kakao_sms?: boolean;
+          biggest_pain_point: string;
+          contact_name: string;
+          contact_phone: string;
+          contact_email?: string | null;
+          created_at?: string;
+          status?: RecruitApplicationStatus;
+          interview_notes?: string | null;
+          problem?: string | null;
+          current_solution?: string | null;
+          frequency?: string | null;
+          severity?: string | null;
+          current_workaround?: string | null;
+          product_fit?: string | null;
+          problem_categories?: ProblemCategory[];
+        };
+        Update: Partial<Database["public"]["Tables"]["beta_recruit_applications"]["Insert"]>;
+        Relationships: [];
+      };
+      inquiries: {
+        Row: {
+          id: string;
+          name: string;
+          contact: string;
+          title: string;
+          message: string;
+          status: InquiryStatus;
+          admin_reply: string | null;
+          replied_at: string | null;
+          created_at: string;
+          updated_at: string;
+          category: InquiryCategory;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          contact: string;
+          title: string;
+          message: string;
+          status?: InquiryStatus;
+          admin_reply?: string | null;
+          replied_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          category?: InquiryCategory;
+        };
+        Update: Partial<Database["public"]["Tables"]["inquiries"]["Insert"]>;
         Relationships: [];
       };
       order_items: {
