@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Store, Phone, MessageCircle, ArrowRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ProductPreview, PreviewStat, PreviewFlowRow, PreviewTable, type PreviewTableRow } from "./product-preview";
+import { ProductPreview, PreviewStat, PreviewFlowRow, PreviewTable, PointBadge, type PreviewTableRow } from "./product-preview";
 
 const ORDER_ROWS: PreviewTableRow[] = [
   { order: "20260814-0031", customer: "김민수", item: "상품 A 외 1건", deliveryDate: "08.14(금)", status: "신규", statusTone: "primary", highlighted: true },
@@ -12,7 +12,7 @@ const ORDER_ROWS: PreviewTableRow[] = [
   { order: "20260813-0029", customer: "이수진", item: "상품 C 외 2건", deliveryDate: "08.15(토)", status: "처리중", statusTone: "neutral" },
 ];
 
-/** Section 4-A: 전체 화면 대신 주문번호/고객/상품/배송일/상태가 보이는 테이블 자체를 보여준다. */
+/** STEP 1 실제 화면 — 주문번호/고객/배송일/상태에 각각 번호 배지를 붙여 옆 포인트 목록과 1:1로 대응시킨다. */
 function OrdersPreview() {
   return (
     <ProductPreview screen="주문관리" showPreviewLabel>
@@ -22,7 +22,14 @@ function OrdersPreview() {
         <span className="rounded-full bg-muted px-3 py-1.5 font-medium text-muted-foreground">처리중</span>
       </div>
       <div className="mt-4">
-        <PreviewTable rows={ORDER_ROWS} highlightColumns={["customer", "deliveryDate", "status"]} />
+        <PreviewTable
+          rows={ORDER_ROWS}
+          highlightColumns={[
+            { column: "customer", number: 1 },
+            { column: "deliveryDate", number: 1 },
+            { column: "status", number: 2 },
+          ]}
+        />
       </div>
     </ProductPreview>
   );
@@ -30,7 +37,7 @@ function OrdersPreview() {
 
 const DRIVERS = ["홍길동", "김철수", "이영희"];
 
-/** 주문을 기사에게 배정하는 동작이 주문:한장 배송관리의 핵심 — 배정 UI를 직접 보여준다. */
+/** STEP 2 실제 화면 — 고객/상품 요약, 기사 배정, 가방 상태를 한 카드 안에서 번호로 짚어준다. */
 function DeliveryPreview() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [driver, setDriver] = useState("홍길동");
@@ -43,9 +50,17 @@ function DeliveryPreview() {
         <PreviewStat label="완료" value="21" />
       </div>
       <div className="relative mt-4 rounded-xl border-2 border-primary/30 bg-primary-soft/30 p-4">
-        <p className="text-xs font-medium text-muted-foreground">김민수 주문</p>
-        <p className="mt-1 text-sm text-text-strong">
+        <p className="text-xs font-medium text-muted-foreground">
+          <PointBadge n={1} />
+          김민수 · 상품 A 외 1건
+        </p>
+        <p className="mt-2 text-sm text-text-strong">
+          <PointBadge n={2} />
           배송기사: <span className="font-semibold text-primary">{driver}</span>
+        </p>
+        <p className="mt-2 text-sm text-text-strong">
+          <PointBadge n={3} />
+          가방: <span className="font-semibold text-primary">미회수</span>
         </p>
         <Button size="sm" variant="outline" className="mt-3 h-8 w-full" onClick={() => setAssignOpen((v) => !v)}>
           배송 배정
@@ -81,7 +96,7 @@ const CUSTOMERS = [
   { name: "박지현", orders: "3회", total: "112,000원", lastOrder: "2026.08.09" },
 ];
 
-/** 고객이 단순 주소록이 아니라 "주문 이력과 연결된 사람"이라는 것을 보여준다. */
+/** STEP 3 실제 화면 — 고객 정보 / 최근 주문 / 구매 금액 / 주문 이력을 번호로 짚어준다. */
 function CustomersPreview() {
   const [selected, setSelected] = useState(0);
   const customer = CUSTOMERS[selected];
@@ -103,19 +118,29 @@ function CustomersPreview() {
           </button>
         ))}
       </div>
-      <p className="mt-4 text-sm font-semibold text-text-strong">{customer.name}</p>
+      <p className="mt-4 text-sm font-semibold text-text-strong">
+        <PointBadge n={1} />
+        {customer.name}
+      </p>
       <div className="mt-3 grid grid-cols-2 gap-3">
         <div className="rounded-xl border-2 border-primary/30 bg-primary-soft/30 px-4 py-3.5">
-          <p className="text-xs text-muted-foreground">최근 주문</p>
+          <p className="text-xs text-muted-foreground">
+            <PointBadge n={2} />
+            최근 주문
+          </p>
           <p className="mt-1 text-2xl font-bold text-primary">{customer.orders}</p>
         </div>
         <div className="rounded-xl border-2 border-primary/30 bg-primary-soft/30 px-4 py-3.5">
-          <p className="text-xs text-muted-foreground">누적 구매</p>
+          <p className="text-xs text-muted-foreground">
+            <PointBadge n={3} />
+            누적 구매
+          </p>
           <p className="mt-1 text-2xl font-bold text-primary">{customer.total}</p>
         </div>
       </div>
       <p className="mt-3 text-xs text-muted-foreground">최근 주문 · {customer.lastOrder}</p>
       <Button size="sm" variant="outline" className="mt-3 h-8 w-full">
+        <PointBadge n={4} />
         주문 이력 보기
       </Button>
     </ProductPreview>
@@ -141,7 +166,7 @@ const SETTLEMENTS = [
   },
 ];
 
-/** 배송완료 → 정산대상 → 정산완료로 이어지는 흐름 자체를 보여준다. */
+/** STEP 4 실제 화면 — 배송완료/정산대상/금액/기간별 확인을 번호로 짚어준다. */
 function SettlementPreview() {
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -151,14 +176,25 @@ function SettlementPreview() {
         <PreviewStat label="정산 대기" value="₩1,240,000" />
         <PreviewStat label="정산 완료" value="₩3,820,000" />
       </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        <PointBadge n={3} />
+        정산 금액은 기간(이번 달) 기준으로 확인합니다.
+      </p>
       <div className="mt-4">
         {SETTLEMENTS.map((row) => (
           <div key={row.key}>
             <button type="button" onClick={() => setSelected(row.key === selected ? null : row.key)} className="block w-full text-left">
+              <div className="flex items-center gap-1 pt-2 text-[10px] text-muted-foreground">
+                <PointBadge n={1} />
+                배송완료
+                <PointBadge n={2} />
+                정산대상
+              </div>
               <PreviewFlowRow primary={row.primary} secondary={row.secondary} steps={row.steps} activeIndex={row.activeIndex} />
             </button>
             {selected === row.key ? (
               <div className="animate-in fade-in-0 slide-in-from-top-1 mb-2 rounded-xl border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground duration-200">
+                <PointBadge n={4} />
                 이번 달 정산 금액 · <span className="font-semibold text-text-strong">{row.amount}</span>
               </div>
             ) : null}
@@ -169,52 +205,77 @@ function SettlementPreview() {
   );
 }
 
-// Section 3/5: 각 화면마다 상황 → 문제 → (화면) → 강조 → 결과 순서로 붙인다.
-// "화면"은 preview 컴포넌트, "강조"는 highlights(이미지 아래 캡션), "결과"는 result(한 문장).
-const FEATURES = [
+interface StepPoint {
+  n: number;
+  label: string;
+}
+
+interface StepData {
+  step: string;
+  headline: string;
+  problem: string[];
+  eyebrow: string;
+  points: StepPoint[];
+  result: string;
+  screen: ReactNode;
+}
+
+// Section 1~4: STEP 1~4는 반드시 동일한 리듬 — 상황/문제 → 실제 화면 → 핵심 포인트(번호) → 결과 한 문장.
+// "자동으로 다 모아준다"는 표현은 쓰지 않는다 — 수동/엑셀로 들어온 주문도 "같은 방식으로 관리"할 뿐이다.
+const STEPS: StepData[] = [
+  {
+    step: "STEP 1",
+    headline: "주문을 한곳에서 정리합니다",
+    problem: ["주문이 전화, 카카오톡, 스마트스토어 등 여러 경로로 들어옵니다.", "주문 내용을 따로 확인하고 정리해야 했습니다."],
+    eyebrow: "주문관리",
+    points: [
+      { n: 1, label: "주문번호 / 고객 / 배송일을 한눈에" },
+      { n: 2, label: "주문 상태를 바로 확인" },
+      { n: 3, label: "수동으로 들어온 주문도 같은 방식으로 관리" },
+    ],
+    result: "어디에서 들어온 주문인지보다, 지금 처리해야 할 주문이 무엇인지에 집중할 수 있습니다.",
+    screen: <OrdersPreview />,
+  },
   {
     step: "STEP 2",
-    situation: "주문을 한곳에서 확인합니다",
-    problem: "스마트스토어, 전화, 카카오톡으로 들어온 주문을 각각 따로 확인해야 했습니다.",
-    eyebrow: "주문관리",
-    headline: "들어온 주문을 표로 한눈에",
-    description: "어디서 들어온 주문이든 고객, 상품, 배송일, 상태를 표준 주문 데이터로 정리합니다.",
-    highlights: ["고객명", "배송일", "상태"],
-    result: "여러 곳에서 들어온 주문도 한 화면에서 확인할 수 있습니다.",
-    preview: OrdersPreview,
+    headline: "오늘 배송할 주문을 바로 확인합니다",
+    problem: ["주문이 쌓이면 누가 무엇을 배송해야 하는지 다시 확인해야 했습니다."],
+    eyebrow: "배송관리",
+    points: [
+      { n: 1, label: "고객 · 상품 요약" },
+      { n: 2, label: "기사 배정" },
+      { n: 3, label: "가방 상태" },
+    ],
+    result: "오늘 배송할 주문과 담당 기사를 한 화면에서 확인할 수 있습니다.",
+    screen: <DeliveryPreview />,
   },
   {
     step: "STEP 3",
-    situation: "오늘 배송할 일을 정리합니다",
-    problem: "기사에게 어떤 주문을 배정했는지 따로 기록하고 카톡으로 전달해야 했습니다.",
-    eyebrow: "배송관리",
-    headline: "담당 기사를 바로 배정",
-    description: "배송 대기부터 완료까지, 오늘 누가 어디를 배송하는지 한눈에 관리합니다.",
-    highlights: ["담당 기사", "배송 상태"],
-    result: "누가 어디를 배송하는지 한 화면에서 확인할 수 있습니다.",
-    preview: DeliveryPreview,
+    headline: "주문 기록이 고객별로 이어집니다",
+    problem: ["기존 고객이 무엇을 주문했는지 다시 찾아봐야 했습니다."],
+    eyebrow: "고객관리",
+    points: [
+      { n: 1, label: "고객 정보" },
+      { n: 2, label: "최근 주문" },
+      { n: 3, label: "구매 금액" },
+      { n: 4, label: "주문 이력" },
+    ],
+    result: "고객을 다시 찾지 않아도 이전 주문과 관계를 이어갈 수 있습니다.",
+    screen: <CustomersPreview />,
   },
   {
     step: "STEP 4",
-    situation: "고객 기록이 쌓입니다",
-    problem: "누가 자주 주문하는 단골인지 기억이나 메모에 의존해야 했습니다.",
-    eyebrow: "고객관리",
-    headline: "주문할수록 쌓이는 고객 기록",
-    description: "주문이 들어올 때마다 고객별 주문 횟수와 누적 금액이 자동으로 정리됩니다.",
-    highlights: ["최근 주문 횟수", "누적 구매액"],
-    result: "고객별 주문 이력을 따로 정리하지 않아도 됩니다.",
-    preview: CustomersPreview,
-  },
-  {
-    step: "STEP 5",
-    situation: "판매와 정산을 확인합니다",
-    problem: "기사별 배송 건수와 정산 금액을 따로 계산해야 했습니다.",
+    headline: "배송 완료와 정산을 연결합니다",
+    problem: ["배송이 끝난 뒤 실제 완료된 주문과 금액을 다시 맞춰봐야 했습니다."],
     eyebrow: "정산관리",
-    headline: "배송 완료가 정산으로 연결",
-    description: "배송완료 → 정산대상 → 정산완료로 이어지는 흐름을 그대로 관리합니다.",
-    highlights: ["기사별 정산 금액", "정산 진행 단계"],
-    result: "배송이 끝나면 정산까지 자동으로 이어집니다.",
-    preview: SettlementPreview,
+    points: [
+      { n: 1, label: "배송 완료" },
+      { n: 2, label: "정산 대상" },
+      { n: 3, label: "기간별 금액 확인" },
+      { n: 4, label: "정산 금액" },
+    ],
+    result: "배송이 끝난 주문이 정산까지 자연스럽게 이어집니다.",
+    screen: <SettlementPreview />,
   },
 ];
 
@@ -224,16 +285,43 @@ const ORDER_CHANNELS = [
   { icon: MessageCircle, label: "카카오톡" },
 ];
 
-function HighlightCaption({ items }: { items: string[] }) {
+const FLOW_STEPS = ["주문", "정리", "배송", "고객", "정산"];
+
+/** STEP 1~4 전부 동일하게 재사용하는 블록 — 시각적 리듬이 다르면 "각각 다른 기능 소개"처럼 읽히기 때문에 레이아웃을 절대 바꾸지 않는다. */
+function StepBlock({ data }: { data: StepData }) {
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-      <span className="font-semibold text-primary">여기를 보세요 →</span>
-      {items.map((item) => (
-        <span key={item} className="flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-primary" aria-hidden />
-          {item}
-        </span>
-      ))}
+    <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-surface px-6 py-8 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_16px_32px_-16px_rgba(15,23,42,0.15)] sm:px-10 sm:py-10">
+      <div className="text-center">
+        <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{data.step}</span>
+        <h3 className="mt-2 text-xl font-bold text-text-strong sm:text-2xl">{data.headline}</h3>
+        <div className="mx-auto mt-3 max-w-md space-y-1 text-sm text-muted-foreground">
+          {data.problem.map((line) => (
+            <p key={line}>→ {line}</p>
+          ))}
+        </div>
+      </div>
+
+      <div className="relative mt-8">
+        <div aria-hidden className="absolute inset-6 -z-10 rounded-full bg-primary/10 blur-3xl" />
+        {data.screen}
+      </div>
+
+      <div className="mt-6">
+        <span className="text-xs font-semibold tracking-wide text-primary uppercase">{data.eyebrow} · 화면에서 보이는 것</span>
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+          {data.points.map((point) => (
+            <li key={point.n} className="flex items-start gap-2 text-sm text-text-strong">
+              <PointBadge n={point.n} />
+              {point.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mt-6 flex items-start gap-2 rounded-lg bg-primary-soft px-3.5 py-2.5 text-sm font-medium text-primary">
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+        {data.result}
+      </div>
     </div>
   );
 }
@@ -250,68 +338,56 @@ export function FeatureShowcase() {
           </p>
         </div>
 
-        {/* STEP 1: 화면이 아니라 "문제 상황"을 먼저 보여준다 — 여러 채널에서 따로 들어오는 주문. */}
-        <div className="mx-auto mt-14 max-w-2xl rounded-2xl border border-dashed border-border bg-surface/60 px-6 py-8 text-center">
-          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">STEP 1</span>
-          <p className="mt-2 text-lg font-bold text-text-strong">주문이 여러 곳에서 들어옵니다</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            스마트스토어, 전화, 카카오톡으로 들어온 주문을 각각 따로 확인해야 했습니다.
+        {/* 누구를 위한 서비스인지 — 서비스 소개 흐름 시작 직전에 한 번 더 명확히 한다. */}
+        <div className="mx-auto mt-10 max-w-2xl rounded-xl border border-dashed border-primary/30 bg-primary-soft/30 px-6 py-5 text-center">
+          <p className="text-sm font-semibold text-text-strong">주문이 여러 곳에서 들어오는 사장님이라면</p>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            스마트스토어, 전화, 카카오톡 등 주문이 여러 경로로 들어오고
+            <br className="hidden sm:block" />
+            엑셀이나 메모로 따로 정리하고 있다면 주문:한장이 도움이 될 수 있습니다.
           </p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            {ORDER_CHANNELS.map((channel, i) => (
-              <div key={channel.label} className="flex items-center gap-3">
-                <span className="flex items-center gap-2 rounded-full border border-border bg-surface px-3.5 py-2 text-xs font-medium text-muted-foreground">
-                  <channel.icon className="size-3.5" />
-                  {channel.label}
-                </span>
-                {i < ORDER_CHANNELS.length - 1 ? <span className="text-muted-foreground/40">+</span> : null}
-              </div>
-            ))}
-          </div>
         </div>
 
-        <div className="mt-16 space-y-28">
-          {FEATURES.map((feature, i) => (
-            <div
-              key={feature.headline}
-              className={cn(
-                "grid items-center gap-10 lg:gap-16",
-                i % 2 === 0 ? "lg:grid-cols-[35fr_65fr]" : "lg:grid-cols-[65fr_35fr] lg:[&>*:first-child]:order-2"
-              )}
-            >
-              <div className={cn(i % 2 === 0 ? "lg:text-left" : "lg:text-right")}>
-                <span className="text-xs font-semibold tracking-wide text-muted-foreground">{feature.step}</span>
-                <p className="mt-1 text-sm font-medium text-text-strong">{feature.situation}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{feature.problem}</p>
-                <span className="mt-3 inline-block text-xs font-semibold tracking-wide text-primary uppercase">{feature.eyebrow}</span>
-                <h3 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">{feature.headline}</h3>
-                <p className="mt-3 text-muted-foreground">{feature.description}</p>
-                <div
-                  className={cn(
-                    "mt-5 flex items-start gap-2 rounded-lg bg-primary-soft px-3.5 py-2.5 text-sm font-medium text-primary",
-                    i % 2 === 0 ? "lg:flex-row" : "lg:flex-row-reverse lg:text-right"
-                  )}
-                >
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-                  {feature.result}
-                </div>
-              </div>
-              <div className="relative">
-                <div aria-hidden className="absolute inset-8 -z-10 rounded-full bg-primary/10 blur-3xl" />
-                <feature.preview />
-                <HighlightCaption items={feature.highlights} />
-              </div>
+        {/* STEP 1의 "상황/문제"는 화면 없이 먼저 눈에 보이는 현실부터 짚는다. */}
+        <div className="mx-auto mt-10 flex max-w-2xl flex-wrap items-center justify-center gap-3">
+          {ORDER_CHANNELS.map((channel, i) => (
+            <div key={channel.label} className="flex items-center gap-3">
+              <span className="flex items-center gap-2 rounded-full border border-border bg-surface px-3.5 py-2 text-xs font-medium text-muted-foreground">
+                <channel.icon className="size-3.5" />
+                {channel.label}
+              </span>
+              {i < ORDER_CHANNELS.length - 1 ? <span className="text-muted-foreground/40">+</span> : null}
             </div>
           ))}
         </div>
 
-        <div className="mx-auto mt-16 flex max-w-3xl flex-wrap items-center justify-center gap-x-2 gap-y-3 text-xs font-medium text-muted-foreground">
-          {["주문", "정리", "배송", "고객", "정산"].map((step, i, arr) => (
-            <span key={step} className="flex items-center gap-2">
-              <span className="rounded-full bg-primary-soft px-3 py-1.5 text-primary">{step}</span>
-              {i < arr.length - 1 ? <ArrowRight className="size-3.5 text-muted-foreground/40" /> : null}
-            </span>
+        <div className="mt-10 space-y-16">
+          {STEPS.map((data) => (
+            <StepBlock key={data.step} data={data} />
           ))}
+        </div>
+
+        {/* STEP 5: 새 기능이 아니라 앞의 4단계를 하나로 묶어주는 클로징. */}
+        <div className="mx-auto mt-16 max-w-2xl rounded-2xl border border-primary/30 bg-gradient-to-b from-primary-soft/60 to-surface px-6 py-10 text-center sm:px-10">
+          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">STEP 5</span>
+          <h3 className="mt-2 text-xl font-bold text-text-strong sm:text-2xl">복잡한 주문 업무를 한 흐름으로 관리합니다</h3>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-3">
+            {FLOW_STEPS.map((step, i) => (
+              <span key={step} className="flex items-center gap-2">
+                <span className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground">{step}</span>
+                {i < FLOW_STEPS.length - 1 ? <ArrowRight className="size-3.5 text-primary/40" /> : null}
+              </span>
+            ))}
+          </div>
+          <p className="mx-auto mt-6 max-w-md text-sm text-muted-foreground">
+            주문을 받고, 정리하고, 배송하고, 기록하고, 정산하는 일까지.
+            <br />
+            주문:한장은 사장님이 매일 반복하는 주문 업무를 한 흐름으로 연결합니다.
+          </p>
+          <Button asChild size="lg" className="mt-6 gap-2">
+            <a href="#recruit">사장님 모집에 참여하기</a>
+          </Button>
+          <p className="mt-3 text-xs text-muted-foreground">우리 가게에도 맞을지 직접 이야기해보세요.</p>
         </div>
       </div>
     </section>

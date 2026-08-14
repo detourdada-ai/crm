@@ -71,6 +71,15 @@ export function ProductPreview({
   );
 }
 
+/** 실제 화면 위에 붙이는 작은 번호 배지 — 옆의 핵심 포인트 목록과 번호로 1:1 대응시켜, 이미지만 봐도 "이 번호가 뭘 가리키는지"가 바로 보이게 한다. */
+export function PointBadge({ n }: { n: number }) {
+  return (
+    <span className="mr-1 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-primary align-middle text-[10px] font-bold text-primary-foreground">
+      {n}
+    </span>
+  );
+}
+
 export function PreviewStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-border bg-surface px-4 py-3.5">
@@ -176,27 +185,41 @@ export interface PreviewTableRow {
 
 export type PreviewTableColumn = "order" | "customer" | "item" | "deliveryDate" | "status";
 
+export interface PreviewTableHighlight {
+  column: PreviewTableColumn;
+  /** 옆 포인트 목록의 번호와 맞춰서 헤더에 작은 번호 배지로 표시한다. */
+  number?: number;
+}
+
 /**
  * 주문번호/고객/상품/배송일/상태 컬럼을 가진 실제 업무 테이블 형태의 주문 목록.
  * `highlightColumns`로 지정한 컬럼은 헤더/셀에 배경색을 줘서 "여기를 보면 된다"는
  * 최소한의 강조를 표시한다 — 랜딩에서 이미지만 보고도 핵심 정보를 짚어낼 수 있게 한다.
  */
-export function PreviewTable({ rows, highlightColumns = [] }: { rows: PreviewTableRow[]; highlightColumns?: PreviewTableColumn[] }) {
-  const isHighlighted = (col: PreviewTableColumn) => highlightColumns.includes(col);
-  const headerClass = (col: PreviewTableColumn) =>
-    cn("px-3 py-2 font-medium", isHighlighted(col) && "bg-primary-soft text-primary");
-  const cellClass = (col: PreviewTableColumn) => cn("px-3 py-2.5", isHighlighted(col) && "bg-primary-soft/40");
+export function PreviewTable({ rows, highlightColumns = [] }: { rows: PreviewTableRow[]; highlightColumns?: PreviewTableHighlight[] }) {
+  const find = (col: PreviewTableColumn) => highlightColumns.find((h) => h.column === col);
+  const headerClass = (col: PreviewTableColumn) => cn("px-3 py-2 font-medium", find(col) && "bg-primary-soft text-primary");
+  const cellClass = (col: PreviewTableColumn) => cn("px-3 py-2.5", find(col) && "bg-primary-soft/40");
+  const headerContent = (col: PreviewTableColumn, label: string) => {
+    const highlight = find(col);
+    return (
+      <>
+        {highlight?.number ? <PointBadge n={highlight.number} /> : null}
+        {label}
+      </>
+    );
+  };
 
   return (
     <div className="overflow-hidden rounded-xl border border-border">
       <table className="w-full text-left text-sm">
         <thead className="bg-secondary/60 text-xs text-muted-foreground">
           <tr>
-            <th className={headerClass("order")}>주문</th>
-            <th className={headerClass("customer")}>고객</th>
-            <th className={headerClass("item")}>상품</th>
-            <th className={cn("hidden sm:table-cell", headerClass("deliveryDate"))}>배송일</th>
-            <th className={cn("text-right", headerClass("status"))}>상태</th>
+            <th className={headerClass("order")}>{headerContent("order", "주문")}</th>
+            <th className={headerClass("customer")}>{headerContent("customer", "고객")}</th>
+            <th className={headerClass("item")}>{headerContent("item", "상품")}</th>
+            <th className={cn("hidden sm:table-cell", headerClass("deliveryDate"))}>{headerContent("deliveryDate", "배송일")}</th>
+            <th className={cn("text-right", headerClass("status"))}>{headerContent("status", "상태")}</th>
           </tr>
         </thead>
         <tbody>
