@@ -1,3 +1,10 @@
+"use client";
+
+import { useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
+
 const FAQS = [
   {
     q: "스마트스토어를 쓰는데 필요한가요?",
@@ -25,19 +32,40 @@ const FAQS = [
   },
 ];
 
+function FaqRow({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex w-full items-center justify-between gap-3 px-5 py-4 text-left text-sm font-semibold transition-colors hover:bg-secondary/50",
+            open ? "bg-secondary/40 text-primary" : "text-text-strong"
+          )}
+        >
+          <span>Q. {q}</span>
+          <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform duration-200", open && "rotate-180 text-primary")} />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <p className="px-5 pb-4 text-sm text-muted-foreground">{a}</p>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export function FaqSection() {
   return (
-    <section className="mx-auto max-w-2xl px-4 py-20 sm:px-6">
-      <h2 className="text-center text-2xl font-bold text-text-strong sm:text-3xl">자주 묻는 질문</h2>
-      <div className="mt-10 space-y-3">
-        {FAQS.map((faq) => (
-          <details key={faq.q} className="group rounded-xl border border-border bg-surface px-5 py-4">
-            <summary className="cursor-pointer list-none text-sm font-semibold text-text-strong marker:content-none">
-              Q. {faq.q}
-            </summary>
-            <p className="mt-2.5 text-sm text-muted-foreground">{faq.a}</p>
-          </details>
-        ))}
+    <section className="bg-secondary/30 py-20">
+      <div className="mx-auto max-w-2xl px-4 sm:px-6">
+        <h2 className="text-center text-2xl font-bold text-text-strong sm:text-3xl">자주 묻는 질문</h2>
+        <div className="mt-10 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          {FAQS.map((faq) => (
+            <FaqRow key={faq.q} q={faq.q} a={faq.a} />
+          ))}
+        </div>
       </div>
     </section>
   );

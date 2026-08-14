@@ -298,7 +298,7 @@ export interface Database {
       beta_recruit_applications: {
         Row: {
           id: string;
-          company_name: string;
+          company_name: string | null;
           business_type: string;
           avg_daily_orders: string | null;
           order_channels: string[];
@@ -309,7 +309,7 @@ export interface Database {
           current_delivery_management: string | null;
           uses_excel: boolean;
           uses_kakao_sms: boolean;
-          biggest_pain_point: string;
+          biggest_pain_point: string | null;
           contact_name: string;
           contact_phone: string;
           contact_email: string | null;
@@ -326,7 +326,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
-          company_name: string;
+          company_name?: string | null;
           business_type: string;
           avg_daily_orders?: string | null;
           order_channels?: string[];
@@ -337,7 +337,7 @@ export interface Database {
           current_delivery_management?: string | null;
           uses_excel?: boolean;
           uses_kakao_sms?: boolean;
-          biggest_pain_point: string;
+          biggest_pain_point?: string | null;
           contact_name: string;
           contact_phone: string;
           contact_email?: string | null;

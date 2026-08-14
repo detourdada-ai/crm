@@ -212,28 +212,37 @@ const FEATURES = [
 
 export function FeatureShowcase() {
   return (
-    <section id="features" className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-      <div className="text-center">
-        <span className="text-xs font-semibold tracking-wide text-primary uppercase">제품 살펴보기</span>
-        <h2 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">실제 화면은 이렇게 동작합니다</h2>
-      </div>
-      <div className="mt-16 space-y-28">
-        {FEATURES.map((feature, i) => (
-          <div
-            key={feature.headline}
-            className={cn(
-              "grid items-center gap-10 lg:gap-16",
-              i % 2 === 0 ? "lg:grid-cols-[35fr_65fr]" : "lg:grid-cols-[65fr_35fr] lg:[&>*:first-child]:order-2"
-            )}
-          >
-            <div className={cn(i % 2 === 0 ? "lg:text-left" : "lg:text-right")}>
-              <span className="text-xs font-semibold tracking-wide text-primary uppercase">{feature.eyebrow}</span>
-              <h3 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">{feature.headline}</h3>
-              <p className="mt-3 text-muted-foreground">{feature.description}</p>
+    <section id="features" className="bg-gradient-to-b from-background via-secondary/30 to-background py-20">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="text-center">
+          <span className="text-xs font-semibold tracking-wide text-primary uppercase">제품 살펴보기</span>
+          <h2 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">실제 화면은 이렇게 동작합니다</h2>
+          <p className="mt-3 text-sm text-muted-foreground">실제 서비스에 있는 화면 그대로입니다.</p>
+        </div>
+        <div className="mt-16 space-y-28">
+          {FEATURES.map((feature, i) => (
+            <div
+              key={feature.headline}
+              className={cn(
+                "grid items-center gap-10 lg:gap-16",
+                i % 2 === 0 ? "lg:grid-cols-[35fr_65fr]" : "lg:grid-cols-[65fr_35fr] lg:[&>*:first-child]:order-2"
+              )}
+            >
+              <div className={cn(i % 2 === 0 ? "lg:text-left" : "lg:text-right")}>
+                <span className="text-xs font-semibold tracking-wide text-primary uppercase">{feature.eyebrow}</span>
+                <h3 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">{feature.headline}</h3>
+                <p className="mt-3 text-muted-foreground">{feature.description}</p>
+              </div>
+              <div className="relative">
+                <div
+                  aria-hidden
+                  className="absolute inset-8 -z-10 rounded-full bg-primary/10 blur-3xl"
+                />
+                <feature.preview />
+              </div>
             </div>
-            <feature.preview />
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </section>
   );

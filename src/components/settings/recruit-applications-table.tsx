@@ -40,13 +40,13 @@ export function RecruitApplicationsTable({ applications }: { applications: BetaR
           {applications.map((app) => (
             <TableRow key={app.id}>
               <TableCell className="text-muted-foreground">{formatKstDateDotted(app.created_at)}</TableCell>
-              <TableCell className="font-medium">{app.company_name}</TableCell>
+              <TableCell className="font-medium">{app.company_name ?? "-"}</TableCell>
               <TableCell>{app.business_type}</TableCell>
               <TableCell className="text-muted-foreground">{app.avg_daily_orders ?? "-"}</TableCell>
               <TableCell className="text-muted-foreground">{app.order_channels.join(", ") || "-"}</TableCell>
               <TableCell className="text-muted-foreground">{app.delivery_method ?? "-"}</TableCell>
               <TableCell className="text-muted-foreground">{app.current_order_management ?? "-"}</TableCell>
-              <TableCell className="max-w-md whitespace-pre-line text-muted-foreground">{app.biggest_pain_point}</TableCell>
+              <TableCell className="max-w-md whitespace-pre-line text-muted-foreground">{app.biggest_pain_point ?? "-"}</TableCell>
               <TableCell className="text-muted-foreground">
                 {app.contact_name} · {app.contact_phone}
                 {app.contact_email ? ` · ${app.contact_email}` : ""}

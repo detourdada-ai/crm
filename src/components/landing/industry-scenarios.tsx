@@ -34,10 +34,10 @@ export function IndustryScenarios() {
             type="button"
             onClick={() => setSelected(i)}
             className={cn(
-              "flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition-colors",
+              "flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition-all",
               i === selected
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-surface text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                ? "border-primary bg-primary text-primary-foreground shadow-[0_4px_10px_-2px_rgba(5,150,105,0.35)]"
+                : "border-border bg-surface text-muted-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:-translate-y-0.5 hover:border-primary/40 hover:text-foreground hover:shadow-[0_4px_10px_-2px_rgba(15,23,42,0.1)]"
             )}
           >
             <industry.icon className="size-4" />
@@ -46,7 +46,7 @@ export function IndustryScenarios() {
         ))}
       </div>
 
-      <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-border bg-surface p-8">
+      <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-border bg-gradient-to-b from-surface to-secondary/30 p-8 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_28px_-14px_rgba(15,23,42,0.15)]">
         <p className="text-center text-sm font-semibold text-primary">{active.key} 사장님의 하루</p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
           {active.flow.map((step, i) => (

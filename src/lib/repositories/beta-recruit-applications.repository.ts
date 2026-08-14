@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { BetaRecruitApplication, ProblemCategory, RecruitApplicationStatus } from "@/types/domain";
 
 export interface BetaRecruitApplicationInsert {
-  company_name: string;
+  company_name: string | null;
   business_type: string;
   avg_daily_orders: string | null;
   order_channels: string[];
@@ -14,7 +14,7 @@ export interface BetaRecruitApplicationInsert {
   current_delivery_management: string | null;
   uses_excel: boolean;
   uses_kakao_sms: boolean;
-  biggest_pain_point: string;
+  biggest_pain_point: string | null;
   contact_name: string;
   contact_phone: string;
   contact_email: string | null;

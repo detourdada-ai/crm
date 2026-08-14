@@ -802,7 +802,7 @@ create policy tenant_isolation on duplicate_candidates
 -- ----------------------------------------------------------------------------
 create table if not exists beta_recruit_applications (
   id uuid primary key default gen_random_uuid(),
-  company_name text not null,
+  company_name text,
   business_type text not null,
   avg_daily_orders text,
   order_channels text[] not null default '{}',
@@ -813,7 +813,7 @@ create table if not exists beta_recruit_applications (
   current_delivery_management text,
   uses_excel boolean not null default false,
   uses_kakao_sms boolean not null default false,
-  biggest_pain_point text not null,
+  biggest_pain_point text,
   contact_name text not null,
   contact_phone text not null,
   contact_email text,

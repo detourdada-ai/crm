@@ -28,7 +28,7 @@ export async function submitBetaRecruitApplicationAction(
   const honeypot = String(formData.get("website") || "");
   if (honeypot) return { ok: true, error: null };
 
-  const companyName = String(formData.get("companyName") || "").trim();
+  const companyName = String(formData.get("companyName") || "").trim() || null;
   const businessType = String(formData.get("businessType") || "").trim();
   const avgDailyOrders = String(formData.get("avgDailyOrders") || "").trim() || null;
   const orderChannels = formData.getAll("orderChannels").map(String).filter(Boolean);
@@ -39,17 +39,16 @@ export async function submitBetaRecruitApplicationAction(
   const currentDeliveryManagement = String(formData.get("currentDeliveryManagement") || "").trim() || null;
   const usesExcel = formData.get("usesExcel") === "on";
   const usesKakaoSms = formData.get("usesKakaoSms") === "on";
-  const biggestPainPoint = String(formData.get("biggestPainPoint") || "").trim();
+  const biggestPainPoint = String(formData.get("biggestPainPoint") || "").trim() || null;
   const contactName = String(formData.get("contactName") || "").trim();
   const contactPhone = String(formData.get("contactPhone") || "").trim();
   const contactEmail = String(formData.get("contactEmail") || "").trim() || null;
 
-  if (!companyName) return { ok: false, error: "업체명을 입력해주세요." };
+  // 랜딩 UX 개편: 필수는 이름/연락처/업종뿐 — 나머지는 전부 선택 입력.
   if (!businessType) return { ok: false, error: "업종을 선택해주세요." };
-  if (!biggestPainPoint) return { ok: false, error: "가장 불편한 일을 입력해주세요." };
-  if (biggestPainPoint.length > MAX_PAIN_POINT_LENGTH) return { ok: false, error: "입력 내용이 너무 깁니다." };
-  if (!contactName || contactName.length > MAX_TEXT_LENGTH) return { ok: false, error: "담당자명을 확인해주세요." };
-  if (!contactPhone) return { ok: false, error: "전화번호를 입력해주세요." };
+  if (biggestPainPoint && biggestPainPoint.length > MAX_PAIN_POINT_LENGTH) return { ok: false, error: "입력 내용이 너무 깁니다." };
+  if (!contactName || contactName.length > MAX_TEXT_LENGTH) return { ok: false, error: "이름을 확인해주세요." };
+  if (!contactPhone) return { ok: false, error: "연락처를 입력해주세요." };
 
   try {
     await betaRecruitApplicationsRepository.create({

@@ -21,10 +21,12 @@ export function TargetAudience() {
         <h2 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">이런 사장님을 찾고 있습니다.</h2>
       </div>
 
-      <ul className="mx-auto mt-10 grid max-w-2xl gap-3 sm:grid-cols-2">
+      <ul className="mx-auto mt-10 grid max-w-2xl gap-3 rounded-2xl border border-border bg-secondary/30 p-6 shadow-[0_1px_2px_rgba(15,23,42,0.03)] sm:grid-cols-2 sm:p-8">
         {CRITERIA.map((item) => (
           <li key={item} className="flex items-start gap-2.5 text-sm text-text-strong">
-            <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
+              <Check className="size-3.5" />
+            </span>
             {item}
           </li>
         ))}

@@ -1,11 +1,19 @@
 import { ArrowRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const BEFORE_STEPS = ["주문 확인", "엑셀 정리", "기사별 목록 작성", "카톡 전달", "배송 확인", "완료 체크", "고객 문의 대응"];
 const AFTER_STEPS = ["주문", "담당자 배정", "업무 진행", "완료"];
 
 function StepColumn({ label, tone, steps }: { label: string; tone: "muted" | "primary"; steps: string[] }) {
   return (
-    <div className="flex-1 rounded-2xl border border-border bg-surface p-6">
+    <div
+      className={cn(
+        "flex-1 rounded-2xl border p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5",
+        tone === "primary"
+          ? "border-primary/30 bg-gradient-to-b from-primary-soft/60 to-surface hover:shadow-[0_16px_32px_-16px_rgba(5,150,105,0.35)]"
+          : "border-border bg-surface hover:shadow-[0_12px_24px_-14px_rgba(15,23,42,0.12)]"
+      )}
+    >
       <p className={tone === "primary" ? "text-sm font-bold text-primary" : "text-sm font-semibold text-muted-foreground"}>
         {label}
       </p>

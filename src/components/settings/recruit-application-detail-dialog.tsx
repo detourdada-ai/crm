@@ -170,7 +170,7 @@ export function RecruitApplicationDetailDialog({ application }: { application: B
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{application.company_name}</DialogTitle>
+          <DialogTitle>{application.company_name ?? application.contact_name}</DialogTitle>
           <DialogDescription>
             {application.business_type} · {formatKstDateKorean(application.created_at)} 접수
           </DialogDescription>
@@ -184,10 +184,13 @@ export function RecruitApplicationDetailDialog({ application }: { application: B
 
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
             <p className="text-xs font-semibold text-destructive">핵심 문제</p>
-            <p className="mt-1 text-sm whitespace-pre-line text-text-strong">{application.biggest_pain_point}</p>
+            <p className="mt-1 text-sm whitespace-pre-line text-text-strong">
+              {application.biggest_pain_point ?? "아직 입력되지 않음 — 인터뷰로 확인이 필요합니다."}
+            </p>
           </div>
 
           <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <InfoRow label="업체명" value={application.company_name} />
             <InfoRow label="하루 평균 주문량" value={application.avg_daily_orders} />
             <InfoRow label="주문 채널" value={application.order_channels.join(", ") || null} />
             <InfoRow label="배송 방식" value={application.delivery_method} />
