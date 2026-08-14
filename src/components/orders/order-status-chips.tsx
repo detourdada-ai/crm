@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DeliveryStatus } from "@/types/domain";
 
@@ -8,7 +9,12 @@ export interface OrderStatusChipCount {
   count: number;
 }
 
-/** 상단 요약 KPI — 화면에 들어오자마자 "지금 몇 건이 어떤 상태인지"부터 보이도록, 필터 영역보다 먼저 큰 박스로 보여준다. 클릭하면 해당 상태로 필터링. */
+/**
+ * 주문 처리 흐름(전체 → 배송 대기 → 배송 중 → 완료)을 화살표로 이어
+ * 보여주는 가벼운 Flow — 각 항목은 기존 상태 필터 그대로 클릭 가능하다.
+ * KPI 카드 나열이 아니라 "주문이 어떤 단계를 거쳐 처리되는지"를 먼저
+ * 보여주는 것이 목적.
+ */
 export function OrderStatusChips({
   counts,
   active,
@@ -19,23 +25,25 @@ export function OrderStatusChips({
   buildHref: (status: DeliveryStatus | "all") => string;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {counts.map((c) => (
-        <Link
-          key={c.status}
-          href={buildHref(c.status)}
-          className={cn(
-            "rounded-xl border px-4 py-3.5 transition-colors",
-            active === c.status ? "border-primary bg-primary-soft" : "border-border bg-surface hover:bg-accent/40"
-          )}
-        >
-          <p className={cn("text-xs font-medium", active === c.status ? "text-primary" : "text-muted-foreground")}>
-            {c.label}
-          </p>
-          <p className={cn("mt-1 text-2xl font-bold", active === c.status ? "text-primary" : "text-text-strong")}>
-            {c.count}
-          </p>
-        </Link>
+    <div className="flex flex-wrap items-center gap-2">
+      {counts.map((c, i) => (
+        <div key={c.status} className="flex items-center gap-2">
+          <Link
+            href={buildHref(c.status)}
+            className={cn(
+              "flex shrink-0 items-baseline gap-2 rounded-xl border px-4 py-3 transition-colors",
+              active === c.status ? "border-primary bg-primary-soft" : "border-border bg-surface hover:bg-accent/40"
+            )}
+          >
+            <span className={cn("text-sm font-medium", active === c.status ? "text-primary" : "text-muted-foreground")}>
+              {c.label}
+            </span>
+            <span className={cn("text-xl font-bold", active === c.status ? "text-primary" : "text-text-strong")}>
+              {c.count}
+            </span>
+          </Link>
+          {i < counts.length - 1 ? <ArrowRight className="size-4 shrink-0 text-border-strong" /> : null}
+        </div>
       ))}
     </div>
   );

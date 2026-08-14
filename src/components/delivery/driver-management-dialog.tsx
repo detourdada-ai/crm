@@ -24,12 +24,12 @@ export function DriverManagementDialog({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-1.5">
           <Users className="size-4" />
-          기사 관리
+          배송기사 관리
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>기사 관리</DialogTitle>
+          <DialogTitle>배송기사 관리</DialogTitle>
           <DialogDescription>배송 기사와 로그인 계정을 관리합니다. 건당 배송비는 정산관리에 사용됩니다.</DialogDescription>
         </DialogHeader>
         <DriverManagementCard drivers={drivers} isAdmin={isAdmin} accountUsernames={accountUsernames} />

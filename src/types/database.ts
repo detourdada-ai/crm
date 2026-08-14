@@ -112,6 +112,10 @@ export interface Database {
         Args: { p_tenant_id: string; p_days: number };
         Returns: { access_expires_at: string | null }[];
       };
+      next_order_seq_batch: {
+        Args: { p_tenant_id: string; p_day_str: string; p_count: number };
+        Returns: number;
+      };
     };
     Enums: Record<string, never>;
     Tables: {
@@ -162,6 +166,7 @@ export interface Database {
           id: string;
           customer_id: string;
           order_number: string | null;
+          internal_order_number: string;
           order_date: string;
           status: string;
           total_amount: number;
@@ -184,6 +189,7 @@ export interface Database {
           delivery_status: DeliveryStatus;
           driver_id: string | null;
           completed_at: string | null;
+          cancelled_at: string | null;
           import_id: string | null;
           owner_username: string;
           tenant_id: string;
@@ -194,6 +200,7 @@ export interface Database {
           id?: string;
           customer_id: string;
           order_number?: string | null;
+          internal_order_number: string;
           order_date: string;
           status?: string;
           total_amount?: number;
@@ -216,6 +223,7 @@ export interface Database {
           delivery_status?: DeliveryStatus;
           driver_id?: string | null;
           completed_at?: string | null;
+          cancelled_at?: string | null;
           import_id?: string | null;
           owner_username?: string;
           tenant_id: string;

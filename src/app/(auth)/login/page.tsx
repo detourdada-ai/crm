@@ -13,6 +13,10 @@ const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
   google_oauth_init_failed: "Google 로그인을 시작할 수 없습니다. 잠시 후 다시 시도해주세요.",
 };
 
+// STEP-6: same reasoning as Landing — never statically cached, so a stale
+// snapshot can't be served mid-OAuth-redirect.
+export const dynamic = "force-dynamic";
+
 export default async function LoginPage({
   searchParams,
 }: {
@@ -34,7 +38,7 @@ export default async function LoginPage({
             <OrdifyLogo variant="full" className="h-8" />
           </Link>
           <CardTitle className="mt-4 text-xl">다시 업무로 돌아오세요.</CardTitle>
-          <CardDescription className="sr-only">Ordify 계정으로 로그인하세요.</CardDescription>
+          <CardDescription className="sr-only">주문:한장 계정으로 로그인하세요.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <LoginForm redirectTo={from && from.startsWith("/") ? from : "/dashboard"} />
@@ -57,7 +61,7 @@ export default async function LoginPage({
           </form>
 
           <p className="text-center text-sm text-muted-foreground">
-            Ordify가 처음이신가요?{" "}
+            주문:한장이 처음이신가요?{" "}
             <Link href="/" className="font-medium text-primary hover:underline">
               무료로 시작하기
             </Link>

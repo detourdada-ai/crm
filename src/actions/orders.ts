@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ordersRepository, type OrderSortField } from "@/lib/repositories/orders.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { resolveCustomerForImportRow } from "@/lib/services/customer.service";
+import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress } from "@/lib/utils/address";
 import { ownerScopeFor, requireSession, tenantScopeFor } from "@/lib/auth/current-session";
@@ -26,7 +27,10 @@ export interface SearchOrdersParams {
   bagReturned?: boolean;
   orderDateFrom?: string;
   orderDateTo?: string;
+  /** @deprecated single-day form — prefer deliveryDateFrom/To */
   deliveryDate?: string;
+  deliveryDateFrom?: string;
+  deliveryDateTo?: string;
   sortBy?: OrderSortField;
   sortAscending?: boolean;
 }
@@ -38,10 +42,12 @@ export interface SearchOrdersResult {
   driverNames: Record<string, string>;
 }
 
-export async function searchOrdersAction(params: SearchOrdersParams): Promise<SearchOrdersResult> {
-  const session = await requireSession();
-  const { orders, total } = await ordersRepository.search({ ...params, ownerUsername: ownerScopeFor(session) });
-
+/**
+ * "상품A 외 N건" 요약 문자열 + 총수량을 주문별로 계산한다. Phase 6 STEP4:
+ * 배송관리 보드도 주문관리와 동일하게 상품 요약을 보여줘야 해서 공용으로
+ * 뺐다 — 로직은 원래 searchOrdersAction 안에 있던 것 그대로, 새 규칙 없음.
+ */
+export async function buildOrderItemSummaries(orders: Order[]): Promise<Record<string, OrderItemSummary>> {
   const items = await ordersRepository.findItemsByOrderIds(orders.map((o) => o.id));
   const byOrder = new Map<string, OrderItem[]>();
   for (const item of items) {
@@ -62,6 +68,14 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
           : `${orderItems[0].product_name} 외 ${orderItems.length - 1}건`;
     itemSummaries[order.id] = { productSummary, totalQuantity };
   }
+  return itemSummaries;
+}
+
+export async function searchOrdersAction(params: SearchOrdersParams): Promise<SearchOrdersResult> {
+  const session = await requireSession();
+  const { orders, total } = await ordersRepository.search({ ...params, ownerUsername: ownerScopeFor(session) });
+
+  const itemSummaries = await buildOrderItemSummaries(orders);
 
   const driverIds = Array.from(new Set(orders.map((o) => o.driver_id).filter((id): id is string => id !== null)));
   const drivers = await driversRepository.findByIds(driverIds);
@@ -212,12 +226,14 @@ export async function createManualOrderAction(
       rawAddress,
       ownerUsername: session.username,
     });
+    const [internalOrderNumber] = await allocateOrderNumbers(tenantId, [orderDate]);
 
     // 스마트스토어 주문만 order_number가 필수 — 수동 주문은 없어도 된다 (null).
     const [order] = await ordersRepository.createMany([
       {
         customer_id: customer.id,
         order_number: null,
+        internal_order_number: internalOrderNumber,
         order_date: orderDate,
         status,
         total_amount: amount,
@@ -256,7 +272,17 @@ export interface UpdateManualOrderState {
   error: string | null;
 }
 
-/** 수동 등록 주문(order_source='manual')만 수정 가능 — 임포트로 들어온 스마트스토어 원본 주문은 스냅샷이라 수정 대상이 아니다. */
+/**
+ * 주문 내용을 수정한다 (수동/엑셀 주문 모두 가능).
+ *
+ * Phase 2 P0: 이전에는 order_source==='manual'인 주문만 수정 가능했으나,
+ * 실제 운영에서는 엑셀로 들어온 주문도 오타 수정/배송일 변경 등이 반드시
+ * 필요해 이 제한을 없앤다. 원본 데이터 보존은 이미 order_items.extra에
+ * 임포트 시점의 엑셀 원본 행이 그대로 저장되어 있고 이 경로에서 건드리지
+ * 않으므로(updateItem은 product_name/quantity/unit_price/amount만 갱신)
+ * 별도의 스냅샷 구조를 새로 만들 필요가 없다 — 주문 상세의 "엑셀 원본
+ * 데이터" 펼침 영역에서 항상 원본을 확인할 수 있다.
+ */
 export async function updateManualOrderAction(
   orderId: string,
   _prevState: UpdateManualOrderState,
@@ -268,8 +294,8 @@ export async function updateManualOrderAction(
   if (session.role !== "admin" && order.owner_username !== session.username) {
     return { ok: false, error: "이 주문을 수정할 권한이 없습니다." };
   }
-  if (order.order_source !== "manual") {
-    return { ok: false, error: "엑셀로 등록된 주문은 수정할 수 없습니다." };
+  if (order.delivery_status === "취소") {
+    return { ok: false, error: "취소된 주문은 수정할 수 없습니다. 먼저 취소를 해제해주세요." };
   }
 
   const name = String(formData.get("name") || "").trim();
@@ -345,5 +371,57 @@ export async function deleteManualOrderAction(orderId: string): Promise<DeleteMa
     return { ok: true, error: null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "주문 삭제 중 오류가 발생했습니다." };
+  }
+}
+
+export interface OrderCancelActionState {
+  ok: boolean;
+  error: string | null;
+}
+
+/**
+ * 주문을 소프트 취소한다 (delivery_status='취소'). 물리적으로 삭제하지
+ * 않으므로 주문 상세/주문 목록에서는 계속 조회 가능하고, 배송관리 보드와
+ * 통계/매출 집계에서만 제외된다(orders.repository.ts 참고). 수동/엑셀
+ * 주문 모두 취소 가능 — 이미 배송완료된 주문은 취소할 수 없다.
+ */
+export async function cancelOrderAction(orderId: string): Promise<OrderCancelActionState> {
+  const session = await requireSession();
+  const order = await ordersRepository.findById(orderId);
+  if (!order) return { ok: false, error: "주문을 찾을 수 없습니다." };
+  if (session.role !== "admin" && order.owner_username !== session.username) {
+    return { ok: false, error: "이 주문을 취소할 권한이 없습니다." };
+  }
+
+  try {
+    await ordersRepository.cancelOrder(orderId);
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/delivery");
+    revalidatePath("/");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "주문 취소 중 오류가 발생했습니다." };
+  }
+}
+
+/** 취소를 해제하고 주문을 다시 배송대기 상태로 되돌린다. */
+export async function uncancelOrderAction(orderId: string): Promise<OrderCancelActionState> {
+  const session = await requireSession();
+  const order = await ordersRepository.findById(orderId);
+  if (!order) return { ok: false, error: "주문을 찾을 수 없습니다." };
+  if (session.role !== "admin" && order.owner_username !== session.username) {
+    return { ok: false, error: "이 주문을 처리할 권한이 없습니다." };
+  }
+
+  try {
+    await ordersRepository.uncancelOrder(orderId);
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/delivery");
+    revalidatePath("/");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "취소 해제 중 오류가 발생했습니다." };
   }
 }

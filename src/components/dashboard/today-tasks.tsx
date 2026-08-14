@@ -8,7 +8,11 @@ export interface TodayTask {
   href: string;
 }
 
-/** "오늘 왜 대시보드에 들어왔는지"에 바로 답하는 할 일 목록 — KPI 숫자보다 한 단계 더 구체적인, 클릭하면 바로 처리하러 갈 수 있는 목록. */
+/**
+ * "오늘 왜 대시보드에 들어왔는지"에 바로 답하는 할 일 타일 — 숫자를 가장
+ * 먼저 보여주고 그 아래 무엇을 해야 하는지, 바로 처리하러 가는 링크를
+ * 순서대로 쌓아 보여준다(숫자 → 설명 → 바로가기).
+ */
 export function TodayTasks({ tasks }: { tasks: TodayTask[] }) {
   const active = tasks.filter((t) => t.count > 0);
 
@@ -17,20 +21,21 @@ export function TodayTasks({ tasks }: { tasks: TodayTask[] }) {
   }
 
   return (
-    <ul className="divide-y divide-border">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {active.map((task) => (
-        <li key={task.label}>
-          <Link href={task.href} className="flex items-center justify-between gap-3 py-3 text-sm hover:text-primary">
-            <span className="text-text-strong">
-              {task.label} <span className="font-semibold">{task.count}건</span>
-            </span>
-            <span className="flex shrink-0 items-center gap-1 font-medium text-primary">
-              {task.cta}
-              <ArrowRight className="size-3.5" />
-            </span>
-          </Link>
-        </li>
+        <Link
+          key={task.label}
+          href={task.href}
+          className="flex flex-col gap-1 rounded-xl border border-border bg-surface px-4 py-3.5 transition-colors hover:border-primary/40 hover:bg-accent/30"
+        >
+          <span className="text-2xl font-bold text-text-strong">{task.count}</span>
+          <span className="text-sm text-muted-foreground">{task.label}</span>
+          <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary">
+            {task.cta}
+            <ArrowRight className="size-3" />
+          </span>
+        </Link>
       ))}
-    </ul>
+    </div>
   );
 }

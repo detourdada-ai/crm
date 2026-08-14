@@ -16,10 +16,21 @@ import { setSessionCookie } from "@/lib/auth/current-session";
  * can independently re-derive the verified Google email itself via
  * supabase.auth.getUser(), rather than trusting a URL query string.
  */
+// Sprint 14-I STEP-6: this endpoint sits in the middle of a chain of full
+// top-level redirects (app → Google → here → /dashboard or /signup). A
+// redirect response cached anywhere along that chain (browser or
+// intermediary) can cause the OLD Landing page to flash back in before the
+// final destination loads. None of these responses should ever be cached.
+function noStoreRedirect(url: string): NextResponse {
+  const response = NextResponse.redirect(url);
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return response;
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const loginUrl = (error: string) => NextResponse.redirect(`${origin}/login?error=${error}`);
+  const loginUrl = (error: string) => noStoreRedirect(`${origin}/login?error=${error}`);
 
   if (!code) return loginUrl("google_oauth_failed");
 
@@ -31,12 +42,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const account = await accountsRepository.findByGoogleEmail(googleEmail);
 
   if (!account) {
-    return NextResponse.redirect(`${origin}/signup`);
+    return noStoreRedirect(`${origin}/signup`);
   }
 
   // Only needed to learn the Google email above — this app's real session
   // transport is the custom cookie set below, so drop the Supabase side now.
   await supabase.auth.signOut();
   await setSessionCookie(account.username, account.role);
-  return NextResponse.redirect(`${origin}/dashboard`);
+  return noStoreRedirect(`${origin}/dashboard`);
 }

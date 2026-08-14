@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { customersRepository, type CustomerSortField } from "@/lib/repositories/customers.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { changeLogRepository } from "@/lib/repositories/change-log.repository";
-import { updateCustomerProfile, setCustomerFavorite } from "@/lib/services/customer.service";
+import { updateCustomerProfile, setCustomerFavorite, resolveCustomerForImportRow } from "@/lib/services/customer.service";
 import { getCustomerTimeline, type TimelineEvent } from "@/lib/services/timeline.service";
 import { getVipCriteria } from "@/lib/services/vip.service";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
@@ -69,6 +69,49 @@ export async function toggleCustomerFavoriteAction(id: string): Promise<{ isFavo
   revalidatePath(`/customers/${id}`);
   revalidatePath("/customers");
   return { isFavorite: updated.is_favorite };
+}
+
+export interface CreateCustomerActionState {
+  ok: boolean;
+  error: string | null;
+  customerId?: string;
+  isNew?: boolean;
+}
+
+/**
+ * Phase 2 P1: 주문 없이 고객만 먼저 등록한다 ("+ 고객 등록"). 중복 판단은
+ * 엑셀 임포트/수동 주문과 완전히 동일한 resolveCustomerForImportRow를
+ * 그대로 재사용한다 — 새 중복 로직을 만들지 않는다. 이름+전화번호+주소가
+ * 기존 고객과 정확히 일치하면 새로 만들지 않고 기존 고객을 반환한다.
+ */
+export async function createCustomerAction(
+  _prevState: CreateCustomerActionState,
+  formData: FormData
+): Promise<CreateCustomerActionState> {
+  const session = await requireSession();
+
+  const name = String(formData.get("name") || "").trim();
+  const rawPhone = String(formData.get("phone") || "").trim() || null;
+  const rawAddress = String(formData.get("address") || "").trim() || null;
+  const memo = String(formData.get("memo") || "").trim() || null;
+  if (!name) return { ok: false, error: "고객 이름을 입력해주세요." };
+  if (!rawPhone && !rawAddress) return { ok: false, error: "전화번호 또는 주소 중 하나는 입력해주세요." };
+
+  try {
+    const { customer, isNew } = await resolveCustomerForImportRow({
+      name,
+      rawPhone,
+      rawAddress,
+      ownerUsername: session.username,
+    });
+    if (isNew && memo) {
+      await customersRepository.update(customer.id, { memo });
+    }
+    revalidatePath("/customers");
+    return { ok: true, error: null, customerId: customer.id, isNew };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "고객 등록 중 오류가 발생했습니다." };
+  }
 }
 
 export interface UpdateCustomerActionState {

@@ -6,6 +6,7 @@ import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { settlementsRepository } from "@/lib/repositories/settlements.repository";
 import { resolvePeriodRange, type SettlementPeriodType } from "@/lib/services/settlement.service";
 import { requireSession, requireDriverSession } from "@/lib/auth/current-session";
+import { kstDayStartIso, kstDayEndIso } from "@/lib/utils/kst-date";
 import type { Driver, Settlement } from "@/types/domain";
 
 export interface SettlementRow {
@@ -25,8 +26,8 @@ async function computeSettlementRows(
   ownerUsername?: string
 ): Promise<SettlementBoardResult> {
   const { start, end } = resolvePeriodRange(periodType, referenceDate);
-  const periodStartIso = new Date(`${start}T00:00:00`).toISOString();
-  const periodEndIso = new Date(`${end}T23:59:59.999`).toISOString();
+  const periodStartIso = kstDayStartIso(start);
+  const periodEndIso = kstDayEndIso(end);
 
   const drivers = await driversRepository.listAll(ownerUsername);
   const rows: SettlementRow[] = [];
@@ -98,8 +99,8 @@ export async function getMySettlementAction(
   if (!driver) return null;
 
   const { start, end } = resolvePeriodRange(periodType, referenceDate);
-  const periodStartIso = new Date(`${start}T00:00:00`).toISOString();
-  const periodEndIso = new Date(`${end}T23:59:59.999`).toISOString();
+  const periodStartIso = kstDayStartIso(start);
+  const periodEndIso = kstDayEndIso(end);
   const deliveryCount = await ordersRepository.countCompletedByDriverInPeriod(driverId, periodStartIso, periodEndIso);
   const amount = deliveryCount * driver.rate_per_delivery;
   const settlement = await settlementsRepository.upsertStats({

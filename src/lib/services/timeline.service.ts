@@ -55,7 +55,7 @@ export async function getCustomerTimeline(customerId: string): Promise<TimelineE
     id: `order-${order.id}`,
     type: "order",
     occurredAt: order.order_date,
-    title: `주문 ${order.order_number}`,
+    title: `주문 ${order.internal_order_number}`,
     description: `${formatCurrency(order.total_amount)} · ${order.status}`,
   }));
 

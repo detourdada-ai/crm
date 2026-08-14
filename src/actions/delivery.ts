@@ -3,23 +3,34 @@
 import { revalidatePath } from "next/cache";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
+import { buildOrderItemSummaries, type OrderItemSummary } from "@/actions/orders";
 import { ownerScopeFor, requireSession, requireDriverSession } from "@/lib/auth/current-session";
 import type { Order, Driver } from "@/types/domain";
 
 export interface DeliveryBoardResult {
   orders: Order[];
   drivers: Driver[];
+  itemSummaries: Record<string, OrderItemSummary>;
 }
 
-/** 배송관리 board: every order delivering on the given day, plus the active driver roster to assign from. */
-export async function getDeliveryBoardAction(dateIso: string): Promise<DeliveryBoardResult> {
+/**
+ * 배송관리 board: every order delivering within [dateFrom, dateTo] (both KST
+ * calendar days, inclusive), plus the active driver roster to assign from.
+ * Phase 4-B STEP8: dateTo now optional (defaults to dateFrom) so the board
+ * can show a quick-filter range (이번주/이번달), not just a single day.
+ * dateFrom === null means "전체" (no date bound at all).
+ * Phase 6 STEP4: itemSummaries added so 배송관리도 "무엇을 배송하는지" 상품
+ * 요약을 보여줄 수 있다 — 주문관리와 동일한 buildOrderItemSummaries 재사용.
+ */
+export async function getDeliveryBoardAction(dateFrom: string | null, dateTo?: string): Promise<DeliveryBoardResult> {
   const session = await requireSession();
   const ownerScope = ownerScopeFor(session);
   const [orders, drivers] = await Promise.all([
-    ordersRepository.findByDeliveryDate(dateIso, ownerScope),
+    ordersRepository.findByDeliveryDate(dateFrom, ownerScope, dateTo),
     driversRepository.listActive(ownerScope),
   ]);
-  return { orders, drivers };
+  const itemSummaries = await buildOrderItemSummaries(orders);
+  return { orders, drivers, itemSummaries };
 }
 
 export interface DeliveryActionState {
@@ -61,6 +72,32 @@ export async function assignDriverAction(orderIds: string[], driverId: string): 
     return { ok: true, error: null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "기사 배정 중 오류가 발생했습니다." };
+  }
+}
+
+/**
+ * 배정을 해제하고 주문을 배송대기로 되돌린다 ("배정 해제"). assignDriverAction과
+ * 동일한 owner 검증 패턴을 그대로 재사용 — 새로운 권한 체크 방식을 만들지 않는다.
+ */
+export async function unassignDriverAction(orderIds: string[]): Promise<DeliveryActionState> {
+  try {
+    const session = await requireSession();
+    if (orderIds.length === 0) return { ok: false, error: "배정 해제할 주문을 선택해주세요." };
+
+    if (session.role !== "admin") {
+      const orders = await ordersRepository.findByIds(orderIds);
+      const allOwned = orders.length === orderIds.length && orders.every((o) => o.owner_username === session.username);
+      if (!allOwned) {
+        return { ok: false, error: "배정 해제 권한이 없는 주문이 포함되어 있습니다." };
+      }
+    }
+
+    await ordersRepository.unassignDriver(orderIds, session.role === "admin" ? undefined : session.username);
+    revalidatePath("/delivery");
+    revalidatePath("/orders");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "배정 해제 중 오류가 발생했습니다." };
   }
 }
 

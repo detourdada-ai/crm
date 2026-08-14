@@ -97,13 +97,15 @@ export type OrderStatus = string;
 export type OrderSource = "import" | "manual";
 
 // Internal delivery workflow status, distinct from the freeform Smartstore
-// `status` passthrough text. Driven by driver assignment/completion.
-export type DeliveryStatus = "배송대기" | "배송중" | "완료";
+// `status` passthrough text. Driven by driver assignment/completion/cancellation.
+// Phase 2: "취소" added — a soft-cancel state, never a physical delete.
+export type DeliveryStatus = "배송대기" | "배송중" | "완료" | "취소";
 
 export interface Order {
   id: UUID;
   customer_id: UUID;
-  order_number: string | null; // null for manual orders without a smartstore order number
+  order_number: string | null; // 원본(엑셀/스마트스토어) 주문번호 — null for manual orders without one
+  internal_order_number: string; // Phase 5: 시스템 내부 고유 주문번호(YYYYMMDD+4자리, 테넌트별), 모든 주문에 항상 존재
   order_date: ISODateString;
   status: OrderStatus;
   total_amount: number;
@@ -127,6 +129,7 @@ export interface Order {
   delivery_status: DeliveryStatus;
   driver_id: UUID | null;
   completed_at: ISODateString | null;
+  cancelled_at: ISODateString | null;
   import_id: UUID | null;
   owner_username: string;
   tenant_id: UUID;

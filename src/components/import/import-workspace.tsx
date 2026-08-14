@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { analyzeImportFileAction, confirmImportAction } from "@/actions/import";
 import type { ColumnMapping, MappableField, ParsedSheet } from "@/types/excel";
-import type { ImportSummary } from "@/types/domain";
+import type { ImportSummary, ImportRowError } from "@/types/domain";
 import { ImportDropzone } from "./import-dropzone";
 import { ColumnMappingForm } from "./column-mapping-form";
 import { ImportResultCards } from "./import-result-cards";
@@ -23,7 +23,7 @@ type Stage =
       unmapped: MappableField[];
       unrecognizedHeaders: string[];
     }
-  | { step: "done"; summary: ImportSummary };
+  | { step: "done"; summary: ImportSummary; errors: ImportRowError[] };
 
 export function ImportWorkspace() {
   const router = useRouter();
@@ -82,7 +82,7 @@ export function ImportWorkspace() {
         return;
       }
       toast.success("엑셀 업로드가 완료되었습니다.");
-      setStage({ step: "done", summary: result.summary });
+      setStage({ step: "done", summary: result.summary, errors: result.errors });
       router.refresh();
     });
   }
@@ -97,7 +97,7 @@ export function ImportWorkspace() {
       ) : null}
       {stage.step === "done" ? (
         <div className="space-y-4">
-          <ImportResultCards summary={stage.summary} />
+          <ImportResultCards summary={stage.summary} errors={stage.errors} />
           <Button variant="outline" onClick={() => setStage({ step: "idle" })}>
             다른 파일 업로드
           </Button>

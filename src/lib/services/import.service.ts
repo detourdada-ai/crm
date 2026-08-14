@@ -9,6 +9,7 @@ import { isSimilarButNotIdenticalName } from "@/lib/utils/similarity";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress, normalizeAddressForCompare } from "@/lib/utils/address";
 import { parseDeliveryDateFromOption, parseDeliveryAreaFromOption } from "@/lib/utils/delivery-date";
+import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import type { ParsedSheet, ColumnMapping } from "@/types/excel";
 import type { Customer, ImportRowError, ImportSummary } from "@/types/domain";
 
@@ -22,6 +23,7 @@ export interface RunImportInput {
 export interface RunImportResult {
   importId: string;
   summary: ImportSummary;
+  errors: ImportRowError[];
 }
 
 function getMapped(row: Record<string, unknown>, mapping: ColumnMapping, field: string): unknown {
@@ -361,6 +363,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         id: orderId,
         customer_id: customerId,
         order_number: orderNumber,
+        internal_order_number: "", // Phase 5: batch-allocated after this loop, see below — never one RPC call per row
         order_date: orderDate,
         status: orderStatus,
         total_amount: totalAmount,
@@ -412,6 +415,16 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     }
   }
 
+  // Phase 5: 내부 주문번호를 이 시점에 한 번에 배정한다 — 위 루프(zero DB calls)를
+  // 지키기 위해 루프 안에서는 채번하지 않고, 여기서 KST 캘린더일 단위로 묶어
+  // next_order_seq_batch를 날짜 종류 수만큼만 호출한다(건마다 왕복하지 않음).
+  if (newOrderInserts.length > 0) {
+    const internalNumbers = await allocateOrderNumbers(tenant.id, newOrderInserts.map((o) => o.order_date));
+    newOrderInserts.forEach((o, i) => {
+      o.internal_order_number = internalNumbers[i];
+    });
+  }
+
   // ---------- Phase 3: flush everything in a handful of batch writes (customers -> orders -> items, in FK order) ----------
   if (newCustomerInserts.length > 0) {
     await customersRepository.createMany(newCustomerInserts);
@@ -453,6 +466,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       duplicateCandidates: duplicateCandidateCount,
       failedRows,
     },
+    errors,
   };
 }
 

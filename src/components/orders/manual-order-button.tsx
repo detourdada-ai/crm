@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { createManualOrderAction } from "@/actions/orders";
 import { AddressSearchInput } from "@/components/common/address-search-input";
+import { kstTodayIso } from "@/lib/utils/kst-date";
 
 type Step = "choose" | "manual";
 
@@ -112,7 +113,7 @@ export function ManualOrderButton() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="orderDate">주문일</Label>
-            <Input id="orderDate" name="orderDate" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
+            <Input id="orderDate" name="orderDate" type="date" defaultValue={kstTodayIso()} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="manualDeliveryDate">배송일</Label>

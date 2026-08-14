@@ -1,11 +1,13 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { kstDayStartIso, kstDayEndIso } from "@/lib/utils/kst-date";
 import type { Order, OrderItem, OrderSource, DeliveryStatus } from "@/types/domain";
 
 export interface OrderInsert {
   id?: string; // client-generated (crypto.randomUUID()) for batch import — lets order_items reference the order before the actual insert round-trip
   customer_id: string;
   order_number?: string | null;
+  internal_order_number: string;
   order_date: string;
   status?: string;
   total_amount: number;
@@ -40,6 +42,7 @@ export interface OrderUpdate {
   delivery_status?: DeliveryStatus;
   driver_id?: string | null;
   completed_at?: string | null;
+  cancelled_at?: string | null;
   recipient_name?: string;
   phone_snapshot?: string | null;
   address_snapshot?: string | null;
@@ -51,6 +54,7 @@ export interface OrderUpdate {
 
 export type OrderSortField =
   | "order_number"
+  | "internal_order_number"
   | "order_date"
   | "delivery_date"
   | "recipient_name"
@@ -66,9 +70,13 @@ export interface OrderSearchParams {
   ownerUsername?: string;
   deliveryStatus?: DeliveryStatus;
   bagReturned?: boolean;
+  /** KST calendar-day strings ("YYYY-MM-DD"); converted to precise UTC instants internally — see kst-date.ts. */
   orderDateFrom?: string;
   orderDateTo?: string;
+  /** @deprecated single-day form, kept for any caller not yet on the range params. Prefer deliveryDateFrom/To. */
   deliveryDate?: string;
+  deliveryDateFrom?: string;
+  deliveryDateTo?: string;
   sortBy?: OrderSortField;
   sortAscending?: boolean;
 }
@@ -158,6 +166,8 @@ export const ordersRepository = {
     orderDateFrom,
     orderDateTo,
     deliveryDate,
+    deliveryDateFrom,
+    deliveryDateTo,
     sortBy = "delivery_date",
     sortAscending = false,
   }: OrderSearchParams) {
@@ -167,14 +177,14 @@ export const ordersRepository = {
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     if (deliveryStatus) q = q.eq("delivery_status", deliveryStatus);
     if (bagReturned !== undefined) q = q.eq("bag_returned", bagReturned);
-    if (orderDateFrom) q = q.gte("order_date", orderDateFrom);
-    if (orderDateTo) q = q.lte("order_date", orderDateTo);
-    if (deliveryDate) {
-      const start = new Date(deliveryDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(deliveryDate);
-      end.setHours(23, 59, 59, 999);
-      q = q.gte("delivery_date", start.toISOString()).lte("delivery_date", end.toISOString());
+    // KST calendar-day boundaries, not bare date strings — see kst-date.ts's doc comment for why.
+    if (orderDateFrom) q = q.gte("order_date", kstDayStartIso(orderDateFrom));
+    if (orderDateTo) q = q.lte("order_date", kstDayEndIso(orderDateTo));
+    if (deliveryDateFrom || deliveryDateTo) {
+      if (deliveryDateFrom) q = q.gte("delivery_date", kstDayStartIso(deliveryDateFrom));
+      if (deliveryDateTo) q = q.lte("delivery_date", kstDayEndIso(deliveryDateTo));
+    } else if (deliveryDate) {
+      q = q.gte("delivery_date", kstDayStartIso(deliveryDate)).lte("delivery_date", kstDayEndIso(deliveryDate));
     }
 
     const { data, error, count } = await q
@@ -191,18 +201,29 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
-  /** All orders whose delivery_date falls on the given calendar day — the 배송관리 board is scoped to one day at a time. */
-  async findByDeliveryDate(dateIso: string, ownerUsername?: string): Promise<Order[]> {
-    const start = new Date(dateIso);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(dateIso);
-    end.setHours(23, 59, 59, 999);
-
-    let q = getSupabaseAdmin()
-      .from("orders")
-      .select("*")
-      .gte("delivery_date", start.toISOString())
-      .lte("delivery_date", end.toISOString());
+  /**
+   * All orders whose delivery_date falls within the given KST calendar-day
+   * range (inclusive) — 배송관리 board. `dateTo` defaults to `dateFrom` for
+   * the common single-day case. `dateFrom === null` means no date bound at
+   * all ("전체") — this also surfaces orders with delivery_date IS NULL
+   * (엑셀 옵션정보에 날짜 패턴이 없어 배송일이 비어있는 주문 등), which is
+   * exactly the case Phase 4-B STEP1 found silently invisible everywhere.
+   *
+   * Phase 4-B: boundaries now go through kstDayStartIso/kstDayEndIso instead
+   * of `new Date(dateIso); .setHours(0,0,0,0)`, which only produced correct
+   * KST boundaries when the server process's own OS timezone happened to be
+   * Asia/Seoul — see kst-date.ts's doc comment.
+   *
+   * Phase 2: excludes 취소(cancelled) orders — a cancelled order is not
+   * something to deliver, so it never enters the board, never counts toward
+   * "배정 필요"/"배송 중", and can never be assigned a driver from here.
+   * It's still fully visible on the order detail page and in 주문 목록.
+   */
+  async findByDeliveryDate(dateFrom: string | null, ownerUsername?: string, dateTo?: string): Promise<Order[]> {
+    let q = getSupabaseAdmin().from("orders").select("*").neq("delivery_status", "취소");
+    if (dateFrom) {
+      q = q.gte("delivery_date", kstDayStartIso(dateFrom)).lte("delivery_date", kstDayEndIso(dateTo ?? dateFrom));
+    }
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     const { data, error } = await q.order("created_at", { ascending: true });
     if (error) throw error;
@@ -210,7 +231,10 @@ export const ordersRepository = {
   },
 
   /**
-   * Assigns a driver to the given orders and moves them into 배송중.
+   * Assigns a driver to the given orders and moves them into 배송중. Also
+   * used for "기사 변경" — reassigning an already-in-progress order to a
+   * different driver is just calling this again with a new driverId, no
+   * separate codepath needed.
    *
    * Sprint 14-I hotfix: `ownerUsername`, when passed (i.e. caller isn't
    * admin), is a second line of defense on top of the action-layer check —
@@ -218,11 +242,17 @@ export const ordersRepository = {
    * owner *before* issuing the UPDATE, so a bypassed/buggy action layer
    * still can't cross-tenant-assign. All-or-nothing: any mismatch throws
    * and nothing is written.
+   *
+   * Phase 2: also re-verifies (still all-or-nothing) that none of the
+   * target orders are already 완료(delivered) or 취소(cancelled) — a
+   * completed delivery's history shouldn't be reopened, and a cancelled
+   * order was deliberately taken out of the delivery flow.
    */
   async assignDriver(orderIds: string[], driverId: string, ownerUsername?: string): Promise<void> {
     if (orderIds.length === 0) return;
+    const admin = getSupabaseAdmin();
+
     if (ownerUsername) {
-      const admin = getSupabaseAdmin();
       const [{ data: owned, error: ordersCheckError }, { data: driver, error: driverCheckError }] = await Promise.all([
         admin.from("orders").select("id").in("id", orderIds).eq("owner_username", ownerUsername),
         admin.from("drivers").select("id").eq("id", driverId).eq("owner_username", ownerUsername).maybeSingle(),
@@ -233,10 +263,42 @@ export const ordersRepository = {
         throw new Error("배정 권한이 없는 주문 또는 기사가 포함되어 있습니다.");
       }
     }
-    const { error } = await getSupabaseAdmin()
-      .from("orders")
-      .update({ driver_id: driverId, delivery_status: "배송중" })
-      .in("id", orderIds);
+
+    const { data: targets, error: targetsError } = await admin.from("orders").select("id, delivery_status").in("id", orderIds);
+    if (targetsError) throw targetsError;
+    const blocked = (targets ?? []).filter((o) => o.delivery_status === "완료" || o.delivery_status === "취소");
+    if (blocked.length > 0) {
+      throw new Error("이미 배송완료되었거나 취소된 주문은 기사를 배정/변경할 수 없습니다.");
+    }
+
+    const { error } = await admin.from("orders").update({ driver_id: driverId, delivery_status: "배송중" }).in("id", orderIds);
+    if (error) throw error;
+  },
+
+  /**
+   * Removes the driver from the given orders and moves them back to
+   * 배송대기 ("배정 해제"). Blocked for already-완료/취소 orders for the
+   * same reason as assignDriver.
+   */
+  async unassignDriver(orderIds: string[], ownerUsername?: string): Promise<void> {
+    if (orderIds.length === 0) return;
+    const admin = getSupabaseAdmin();
+    if (ownerUsername) {
+      const { data: owned, error: checkError } = await admin.from("orders").select("id").in("id", orderIds).eq("owner_username", ownerUsername);
+      if (checkError) throw checkError;
+      if ((owned?.length ?? 0) !== orderIds.length) {
+        throw new Error("배정 해제 권한이 없는 주문이 포함되어 있습니다.");
+      }
+    }
+
+    const { data: targets, error: targetsError } = await admin.from("orders").select("id, delivery_status").in("id", orderIds);
+    if (targetsError) throw targetsError;
+    const blocked = (targets ?? []).filter((o) => o.delivery_status === "완료" || o.delivery_status === "취소");
+    if (blocked.length > 0) {
+      throw new Error("이미 배송완료되었거나 취소된 주문은 배정을 해제할 수 없습니다.");
+    }
+
+    const { error } = await admin.from("orders").update({ driver_id: null, delivery_status: "배송대기" }).in("id", orderIds);
     if (error) throw error;
   },
 
@@ -254,9 +316,44 @@ export const ordersRepository = {
       .from("orders")
       .update({ delivery_status: "완료", completed_at: new Date().toISOString() })
       .eq("id", orderId)
+      .neq("delivery_status", "취소")
       .select("*")
       .single();
     if (error) throw error;
+    return data as Order;
+  },
+
+  /**
+   * Soft-cancels an order ("취소"): the row is never deleted, only its
+   * delivery_status changes, so the order stays visible on its detail page
+   * and in 주문 목록 as history. Clears driver_id so it can't linger as
+   * "assigned" on a delivery that no longer happens. Blocked for orders
+   * already 완료(delivered) — a completed delivery isn't undone by cancelling.
+   */
+  async cancelOrder(orderId: string): Promise<Order> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("orders")
+      .update({ delivery_status: "취소", cancelled_at: new Date().toISOString(), driver_id: null })
+      .eq("id", orderId)
+      .neq("delivery_status", "완료")
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("이미 배송완료된 주문은 취소할 수 없습니다.");
+    return data as Order;
+  },
+
+  /** Reverses cancelOrder — only valid from 취소, returns the order to 배송대기 for normal processing. */
+  async uncancelOrder(orderId: string): Promise<Order> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("orders")
+      .update({ delivery_status: "배송대기", cancelled_at: null })
+      .eq("id", orderId)
+      .eq("delivery_status", "취소")
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("취소된 주문이 아닙니다.");
     return data as Order;
   },
 
@@ -364,28 +461,31 @@ export const ordersRepository = {
     return data?.length ?? 0;
   },
 
+  /** Phase 2: excludes 취소 orders — this backs the "총 주문" dashboard stat, and a cancelled order isn't a real one anymore. */
   async count(ownerUsername?: string): Promise<number> {
-    let q = getSupabaseAdmin().from("orders").select("*", { count: "exact", head: true });
+    let q = getSupabaseAdmin().from("orders").select("*", { count: "exact", head: true }).neq("delivery_status", "취소");
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     const { count, error } = await q;
     if (error) throw error;
     return count ?? 0;
   },
 
-  /** Just customer_id for orders since a date — used for the new-vs-repeat breakdown (lighter than fetching full rows). */
+  /** Just customer_id for orders since a date — used for the new-vs-repeat breakdown (lighter than fetching full rows). Excludes 취소 orders. */
   async findCustomerIdsSince(sinceIso: string, ownerUsername?: string): Promise<string[]> {
-    let q = getSupabaseAdmin().from("orders").select("customer_id").gte("order_date", sinceIso);
+    let q = getSupabaseAdmin().from("orders").select("customer_id").gte("order_date", sinceIso).neq("delivery_status", "취소");
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     const { data, error } = await q;
     if (error) throw error;
     return (data ?? []).map((r) => r.customer_id as string);
   },
 
+  /** Phase 2: excludes 취소 orders from a customer's totals (VIP 판정/구매금액 등). */
   async aggregateStatsByCustomer(customerId: string) {
     const { data, error } = await getSupabaseAdmin()
       .from("orders")
       .select("total_amount, order_date")
       .eq("customer_id", customerId)
+      .neq("delivery_status", "취소")
       .order("order_date", { ascending: true });
     if (error) throw error;
     const rows = data ?? [];

@@ -7,6 +7,7 @@ import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { computeAccessStatus } from "@/lib/auth/access-control";
 import { AccessKeyRedeemForm } from "@/components/settings/access-key-redeem-form";
 import { logoutAction } from "@/actions/auth";
+import { formatKstDateKorean } from "@/lib/utils/kst-date";
 
 // Deliberately outside the (protected) route group — requireActiveAccess()
 // (called from (protected)/layout.tsx) would otherwise redirect right back
@@ -73,15 +74,15 @@ function BetaActiveContent({ expiresAt, now }: { expiresAt: string | null; now: 
           Beta 이용 중
           <Badge>BETA</Badge>
         </CardTitle>
-        {endDate ? (
+        {endDate && expiresAt ? (
           <CardDescription>
-            Beta 종료일 {formatKoreanDate(endDate)}
+            Beta 종료일 {formatKstDateKorean(expiresAt)}
             {daysLeft !== null ? ` · 남은 기간 ${daysLeft}일` : null}
           </CardDescription>
         ) : null}
       </div>
       <Button asChild className="w-full">
-        <Link href="/dashboard">Ordify 시작하기</Link>
+        <Link href="/dashboard">주문:한장 시작하기</Link>
       </Button>
     </CardContent>
   );
@@ -97,7 +98,7 @@ function SubscriptionActiveContent() {
         </CardTitle>
       </div>
       <Button asChild className="w-full">
-        <Link href="/dashboard">Ordify 시작하기</Link>
+        <Link href="/dashboard">주문:한장 시작하기</Link>
       </Button>
     </CardContent>
   );
@@ -111,15 +112,11 @@ function ExpiredContent({ expiresAt }: { expiresAt: string | null }) {
           Beta 이용 기간이 종료되었습니다
           <Badge variant="outline">만료</Badge>
         </CardTitle>
-        {expiresAt ? <CardDescription>Beta 종료일 {formatKoreanDate(new Date(expiresAt))}</CardDescription> : null}
+        {expiresAt ? <CardDescription>Beta 종료일 {formatKstDateKorean(expiresAt)}</CardDescription> : null}
         <CardDescription>정식 서비스 이용 방법은 준비되는 대로 안내드리겠습니다.</CardDescription>
       </div>
     </CardContent>
   );
-}
-
-function formatKoreanDate(d: Date): string {
-  return `${d.getFullYear()}년 ${String(d.getMonth() + 1).padStart(2, "0")}월 ${String(d.getDate()).padStart(2, "0")}일`;
 }
 
 function SuspendedContent() {

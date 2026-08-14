@@ -13,7 +13,7 @@ export function RecentOrdersList({ orders }: { orders: Order[] }) {
         <li key={order.id} className="flex items-center justify-between gap-2 border-b pb-2 text-sm last:border-0">
           <div className="min-w-0">
             <Link href={`/orders/${order.id}`} className="font-medium text-primary hover:underline">
-              {order.order_number}
+              {order.internal_order_number}
             </Link>
             <p className="truncate text-xs text-muted-foreground">
               {order.recipient_name} · {formatDateTime(order.order_date)}

@@ -16,6 +16,7 @@ import { TopProductsTable } from "@/components/dashboard/top-products-table";
 import { CustomerRankingTable } from "@/components/dashboard/customer-ranking-table";
 import { InactiveCustomerTable } from "@/components/dashboard/inactive-customer-table";
 import { PageHeader } from "@/components/common/page-header";
+import { SummaryFlow, type SummaryFlowItem } from "@/components/common/summary-flow";
 import { formatCurrency } from "@/lib/constants/order-status";
 
 export default async function StatsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
@@ -31,22 +32,34 @@ export default async function StatsPage({ searchParams }: { searchParams: Promis
       getRecentlyInactiveCustomersAction(),
     ]);
 
-  const defaultTab = tab === "reorder" ? "reorder" : tab === "sales" ? "sales" : tab === "customers" ? "customers" : "vip";
+  const defaultTab = tab === "vip" ? "vip" : tab === "reorder" ? "reorder" : tab === "customers" ? "customers" : "sales";
 
   const totalThisMonthCustomers = stats.newVsRepeat.newCustomers + stats.newVsRepeat.repeatCustomers;
   const repeatRatio =
     totalThisMonthCustomers > 0 ? Math.round((stats.newVsRepeat.repeatCustomers / totalThisMonthCustomers) * 100) : 0;
 
+  // 매출 → 주문 → 고객 순으로 우선순위를 준다 — Dashboard에서 뺀 상세 통계는
+  // 여기서만 보여준다는 원칙에 따라, 페이지 전체에서 항상 보이는 핵심 지표를
+  // 최상단 하나로 모으고 세부 분석은 아래 탭에서 이어간다.
+  const summaryItems: SummaryFlowItem[] = [
+    { key: "revenue", label: "이번 달 매출", value: formatCurrency(stats.monthRevenue), tone: "success", emphasize: true },
+    { key: "orders", label: "총 주문", value: `${stats.totalOrders}건`, tone: "info" },
+    { key: "customers", label: "총 고객", value: `${stats.totalCustomers}명`, tone: "neutral" },
+    { key: "aov", label: "객단가", value: formatCurrency(stats.averageOrderValue), tone: "neutral" },
+  ];
+
   return (
     <div className="space-y-6">
-      <PageHeader title="통계" description="주문과 고객 데이터를 한눈에 확인하세요." />
+      <PageHeader title="통계" description="주문과 고객 데이터를 바탕으로 매출과 운영 현황을 확인하세요." />
+
+      <SummaryFlow items={summaryItems} />
 
       <Tabs defaultValue={defaultTab}>
         <TabsList>
-          <TabsTrigger value="vip">VIP 고객 ({vipCustomers.length})</TabsTrigger>
-          <TabsTrigger value="reorder">재주문 임박 ({reorderDue.length})</TabsTrigger>
           <TabsTrigger value="sales">매출 · 상품</TabsTrigger>
           <TabsTrigger value="customers">고객 분석</TabsTrigger>
+          <TabsTrigger value="vip">VIP 고객 ({vipCustomers.length})</TabsTrigger>
+          <TabsTrigger value="reorder">재주문 임박 ({reorderDue.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="vip">
@@ -79,33 +92,6 @@ export default async function StatsPage({ searchParams }: { searchParams: Promis
         </TabsContent>
 
         <TabsContent value="sales" className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>총 고객</CardDescription>
-                <CardTitle className="text-2xl">{stats.totalCustomers}명</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>총 주문</CardDescription>
-                <CardTitle className="text-2xl">{stats.totalOrders}건</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>이번 달 매출</CardDescription>
-                <CardTitle className="text-2xl">{formatCurrency(stats.monthRevenue)}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>객단가</CardDescription>
-                <CardTitle className="text-2xl">{formatCurrency(stats.averageOrderValue)}</CardTitle>
-              </CardHeader>
-            </Card>
-          </div>
-
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>

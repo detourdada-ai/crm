@@ -7,6 +7,7 @@ import { customerStatsRepository, type CustomerOrderStatsRow } from "@/lib/repos
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { countVipCustomers } from "./vip.service";
 import { computeAverageReorderCycleDays, computeReorderDueCustomers } from "./reorder.service";
+import { kstDayStartIso, kstTodayIso, resolveKstQuickRange } from "@/lib/utils/kst-date";
 
 export interface DashboardStats {
   totalCustomers: number;
@@ -28,9 +29,11 @@ const CUSTOMER_RANKING_LIMIT = 10;
 const RECENTLY_INACTIVE_LIMIT = 10;
 
 export async function getDashboardStats(ownerUsername?: string): Promise<DashboardStats> {
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
+  // Phase 7 STEP2: "이번 달" 경계는 서버 OS timezone이 아니라 KST 기준이어야
+  // 한다 — 기존 new Date()+setDate(1)+setHours(0,0,0,0)는 UTC 서버에서 월
+  // 경계가 최대 9시간 어긋났다(kst-date.ts와 동일한 버그 클래스).
+  const kstMonthStart = resolveKstQuickRange("month", kstTodayIso()).start;
+  const startOfMonth = new Date(kstDayStartIso(kstMonthStart));
 
   const [
     totalCustomers,

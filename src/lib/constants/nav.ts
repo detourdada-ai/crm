@@ -29,10 +29,10 @@ export const NAV_ENTRIES: NavEntry[] = [
   {
     section: "업무",
     items: [
-      { href: "/orders", label: "주문", icon: ShoppingCart },
-      { href: "/delivery", label: "배송", icon: Truck },
-      { href: "/customers", label: "고객", icon: Users },
-      { href: "/settlements", label: "정산", icon: Wallet },
+      { href: "/orders", label: "주문관리", icon: ShoppingCart },
+      { href: "/delivery", label: "배송관리", icon: Truck },
+      { href: "/customers", label: "고객관리", icon: Users },
+      { href: "/settlements", label: "정산관리", icon: Wallet },
     ],
   },
   { section: "분석", items: [{ href: "/stats", label: "통계", icon: BarChart3 }] },

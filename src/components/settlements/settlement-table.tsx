@@ -26,45 +26,52 @@ function StatusToggle({ settlementId, status }: { settlementId: string; status: 
   );
 }
 
+/** 정산 화면의 핵심은 "얼마를 받을 수 있는가" — 기사명과 정산금액을 강조하고, 배송건수는 보조 정보로 낮춘다. */
 export function SettlementTable({ rows, showOwner = false }: { rows: SettlementRow[]; showOwner?: boolean }) {
   if (rows.length === 0) {
-    return <p className="py-12 text-center text-sm text-muted-foreground">등록된 배송 기사가 없습니다.</p>;
+    return <p className="py-12 text-center text-sm text-muted-foreground">표시할 정산 내역이 없습니다.</p>;
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {showOwner ? <TableHead>담당 계정</TableHead> : null}
-          <TableHead>기사명</TableHead>
-          <TableHead className="text-right">배송건수</TableHead>
-          <TableHead className="text-right">배송금액</TableHead>
-          <TableHead>정산상태</TableHead>
-          <TableHead />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map(({ driver, settlement }) => (
-          <TableRow key={driver.id}>
-            {showOwner ? (
-              <TableCell>
-                <Badge variant="secondary">{driver.owner_username}</Badge>
-              </TableCell>
-            ) : null}
-            <TableCell className="font-medium">{driver.name}</TableCell>
-            <TableCell className="text-right">{settlement.delivery_count}건</TableCell>
-            <TableCell className="text-right">{formatCurrency(settlement.amount)}</TableCell>
-            <TableCell>
-              <Badge variant={settlement.status === "paid" ? "default" : "outline"}>
-                {settlement.status === "paid" ? "지급완료" : "미지급"}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              <StatusToggle settlementId={settlement.id} status={settlement.status} />
-            </TableCell>
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>기사명</TableHead>
+            <TableHead className="text-right">정산 금액</TableHead>
+            <TableHead>정산 상태</TableHead>
+            <TableHead className="hidden lg:table-cell text-right">배송 건수</TableHead>
+            {showOwner ? <TableHead className="hidden lg:table-cell">담당 계정</TableHead> : null}
+            <TableHead />
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map(({ driver, settlement }) => (
+            <TableRow key={driver.id} className="hover:bg-muted/40">
+              <TableCell className="font-semibold text-text-strong">{driver.name}</TableCell>
+              <TableCell className="text-right font-semibold text-text-strong">
+                {formatCurrency(settlement.amount)}
+              </TableCell>
+              <TableCell>
+                <Badge variant={settlement.status === "paid" ? "success" : "warning"}>
+                  {settlement.status === "paid" ? "지급완료" : "미지급"}
+                </Badge>
+              </TableCell>
+              <TableCell className="hidden lg:table-cell text-right text-muted-foreground">
+                {settlement.delivery_count}건
+              </TableCell>
+              {showOwner ? (
+                <TableCell className="hidden lg:table-cell">
+                  <Badge variant="secondary">{driver.owner_username}</Badge>
+                </TableCell>
+              ) : null}
+              <TableCell>
+                <StatusToggle settlementId={settlement.id} status={settlement.status} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

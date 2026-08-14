@@ -19,7 +19,7 @@ export function getResendClient(): Resend | null {
 // Resend's shared test sender works without a verified domain — use it as a
 // default so email sending can be exercised before a custom domain exists.
 export function getFromEmail(): string {
-  return process.env.RESEND_FROM_EMAIL || "Ordify <onboarding@resend.dev>";
+  return process.env.RESEND_FROM_EMAIL || "주문:한장 <onboarding@resend.dev>";
 }
 
 // Sprint 14-E: the operator's real support address — used both as the

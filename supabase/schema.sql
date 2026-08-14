@@ -224,16 +224,22 @@ create table if not exists orders (
   bag_number text,
   bag_returned boolean not null default false,
   order_source text not null default 'import' check (order_source in ('import', 'manual')),
-  -- 내부 배송 진행 상태(스마트스토어 원본 status와 별개). 기사 배정/배송완료 처리에 따라 전이됨.
-  delivery_status text not null default '배송대기' check (delivery_status in ('배송대기', '배송중', '완료')),
+  -- 내부 배송 진행 상태(스마트스토어 원본 status와 별개). 기사 배정/배송완료/취소 처리에 따라 전이됨.
+  delivery_status text not null default '배송대기' check (delivery_status in ('배송대기', '배송중', '완료', '취소')),
   driver_id uuid references drivers (id) on delete set null,
   completed_at timestamptz,
+  cancelled_at timestamptz,
   import_id uuid references imports (id) on delete set null,
   owner_username text not null default 'admin',
   tenant_id uuid not null references tenants (id),
+  -- Phase 5: 시스템 내부 고유 주문번호(YYYYMMDD+4자리, 테넌트별 채번).
+  -- order_number(스마트스토어 원본, 위)는 절대 이 값으로 대체되지 않는다 —
+  -- 재업로드 시 중복 판정은 여전히 order_number 기준으로 동작한다.
+  internal_order_number text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (order_number)
+  unique (order_number),
+  unique (tenant_id, internal_order_number)
 );
 
 create index if not exists idx_orders_customer_id on orders (customer_id);
@@ -246,6 +252,29 @@ create index if not exists idx_orders_tenant_id on orders (tenant_id);
 create index if not exists idx_orders_driver_id on orders (driver_id);
 create index if not exists idx_orders_delivery_status on orders (delivery_status);
 create index if not exists idx_orders_delivery_area on orders (delivery_area);
+create index if not exists idx_orders_internal_order_number on orders (internal_order_number);
+
+-- ----------------------------------------------------------------------------
+-- order_number_counters + next_order_seq_batch: Phase 5 원자적 채번 —
+-- 0026_internal_order_number.sql 참고.
+-- ----------------------------------------------------------------------------
+create table if not exists order_number_counters (
+  tenant_id uuid not null references tenants(id),
+  day_str text not null,
+  last_seq int not null default 0,
+  primary key (tenant_id, day_str)
+);
+
+create or replace function next_order_seq_batch(p_tenant_id uuid, p_day_str text, p_count int)
+returns int as $$
+  insert into order_number_counters (tenant_id, day_str, last_seq)
+  values (p_tenant_id, p_day_str, p_count)
+  on conflict (tenant_id, day_str)
+  do update set last_seq = order_number_counters.last_seq + p_count
+  returning last_seq - p_count + 1;
+$$ language sql volatile;
+
+grant execute on function next_order_seq_batch(uuid, text, int) to service_role;
 
 drop trigger if exists trg_orders_updated_at on orders;
 create trigger trg_orders_updated_at
@@ -563,6 +592,7 @@ create table if not exists app_settings (
 -- ----------------------------------------------------------------------------
 -- customer_order_stats (per-customer order aggregates for VIP/list views)
 -- ----------------------------------------------------------------------------
+-- 취소(delivery_status = '취소')된 주문은 총 주문/총 금액 집계에서 제외한다.
 create or replace view customer_order_stats as
 select
   c.id as customer_id,
@@ -572,7 +602,7 @@ select
   min(o.order_date) as first_order_at,
   max(o.order_date) as last_order_at
 from customers c
-left join orders o on o.customer_id = c.id
+left join orders o on o.customer_id = c.id and o.delivery_status <> '취소'
 group by c.id, c.owner_username;
 
 -- ----------------------------------------------------------------------------
@@ -592,6 +622,7 @@ left join customer_order_stats s on s.customer_id = c.id;
 -- Sprint 4 dashboard analytics (views + RPC functions; see
 -- migrations/0006_dashboard_analytics.sql for full comments)
 -- ----------------------------------------------------------------------------
+-- 취소된 주문은 재주문 주기 계산에서 제외한다.
 create or replace view customer_order_gaps as
 select
   o.customer_id,
@@ -600,7 +631,8 @@ select
   lag(o.order_date) over (partition by o.customer_id order by o.order_date) as prev_order_date,
   extract(epoch from (o.order_date - lag(o.order_date) over (partition by o.customer_id order by o.order_date))) / 86400 as gap_days
 from orders o
-join customers c on c.id = o.customer_id;
+join customers c on c.id = o.customer_id
+where o.delivery_status <> '취소';
 
 create or replace view customer_reorder_cycle as
 select
@@ -628,6 +660,7 @@ returns table (month text, revenue numeric) as $$
   left join orders o
     on date_trunc('month', o.order_date) = m.month_start
     and (p_owner_username is null or o.owner_username = p_owner_username)
+    and o.delivery_status <> '취소'
   group by m.month, m.month_start
   order by m.month_start;
 $$ language sql stable;
@@ -644,6 +677,7 @@ returns table (weekday int, order_count bigint) as $$
   left join orders o
     on extract(dow from o.order_date)::int = d.weekday
     and (p_owner_username is null or o.owner_username = p_owner_username)
+    and o.delivery_status <> '취소'
   group by d.weekday
   order by d.weekday;
 $$ language sql stable;
@@ -657,6 +691,7 @@ returns table (product_name text, total_quantity bigint, total_amount numeric) a
   from order_items oi
   join orders o on o.id = oi.order_id
   where (p_owner_username is null or o.owner_username = p_owner_username)
+    and o.delivery_status <> '취소'
   group by oi.product_name
   order by total_amount desc
   limit p_limit;
@@ -669,7 +704,8 @@ returns table (total_amount numeric, order_count bigint) as $$
     count(*) as order_count
   from orders
   where (p_owner_username is null or owner_username = p_owner_username)
-    and (p_since is null or order_date >= p_since);
+    and (p_since is null or order_date >= p_since)
+    and delivery_status <> '취소';
 $$ language sql stable;
 
 grant execute on function monthly_revenue(text, int) to service_role;

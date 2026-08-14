@@ -1,4 +1,5 @@
 import "server-only";
+import { resolveKstQuickRange } from "@/lib/utils/kst-date";
 
 export type SettlementPeriodType = "daily" | "weekly" | "monthly";
 
@@ -7,33 +8,25 @@ export interface PeriodRange {
   end: string;
 }
 
-/** Resolves a period type + reference date into an inclusive [start, end] date range (주는 월~일). */
+/**
+ * Resolves a period type + reference date (KST calendar day, "YYYY-MM-DD")
+ * into an inclusive [start, end] date range (주는 월~일).
+ *
+ * Phase 7 STEP1: previously used `new Date(referenceDateIso)` +
+ * `.setHours()`/`.getDay()`/`.getFullYear()` etc — all local-timezone
+ * getters/setters, which only produced correct KST boundaries by
+ * coincidence on a KST-configured server (see kst-date.ts's own doc
+ * comment for the same historical bug). Now delegates to kst-date.ts's
+ * `resolveKstQuickRange`, the same explicit-+09:00-offset logic already
+ * used by 주문관리/배송관리/Dashboard — one date-boundary implementation
+ * for the whole app, not a second parallel one for 정산관리.
+ */
 export function resolvePeriodRange(periodType: SettlementPeriodType, referenceDateIso: string): PeriodRange {
-  const ref = new Date(referenceDateIso);
-  ref.setHours(0, 0, 0, 0);
-
   if (periodType === "daily") {
-    return { start: toDateString(ref), end: toDateString(ref) };
+    return { start: referenceDateIso, end: referenceDateIso };
   }
-
   if (periodType === "weekly") {
-    const day = ref.getDay(); // 0 = Sunday
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    const monday = new Date(ref);
-    monday.setDate(ref.getDate() + mondayOffset);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    return { start: toDateString(monday), end: toDateString(sunday) };
+    return resolveKstQuickRange("week", referenceDateIso);
   }
-
-  const monthStart = new Date(ref.getFullYear(), ref.getMonth(), 1);
-  const monthEnd = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
-  return { start: toDateString(monthStart), end: toDateString(monthEnd) };
-}
-
-function toDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return resolveKstQuickRange("month", referenceDateIso);
 }

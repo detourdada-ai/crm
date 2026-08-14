@@ -1,12 +1,20 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Input } from "@/components/ui/input";
+import { Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import {
+  QuickDateRange,
+  ORDER_DATE_QUICK_OPTIONS,
+  DELIVERY_DATE_QUICK_OPTIONS,
+  type QuickDateFilterValue,
+} from "@/components/common/quick-date-range";
 import { DELIVERY_STATUS_OPTIONS } from "@/lib/constants/delivery-status";
+import { resolveKstQuickRange, kstTodayIso } from "@/lib/utils/kst-date";
 
 const STATUS_ALL = "all";
 const SORT_OPTIONS = [
@@ -18,26 +26,41 @@ const SORT_OPTIONS = [
   { value: "total_amount:asc", label: "금액 낮은순" },
 ];
 
+/**
+ * Phase 4-B STEP3/STEP4: 주문일/배송일을 분리된 빠른 필터(오늘/이번주/이번달/
+ * 기간선택)로 재구성하고, "필터 설정 → [조회] → 결과 갱신" 패턴으로 통일한다.
+ * 배송일 기본값은 전체(필터 없음) — 엑셀 주문 중 배송일이 비어있는(옵션정보에
+ * 날짜 패턴이 없는) 건도 기본 화면에서 조용히 사라지지 않도록 하는 것이 핵심.
+ * 날짜 입력은 onChange마다 즉시 URL을 바꾸지 않고, [조회]를 눌러야 반영된다.
+ */
 export function OrderFilterBar({
+  orderDateFilter,
   orderDateFrom,
   orderDateTo,
-  deliveryDate,
+  deliveryDateFilter,
+  deliveryDateFrom,
+  deliveryDateTo,
 }: {
+  orderDateFilter: QuickDateFilterValue;
   orderDateFrom: string;
   orderDateTo: string;
-  deliveryDate: string;
+  deliveryDateFilter: QuickDateFilterValue;
+  deliveryDateFrom: string;
+  deliveryDateTo: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
-  function updateParam(key: string, value: string) {
-    const params = new URLSearchParams(searchParams);
-    if (value && value !== STATUS_ALL) params.set(key, value);
-    else params.delete(key);
-    params.delete("page");
-    router.push(`${pathname}?${params.toString()}`);
-  }
+  const [orderFilter, setOrderFilter] = useState<QuickDateFilterValue>(orderDateFilter);
+  const [orderFrom, setOrderFrom] = useState(orderDateFrom);
+  const [orderTo, setOrderTo] = useState(orderDateTo);
+  const [deliveryFilter, setDeliveryFilter] = useState<QuickDateFilterValue>(deliveryDateFilter);
+  const [deliveryFrom, setDeliveryFrom] = useState(deliveryDateFrom);
+  const [deliveryTo, setDeliveryTo] = useState(deliveryDateTo);
+  const [status, setStatus] = useState(searchParams.get("deliveryStatus") ?? STATUS_ALL);
+  const [bagNotReturned, setBagNotReturned] = useState(searchParams.get("bagReturned") === "false");
 
   const sortBy = searchParams.get("sort") ?? "delivery_date";
   const sortDir = searchParams.get("dir") ?? "desc";
@@ -49,81 +72,102 @@ export function OrderFilterBar({
     params.set("sort", field);
     params.set("dir", dir);
     params.delete("page");
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => router.push(`${pathname}?${params.toString()}`));
+  }
+
+  function buildParamsFromState(): URLSearchParams {
+    const params = new URLSearchParams();
+    params.set("orderDateFilter", orderFilter);
+    if (orderFilter === "custom") {
+      if (orderFrom) params.set("orderDateFrom", orderFrom);
+      if (orderTo) params.set("orderDateTo", orderTo);
+    }
+    params.set("deliveryDateFilter", deliveryFilter);
+    if (deliveryFilter === "custom") {
+      if (deliveryFrom) params.set("deliveryDateFrom", deliveryFrom);
+      if (deliveryTo) params.set("deliveryDateTo", deliveryTo);
+    }
+    if (status !== STATUS_ALL) params.set("deliveryStatus", status);
+    if (bagNotReturned) params.set("bagReturned", "false");
+    if (searchParams.get("sort")) params.set("sort", searchParams.get("sort")!);
+    if (searchParams.get("dir")) params.set("dir", searchParams.get("dir")!);
+    return params;
+  }
+
+  function handleApply() {
+    const params = buildParamsFromState();
+    startTransition(() => router.push(`${pathname}?${params.toString()}`));
   }
 
   function handleReset() {
-    router.push(pathname);
+    const today = kstTodayIso();
+    const thisWeek = resolveKstQuickRange("week", today);
+    setOrderFilter("week");
+    setOrderFrom(thisWeek.start);
+    setOrderTo(thisWeek.end);
+    setDeliveryFilter("all");
+    setDeliveryFrom("");
+    setDeliveryTo("");
+    setStatus(STATUS_ALL);
+    setBagNotReturned(false);
+    startTransition(() => router.push(pathname));
   }
 
-  const bagNotReturned = searchParams.get("bagReturned") === "false";
-
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="space-y-1.5">
-        <Label htmlFor="orderDateFrom" className="text-xs text-muted-foreground">
-          주문일 시작
-        </Label>
-        <Input
-          id="orderDateFrom"
-          type="date"
-          className="w-40"
-          defaultValue={orderDateFrom}
-          onChange={(e) => updateParam("orderDateFrom", e.target.value)}
+    <div className="space-y-3 rounded-lg border border-border bg-surface p-3">
+      <div className="flex flex-wrap items-start gap-6">
+        <QuickDateRange
+          label="주문일"
+          options={ORDER_DATE_QUICK_OPTIONS}
+          filter={orderFilter}
+          onFilterChange={setOrderFilter}
+          customFrom={orderFrom}
+          customTo={orderTo}
+          onCustomFromChange={setOrderFrom}
+          onCustomToChange={setOrderTo}
         />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="orderDateTo" className="text-xs text-muted-foreground">
-          주문일 종료
-        </Label>
-        <Input
-          id="orderDateTo"
-          type="date"
-          className="w-40"
-          defaultValue={orderDateTo}
-          onChange={(e) => updateParam("orderDateTo", e.target.value)}
+        <QuickDateRange
+          label="배송일"
+          options={DELIVERY_DATE_QUICK_OPTIONS}
+          filter={deliveryFilter}
+          onFilterChange={setDeliveryFilter}
+          customFrom={deliveryFrom}
+          customTo={deliveryTo}
+          onCustomFromChange={setDeliveryFrom}
+          onCustomToChange={setDeliveryTo}
         />
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">상태</Label>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={STATUS_ALL}>전체</SelectItem>
+              {DELIVERY_STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <label className="flex items-center gap-2 pt-6 pb-2 text-sm">
+          <Checkbox checked={bagNotReturned} onCheckedChange={(checked) => setBagNotReturned(checked === true)} />
+          가방 미회수
+        </label>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="deliveryDate" className="text-xs text-muted-foreground">
-          배송일
-        </Label>
-        <Input
-          id="deliveryDate"
-          type="date"
-          className="w-40"
-          defaultValue={deliveryDate}
-          onChange={(e) => updateParam("deliveryDate", e.target.value)}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">상태</Label>
-        <Select
-          value={searchParams.get("deliveryStatus") ?? STATUS_ALL}
-          onValueChange={(v) => updateParam("deliveryStatus", v)}
-        >
-          <SelectTrigger className="w-32">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={STATUS_ALL}>전체</SelectItem>
-            {DELIVERY_STATUS_OPTIONS.map((status) => (
-              <SelectItem key={status} value={status}>
-                {status}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <label className="flex items-center gap-2 pb-2 text-sm">
-        <Checkbox
-          checked={bagNotReturned}
-          onCheckedChange={(checked) => updateParam("bagReturned", checked === true ? "false" : "")}
-        />
-        가방 미회수
-      </label>
 
-      <div className="ml-auto flex items-end gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+        <div className="flex items-center gap-2">
+          <Button size="sm" disabled={isPending} onClick={handleApply} className="gap-1.5">
+            {isPending ? <Loader2 className="size-4 animate-spin" /> : null}
+            조회
+          </Button>
+          <Button type="button" variant="ghost" size="sm" disabled={isPending} onClick={handleReset}>
+            초기화
+          </Button>
+        </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">정렬</Label>
           <Select value={sortValue} onValueChange={handleSortChange}>
@@ -139,9 +183,6 @@ export function OrderFilterBar({
             </SelectContent>
           </Select>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleReset}>
-          필터 초기화
-        </Button>
       </div>
     </div>
   );

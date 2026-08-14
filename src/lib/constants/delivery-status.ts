@@ -1,9 +1,10 @@
 import type { DeliveryStatus } from "@/types/domain";
 
-export const DELIVERY_STATUS_OPTIONS: DeliveryStatus[] = ["배송대기", "배송중", "완료"];
+export const DELIVERY_STATUS_OPTIONS: DeliveryStatus[] = ["배송대기", "배송중", "완료", "취소"];
 
-export const DELIVERY_STATUS_BADGE_VARIANT: Record<DeliveryStatus, "outline" | "secondary" | "default"> = {
+export const DELIVERY_STATUS_BADGE_VARIANT: Record<DeliveryStatus, "outline" | "secondary" | "default" | "destructive"> = {
   배송대기: "outline",
   배송중: "secondary",
   완료: "default",
+  취소: "destructive",
 };

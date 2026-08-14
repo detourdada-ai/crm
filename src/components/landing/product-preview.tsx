@@ -6,26 +6,30 @@ const MINI_NAV_ICONS = [LayoutDashboard, ShoppingCart, Truck, Users, Wallet, Bar
 
 /**
  * Sprint 14-I UI/UX 리뉴얼 (STEP 1-B): 랜딩에서 제품 UI 자체가 주인공이
- * 되는 실제 화면 프레임 — 브라우저 주소창 대신 "Ordify 화면 이름"만 짧게
+ * 되는 실제 화면 프레임 — 브라우저 주소창 대신 "주문:한장 화면 이름"만 짧게
  * 표시한다(실제 URL을 보여주는 건 제품 설명에 도움이 안 된다는 판단).
  * 내용은 실제 화면 구조를 재현한 예시 데이터 — 이름/전화번호/금액 등은
  * 전부 가상값.
  */
 export function ProductPreview({
-  title,
+  screen,
   children,
   className,
   withSidebar = false,
+  showPreviewLabel = false,
 }: {
-  title: string;
+  /** 화면 이름만 전달한다 — "주문:한장 · " 접두사는 컴포넌트가 붙인다 (예: "대시보드" → "주문:한장 · 대시보드"). */
+  screen: string;
   children: ReactNode;
   className?: string;
   withSidebar?: boolean;
+  /** 실제 SaaS 데이터가 아니라 랜딩용 제품 시연임을 명확히 하는 작은 라벨. */
+  showPreviewLabel?: boolean;
 }) {
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_2px_4px_rgba(15,23,42,0.04),0_24px_48px_-12px_rgba(15,23,42,0.18)]",
+        "relative overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_2px_4px_rgba(15,23,42,0.04),0_24px_48px_-12px_rgba(15,23,42,0.18)]",
         className
       )}
     >
@@ -35,7 +39,9 @@ export function ProductPreview({
           <span className="size-2.5 rounded-full bg-border-strong" />
           <span className="size-2.5 rounded-full bg-border-strong" />
         </div>
-        <span className="text-xs font-semibold text-text-strong">{title}</span>
+        <span className="text-xs font-semibold text-text-strong">
+          주문:한장 <span className="text-muted-foreground">·</span> {screen}
+        </span>
       </div>
       <div className="flex bg-background">
         {withSidebar ? (
@@ -56,6 +62,11 @@ export function ProductPreview({
         ) : null}
         <div className="flex-1 p-5 sm:p-8">{children}</div>
       </div>
+      {showPreviewLabel ? (
+        <span className="pointer-events-none absolute right-3 bottom-3 rounded-full bg-secondary/90 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+          제품 미리보기
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -83,6 +94,16 @@ export function PreviewAction({ label, value, cta }: { label: string; value: str
   );
 }
 
+type BadgeTone = "neutral" | "primary" | "success";
+
+function badgeToneClass(tone: BadgeTone) {
+  return tone === "primary"
+    ? "bg-primary-soft text-primary"
+    : tone === "success"
+      ? "bg-success-soft text-success"
+      : "bg-muted text-muted-foreground";
+}
+
 export function PreviewRow({
   primary,
   secondary,
@@ -92,14 +113,9 @@ export function PreviewRow({
   primary: string;
   secondary: string;
   badge: string;
-  badgeTone?: "neutral" | "primary" | "success";
+  badgeTone?: BadgeTone;
 }) {
-  const badgeClass =
-    badgeTone === "primary"
-      ? "bg-primary-soft text-primary"
-      : badgeTone === "success"
-        ? "bg-success-soft text-success"
-        : "bg-muted text-muted-foreground";
+  const badgeClass = badgeToneClass(badgeTone);
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border py-3 text-sm last:border-0">
       <div className="min-w-0">
@@ -144,6 +160,53 @@ export function PreviewFlowRow({
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+export interface PreviewTableRow {
+  order: string;
+  customer: string;
+  item: string;
+  deliveryDate: string;
+  status: string;
+  statusTone?: BadgeTone;
+  highlighted?: boolean;
+}
+
+/** 주문번호/고객/상품/배송일/상태 컬럼을 가진 실제 업무 테이블 형태의 주문 목록 — Hero Product Preview의 핵심 구성요소. */
+export function PreviewTable({ rows }: { rows: PreviewTableRow[] }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border">
+      <table className="w-full text-left text-sm">
+        <thead className="bg-secondary/60 text-xs text-muted-foreground">
+          <tr>
+            <th className="px-3 py-2 font-medium">주문</th>
+            <th className="px-3 py-2 font-medium">고객</th>
+            <th className="px-3 py-2 font-medium">상품</th>
+            <th className="hidden px-3 py-2 font-medium sm:table-cell">배송일</th>
+            <th className="px-3 py-2 text-right font-medium">상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.order}
+              className={cn("border-t border-border transition-colors duration-300", row.highlighted && "bg-primary-soft/40")}
+            >
+              <td className="px-3 py-2.5 font-medium text-text-strong">{row.order}</td>
+              <td className="px-3 py-2.5 text-muted-foreground">{row.customer}</td>
+              <td className="px-3 py-2.5 text-muted-foreground">{row.item}</td>
+              <td className="hidden px-3 py-2.5 text-muted-foreground sm:table-cell">{row.deliveryDate}</td>
+              <td className="px-3 py-2.5 text-right">
+                <span className={cn("inline-block rounded-full px-2.5 py-1 text-xs font-medium", badgeToneClass(row.statusTone ?? "neutral"))}>
+                  {row.status}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

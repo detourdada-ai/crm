@@ -6,7 +6,7 @@ export default function TermsPage() {
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-12">
       <div>
         <Link href="/" className="text-sm text-muted-foreground underline underline-offset-2">
-          ← Ordify로 돌아가기
+          ← 주문:한장으로 돌아가기
         </Link>
         <h1 className="mt-4 text-2xl font-semibold">이용약관 (초안)</h1>
         <p className="mt-2 text-sm text-destructive">
@@ -16,7 +16,7 @@ export default function TermsPage() {
       <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
         <section>
           <h2 className="font-medium text-foreground">제1조 (목적)</h2>
-          <p>본 약관은 Ordify(이하 &quot;서비스&quot;)의 이용 조건 및 절차, 이용자와 서비스 운영자의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+          <p>본 약관은 주문:한장(이하 &quot;서비스&quot;)의 이용 조건 및 절차, 이용자와 서비스 운영자의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
         </section>
         <section>
           <h2 className="font-medium text-foreground">제2조 (Beta 서비스)</h2>

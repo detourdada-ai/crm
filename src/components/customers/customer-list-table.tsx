@@ -13,11 +13,19 @@ export interface CustomerListRow extends Customer {
   last_order_at: string | null;
 }
 
+/**
+ * "누가 얼마나 구매했는가"가 주소록보다 먼저 보이도록 고객명 → 연락처 →
+ * 최근 주문 → 주문 횟수 → 누적 구매액 → 등급(VIP) 순으로 우선순위를 준다.
+ * 주소/상태/태그/담당자는 lg 이상에서만 노출되는 보조 정보 — 데이터는
+ * 그대로, 시각적 위계만 조정.
+ */
 export function CustomerListTable({
   customers,
+  vipCustomerIds,
   showOwner = false,
 }: {
   customers: CustomerListRow[];
+  vipCustomerIds: Set<string>;
   showOwner?: boolean;
 }) {
   if (customers.length === 0) {
@@ -25,61 +33,75 @@ export function CustomerListTable({
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead />
-          <SortableTableHead field="customer_code">고객번호</SortableTableHead>
-          <SortableTableHead field="name">이름</SortableTableHead>
-          <SortableTableHead field="phone">전화번호</SortableTableHead>
-          <SortableTableHead field="address">주소</SortableTableHead>
-          <TableHead>상태</TableHead>
-          <TableHead>태그</TableHead>
-          <SortableTableHead field="total_orders" className="text-right" defaultDir="asc">
-            주문횟수
-          </SortableTableHead>
-          <SortableTableHead field="total_amount" className="text-right" defaultDir="asc">
-            총금액
-          </SortableTableHead>
-          <SortableTableHead field="last_order_at">최근주문일</SortableTableHead>
-          {showOwner ? <TableHead>담당자</TableHead> : null}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {customers.map((c) => (
-          <TableRow key={c.id}>
-            <TableCell>
-              {c.is_favorite ? <Star className="size-4 fill-yellow-400 text-yellow-400" /> : null}
-            </TableCell>
-            <TableCell>
-              <Link href={`/customers/${c.id}`} className="font-medium text-primary hover:underline">
-                {c.customer_code}
-              </Link>
-            </TableCell>
-            <TableCell>{c.name}</TableCell>
-            <TableCell>{c.phone ?? "-"}</TableCell>
-            <TableCell className="max-w-xs truncate">{c.address ?? "-"}</TableCell>
-            <TableCell>
-              <Badge variant={c.status === "active" ? "outline" : "secondary"}>
-                {CUSTOMER_STATUS_LABELS[c.status as CustomerStatus] ?? c.status}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              <div className="flex flex-wrap gap-1">
-                {c.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            </TableCell>
-            <TableCell className="text-right">{c.total_orders}</TableCell>
-            <TableCell className="text-right">{formatCurrency(c.total_amount)}</TableCell>
-            <TableCell>{c.last_order_at ? formatDate(c.last_order_at) : "-"}</TableCell>
-            {showOwner ? <TableCell className="text-muted-foreground">{c.owner_username}</TableCell> : null}
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-8" />
+            <SortableTableHead field="name">고객명</SortableTableHead>
+            <SortableTableHead field="phone">연락처</SortableTableHead>
+            <SortableTableHead field="last_order_at">최근 주문</SortableTableHead>
+            <SortableTableHead field="total_orders" className="text-right" defaultDir="asc">
+              주문 횟수
+            </SortableTableHead>
+            <SortableTableHead field="total_amount" className="text-right" defaultDir="asc">
+              누적 구매액
+            </SortableTableHead>
+            <TableHead>등급</TableHead>
+            <SortableTableHead field="customer_code" className="hidden lg:table-cell">
+              고객번호
+            </SortableTableHead>
+            <SortableTableHead field="address" className="hidden lg:table-cell">
+              주소
+            </SortableTableHead>
+            <TableHead className="hidden lg:table-cell">상태</TableHead>
+            <TableHead className="hidden lg:table-cell">태그</TableHead>
+            {showOwner ? <TableHead className="hidden lg:table-cell">담당자</TableHead> : null}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {customers.map((c) => (
+            <TableRow key={c.id} className="hover:bg-muted/40">
+              <TableCell>{c.is_favorite ? <Star className="size-4 fill-yellow-400 text-yellow-400" /> : null}</TableCell>
+              <TableCell>
+                <Link href={`/customers/${c.id}`} className="font-semibold text-text-strong hover:text-primary">
+                  {c.name}
+                </Link>
+              </TableCell>
+              <TableCell className="text-muted-foreground">{c.phone ?? "-"}</TableCell>
+              <TableCell>{c.last_order_at ? formatDate(c.last_order_at) : "-"}</TableCell>
+              <TableCell className="text-right">{c.total_orders}회</TableCell>
+              <TableCell className="text-right font-medium text-text-strong">{formatCurrency(c.total_amount)}</TableCell>
+              <TableCell>{vipCustomerIds.has(c.id) ? <Badge variant="success">VIP</Badge> : null}</TableCell>
+              <TableCell className="hidden lg:table-cell text-muted-foreground">
+                <Link href={`/customers/${c.id}`} className="text-primary hover:underline">
+                  {c.customer_code}
+                </Link>
+              </TableCell>
+              <TableCell className="hidden lg:table-cell max-w-xs truncate text-muted-foreground">
+                {c.address ?? "-"}
+              </TableCell>
+              <TableCell className="hidden lg:table-cell">
+                <Badge variant={c.status === "active" ? "outline" : "secondary"}>
+                  {CUSTOMER_STATUS_LABELS[c.status as CustomerStatus] ?? c.status}
+                </Badge>
+              </TableCell>
+              <TableCell className="hidden lg:table-cell">
+                <div className="flex flex-wrap gap-1">
+                  {c.tags.map((tag) => (
+                    <Badge key={tag} variant="secondary">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </TableCell>
+              {showOwner ? (
+                <TableCell className="hidden lg:table-cell text-muted-foreground">{c.owner_username}</TableCell>
+              ) : null}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

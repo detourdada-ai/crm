@@ -23,10 +23,7 @@ export function SiteFooter() {
         <div className="grid gap-10 sm:grid-cols-[1.5fr_1fr_1fr]">
           <div>
             <OrdifyLogo variant="full" className="h-7" />
-            <p className="mt-3 max-w-xs text-sm text-muted-foreground">
-              주문부터 배송·정산까지
-              <br />한 곳에서 간편하게.
-            </p>
+            <p className="mt-3 max-w-xs text-sm font-medium text-muted-foreground">주문:한장</p>
           </div>
 
           <div>
@@ -78,7 +75,7 @@ export function SiteFooter() {
           </div>
         </details>
 
-        <p className="mt-6 text-xs">© {year} Ordify. All rights reserved.</p>
+        <p className="mt-6 text-xs">© {year} 주문:한장. All rights reserved.</p>
       </div>
     </footer>
   );

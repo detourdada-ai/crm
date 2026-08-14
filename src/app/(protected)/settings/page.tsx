@@ -15,6 +15,7 @@ import { listDriversAction } from "@/actions/drivers";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { computeAccessStatus } from "@/lib/auth/access-control";
+import { formatKstDateDotted } from "@/lib/utils/kst-date";
 import type { EffectiveAccessStatus, Tenant } from "@/types/domain";
 
 const ACCESS_LABELS: Record<EffectiveAccessStatus, string> = {
@@ -256,6 +257,5 @@ export default async function SettingsPage() {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "-";
-  const d = new Date(iso);
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+  return formatKstDateDotted(iso);
 }

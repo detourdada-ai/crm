@@ -4,13 +4,17 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getOrderDetailAction } from "@/actions/orders";
+import { listDriversAction } from "@/actions/drivers";
 import { OrderItemRawData } from "@/components/orders/order-item-raw-data";
 import { OrderBagManagement } from "@/components/orders/order-bag-management";
 import { ManualOrderEditDialog } from "@/components/orders/manual-order-edit-dialog";
 import { ManualOrderDeleteButton } from "@/components/orders/manual-order-delete-button";
+import { OrderCancelButton } from "@/components/orders/order-cancel-button";
+import { OrderDriverAssign } from "@/components/orders/order-driver-assign";
 import { BackButton } from "@/components/common/back-button";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants/order-status";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
+import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
@@ -24,7 +28,7 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const detail = await getOrderDetailAction(id);
+  const [detail, drivers] = await Promise.all([getOrderDetailAction(id), listDriversAction()]);
   if (!detail) notFound();
 
   const { order, items, driverName } = detail;
@@ -33,15 +37,15 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     <div className="space-y-6">
       <BackButton fallbackHref="/orders" />
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-semibold">{order.order_number ?? "(수동주문)"}</h1>
+        <h1 className="text-2xl font-semibold">{order.internal_order_number}</h1>
+        <Badge variant="outline">{ORDER_SOURCE_LABELS[order.order_source]}</Badge>
         <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
         {order.status ? <Badge variant="secondary">{order.status}</Badge> : null}
-        {order.order_source === "manual" ? (
-          <div className="ml-auto flex gap-2">
-            <ManualOrderEditDialog order={order} item={items[0] ?? null} />
-            <ManualOrderDeleteButton orderId={order.id} />
-          </div>
-        ) : null}
+        <div className="ml-auto flex gap-2">
+          <ManualOrderEditDialog order={order} item={items[0] ?? null} />
+          <OrderCancelButton orderId={order.id} deliveryStatus={order.delivery_status} />
+          {order.order_source === "manual" ? <ManualOrderDeleteButton orderId={order.id} /> : null}
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -51,6 +55,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           </CardHeader>
           <CardContent>
             <Field label="고객" value={order.recipient_name} />
+            <Field label="원본 주문번호" value={order.order_number} />
             <div className="flex justify-between gap-3 border-b py-1.5 text-sm last:border-0">
               <span className="text-muted-foreground">고객 상세</span>
               <Link href={`/customers/${order.customer_id}`} className="font-medium text-primary hover:underline">
@@ -72,9 +77,30 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <CardTitle>배송/결제 정보</CardTitle>
           </CardHeader>
           <CardContent>
-            <Field label="배송일" value={order.delivery_date ? formatDate(order.delivery_date) : null} />
+            <div className="flex justify-between gap-3 border-b py-1.5 text-sm last:border-0">
+              <span className="text-muted-foreground">배송일</span>
+              {order.delivery_date ? (
+                <span className="text-right font-medium">{formatDate(order.delivery_date)}</span>
+              ) : (
+                <span className="text-right font-medium text-warning">미지정</span>
+              )}
+            </div>
+            {!order.delivery_date ? (
+              <p className="border-b py-1.5 text-xs text-muted-foreground last:border-0">
+                ※ 배송일이 지정되지 않은 주문입니다. 상단의 &ldquo;수정&rdquo; 버튼으로 배송일을 지정할 수 있습니다.
+              </p>
+            ) : null}
             <Field label="배송가능지역" value={order.delivery_area} />
-            <Field label="담당기사" value={driverName} />
+            <div className="flex items-center justify-between gap-3 border-b py-1.5 text-sm last:border-0">
+              <span className="text-muted-foreground">담당기사</span>
+              <OrderDriverAssign
+                orderId={order.id}
+                deliveryStatus={order.delivery_status}
+                driverId={order.driver_id}
+                driverName={driverName}
+                drivers={drivers}
+              />
+            </div>
             <Field label="판매채널" value={order.sales_channel} />
             <Field label="택배사" value={order.courier} />
             <Field label="송장번호" value={order.tracking_number} />

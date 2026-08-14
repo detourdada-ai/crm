@@ -6,7 +6,7 @@ export default function PrivacyPage() {
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-12">
       <div>
         <Link href="/" className="text-sm text-muted-foreground underline underline-offset-2">
-          ← Ordify로 돌아가기
+          ← 주문:한장으로 돌아가기
         </Link>
         <h1 className="mt-4 text-2xl font-semibold">개인정보처리방침 (초안)</h1>
         <p className="mt-2 text-sm text-destructive">
@@ -16,7 +16,7 @@ export default function PrivacyPage() {
       <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
         <section>
           <h2 className="font-medium text-foreground">1. 수집하는 개인정보</h2>
-          <p>Ordify는 회원가입 시 Google 계정을 통해 인증된 이메일 주소와, 이용자가 직접 입력한 Workspace 이름을 수집합니다. 사업자등록번호 등 사업자 정보는 수집하지 않습니다.</p>
+          <p>주문:한장은 회원가입 시 Google 계정을 통해 인증된 이메일 주소와, 이용자가 직접 입력한 Workspace 이름을 수집합니다. 사업자등록번호 등 사업자 정보는 수집하지 않습니다.</p>
         </section>
         <section>
           <h2 className="font-medium text-foreground">2. 이용 목적</h2>

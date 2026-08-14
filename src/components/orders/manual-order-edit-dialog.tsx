@@ -38,17 +38,19 @@ export function ManualOrderEditDialog({ order, item }: { order: Order; item: Ord
     });
   }
 
+  const locked = order.delivery_status === "취소";
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-1.5">
+        <Button size="sm" variant="outline" className="gap-1.5" disabled={locked}>
           <Pencil className="size-4" />
           수정
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>수동 주문 수정</DialogTitle>
+          <DialogTitle>주문 수정</DialogTitle>
           <DialogDescription>이 주문의 내용을 수정합니다. 고객 정보는 별도로 동기화되지 않으니 필요하면 고객관리에서도 함께 수정해주세요.</DialogDescription>
         </DialogHeader>
         <form ref={formRef} onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">

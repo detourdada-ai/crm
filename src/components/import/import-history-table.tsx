@@ -1,11 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ImportDeleteButton } from "./import-delete-button";
+import { formatDateTime } from "@/lib/constants/order-status";
 import type { ImportRecord } from "@/types/domain";
-
-function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
-}
 
 export function ImportHistoryTable({ imports, showOwner = false }: { imports: ImportRecord[]; showOwner?: boolean }) {
   if (imports.length === 0) {

@@ -1,5 +1,6 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { digitsOnly, formatPhoneNumber } from "@/lib/utils/phone";
 import type { Customer, CustomerStatus } from "@/types/domain";
 
 export type CustomerSortField =
@@ -100,8 +101,14 @@ export const customersRepository = {
 
     if (query && query.trim()) {
       const term = query.trim();
+      // Phase 4-B STEP7: phone은 하이픈 포함 형식으로 저장되므로, 사용자가
+      // 하이픈 없이(01012345678) 또는 다르게 입력해도 동일하게 찾히도록 검색어를
+      // 저장 형식과 동일한 방식(formatPhoneNumber)으로 재정규화해 함께 매칭한다.
+      const digits = digitsOnly(term);
+      const phoneVariant = digits.length >= 8 ? formatPhoneNumber(digits) : null;
+      const phoneClause = phoneVariant && phoneVariant !== term ? `,phone.ilike.%${phoneVariant}%` : "";
       q = q.or(
-        `name.ilike.%${term}%,phone.ilike.%${term}%,address.ilike.%${term}%,customer_code.ilike.%${term}%`
+        `name.ilike.%${term}%,phone.ilike.%${term}%${phoneClause},address.ilike.%${term}%,customer_code.ilike.%${term}%`
       );
     }
 

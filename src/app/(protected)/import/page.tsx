@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ImportWorkspace } from "@/components/import/import-workspace";
 import { ImportHistoryTable } from "@/components/import/import-history-table";
+import { PageHeader } from "@/components/common/page-header";
 import { listRecentImportsAction } from "@/actions/import";
 import { requireSession } from "@/lib/auth/current-session";
 
@@ -9,12 +10,10 @@ export default async function ImportPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">엑셀 업로드</h1>
-        <p className="text-sm text-muted-foreground">
-          스마트스토어 주문 엑셀을 업로드하면 고객/주문/동일인 후보가 자동으로 생성됩니다.
-        </p>
-      </div>
+      <PageHeader
+        title="엑셀 등록"
+        description="스마트스토어 주문 엑셀을 업로드하면 고객/주문/동일인 후보가 자동으로 생성됩니다."
+      />
 
       <ImportWorkspace />
 

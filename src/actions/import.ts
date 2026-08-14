@@ -7,7 +7,7 @@ import { runImport, deleteImport } from "@/lib/services/import.service";
 import { importsRepository } from "@/lib/repositories/imports.repository";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { ColumnMapping, MappableField, ParsedSheet } from "@/types/excel";
-import type { ImportRecord, ImportSummary } from "@/types/domain";
+import type { ImportRecord, ImportSummary, ImportRowError } from "@/types/domain";
 
 export interface AnalyzeImportResult {
   ok: true;
@@ -45,6 +45,7 @@ export interface ConfirmImportResult {
   ok: true;
   importId: string;
   summary: ImportSummary;
+  errors: ImportRowError[];
 }
 export interface ConfirmImportError {
   ok: false;
@@ -58,8 +59,8 @@ export async function confirmImportAction(
 ): Promise<ConfirmImportResult | ConfirmImportError> {
   try {
     const session = await requireSession();
-    const { importId, summary } = await runImport({ fileName, parsed, mapping, ownerUsername: session.username });
-    return { ok: true, importId, summary };
+    const { importId, summary, errors } = await runImport({ fileName, parsed, mapping, ownerUsername: session.username });
+    return { ok: true, importId, summary, errors };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "가져오기 중 오류가 발생했습니다." };
   }

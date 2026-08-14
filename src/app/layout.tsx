@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ordify",
-  description: "주문부터 배송·정산까지 한 곳에서 간편하게 관리하는 Ordify",
+  title: "주문:한장",
+  description: "주문부터 배송·정산까지 한 곳에서 간편하게 관리하는 주문:한장",
 };
 
 export default function RootLayout({
