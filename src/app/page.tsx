@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { SiteHeader } from "@/components/landing/site-header";
 import { HeroSection } from "@/components/landing/hero-section";
 import { RecruitIntro } from "@/components/landing/recruit-intro";
@@ -11,6 +12,7 @@ import { FinalCtaSection } from "@/components/landing/final-cta-section";
 import { FaqSection } from "@/components/landing/faq-section";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { getSession } from "@/lib/auth/current-session";
+import { SITE_URL, SITE_NAME, SITE_TITLE, SITE_DESCRIPTION } from "@/lib/constants/site";
 
 // Beta 고객 모집 전환: Landing의 목적이 "가입시키기"에서 "실제 필요한
 // 사업자를 찾고 이야기를 듣는 것"으로 바뀌었다 — 섹션 순서는 Hero(문제
@@ -30,11 +32,50 @@ import { getSession } from "@/lib/auth/current-session";
 // 로그인한 사용자는 SiteHeader의 "서비스 가기" 버튼을 직접 눌러야 진입한다.
 export const dynamic = "force-dynamic";
 
+// Landing SEO/공유 미리보기 개선: 검색 결과 제목·설명과 카카오톡/Slack 등에
+// 뜨는 링크 미리보기(OG)를 명시적으로 구성한다. og:image/twitter:image는
+// opengraph-image.tsx / twitter-image.tsx 파일 컨벤션이 자동으로 채운다.
+export const metadata: Metadata = {
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
+  robots: { index: true, follow: true },
+  openGraph: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    type: "website",
+    locale: "ko_KR",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+};
+
+// Section 15: 실제로 확인 가능한 정보만 담는다 — 없는 SNS 계정/직원 수 등은 넣지 않는다.
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: SITE_NAME,
+  url: SITE_URL,
+  description: SITE_DESCRIPTION,
+  publisher: {
+    "@type": "Organization",
+    name: SITE_NAME,
+    url: SITE_URL,
+    logo: `${SITE_URL}/icon.svg`,
+  },
+};
+
 export default async function LandingPage() {
   const session = await getSession();
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
       <SiteHeader session={session} />
       <main className="flex-1">
         <HeroSection />

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SITE_URL, SITE_TITLE, SITE_DESCRIPTION } from "@/lib/constants/site";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,9 +15,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// metadataBase는 og:image 등 파일 컨벤션(opengraph-image.tsx 등)이 생성하는
+// 상대 경로를 절대 URL로 바꾸는 데 필요하다 — 없으면 프로덕션 빌드에서 경고가
+// 뜨고, 카카오톡/Slack 같은 크롤러가 이미지를 못 가져올 수 있다.
 export const metadata: Metadata = {
-  title: "주문:한장",
-  description: "주문부터 배송·정산까지 한 곳에서 간편하게 관리하는 주문:한장",
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
 };
 
 export default function RootLayout({

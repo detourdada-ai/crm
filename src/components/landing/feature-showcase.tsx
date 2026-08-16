@@ -166,35 +166,36 @@ const SETTLEMENTS = [
   },
 ];
 
-/** STEP 4 실제 화면 — 배송완료/정산대상/금액/기간별 확인을 번호로 짚어준다. */
+/** STEP 4 실제 화면 — 배송완료/정산대상/정산완료 흐름과 정산 금액을 번호로 짚어준다. */
 function SettlementPreview() {
   const [selected, setSelected] = useState<string | null>(null);
 
   return (
     <ProductPreview screen="정산관리" showPreviewLabel>
-      <div className="grid grid-cols-2 gap-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        <PointBadge n={4} />
+        정산 금액
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-3">
         <PreviewStat label="정산 대기" value="₩1,240,000" />
         <PreviewStat label="정산 완료" value="₩3,820,000" />
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">
-        <PointBadge n={3} />
-        정산 금액은 기간(이번 달) 기준으로 확인합니다.
-      </p>
       <div className="mt-4">
         {SETTLEMENTS.map((row) => (
           <div key={row.key}>
             <button type="button" onClick={() => setSelected(row.key === selected ? null : row.key)} className="block w-full text-left">
-              <div className="flex items-center gap-1 pt-2 text-[10px] text-muted-foreground">
-                <PointBadge n={1} />
-                배송완료
-                <PointBadge n={2} />
-                정산대상
+              <div className="flex items-center gap-2 pt-2 text-[10px] text-muted-foreground">
+                {row.steps.map((step, i) => (
+                  <span key={step} className="flex items-center gap-0.5">
+                    <PointBadge n={i + 1} />
+                    {step}
+                  </span>
+                ))}
               </div>
               <PreviewFlowRow primary={row.primary} secondary={row.secondary} steps={row.steps} activeIndex={row.activeIndex} />
             </button>
             {selected === row.key ? (
               <div className="animate-in fade-in-0 slide-in-from-top-1 mb-2 rounded-xl border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground duration-200">
-                <PointBadge n={4} />
                 이번 달 정산 금액 · <span className="font-semibold text-text-strong">{row.amount}</span>
               </div>
             ) : null}
@@ -212,47 +213,57 @@ interface StepPoint {
 
 interface StepData {
   step: string;
+  category: string;
   headline: string;
   problem: string[];
+  screenIntro: string;
   eyebrow: string;
   points: StepPoint[];
   result: string;
   screen: ReactNode;
 }
 
-// Section 1~4: STEP 1~4는 반드시 동일한 리듬 — 상황/문제 → 실제 화면 → 핵심 포인트(번호) → 결과 한 문장.
-// "자동으로 다 모아준다"는 표현은 쓰지 않는다 — 수동/엑셀로 들어온 주문도 "같은 방식으로 관리"할 뿐이다.
+// Section 1~4: STEP 1~4는 반드시 동일한 리듬 — 상황/문제 → (왜 이 화면인지) → 실제 화면 →
+// 핵심 포인트(번호) → 결과 한 문장. 카피는 "기능 설명"이 아니라 "사장님이 얻는 결과" 중심으로
+// 쓴다. "자동으로 다 모아준다"는 표현은 쓰지 않는다 — 수동/엑셀로 들어온 주문도 "같은 방식으로
+// 관리"할 뿐이다.
 const STEPS: StepData[] = [
   {
     step: "STEP 1",
-    headline: "주문을 한곳에서 정리합니다",
-    problem: ["주문이 전화, 카카오톡, 스마트스토어 등 여러 경로로 들어옵니다.", "주문 내용을 따로 확인하고 정리해야 했습니다."],
+    category: "주문 정리",
+    headline: "흩어진 주문을 한곳에 모읍니다",
+    problem: ["전화, 카카오톡, 스마트스토어 등 여러 경로로 들어오는 주문을", "따로 확인하고 다시 정리해야 했습니다."],
+    screenIntro: "실제 주문관리 화면입니다 — 어디서 들어온 주문이든 이 화면에서 한 번에 확인합니다.",
     eyebrow: "주문관리",
     points: [
-      { n: 1, label: "주문번호 / 고객 / 배송일을 한눈에" },
+      { n: 1, label: "주문번호 · 고객 · 배송일을 한눈에" },
       { n: 2, label: "주문 상태를 바로 확인" },
       { n: 3, label: "수동으로 들어온 주문도 같은 방식으로 관리" },
     ],
-    result: "어디에서 들어온 주문인지보다, 지금 처리해야 할 주문이 무엇인지에 집중할 수 있습니다.",
+    result: "들어온 주문을 한곳에서 확인하고, 처리할 주문을 놓치지 않습니다.",
     screen: <OrdersPreview />,
   },
   {
     step: "STEP 2",
-    headline: "오늘 배송할 주문을 바로 확인합니다",
-    problem: ["주문이 쌓이면 누가 무엇을 배송해야 하는지 다시 확인해야 했습니다."],
+    category: "배송 관리",
+    headline: "오늘 보낼 주문을 바로 확인합니다",
+    problem: ["주문이 쌓이면 누가 무엇을 배송해야 하는지", "다시 확인하고 전달해야 했습니다."],
+    screenIntro: "실제 배송관리 화면입니다 — 오늘 배송할 주문과 담당자를 이 화면에서 정리합니다.",
     eyebrow: "배송관리",
     points: [
       { n: 1, label: "고객 · 상품 요약" },
-      { n: 2, label: "기사 배정" },
+      { n: 2, label: "담당 기사 배정" },
       { n: 3, label: "가방 상태" },
     ],
-    result: "오늘 배송할 주문과 담당 기사를 한 화면에서 확인할 수 있습니다.",
+    result: "오늘 배송할 주문과 담당 내용을 한 화면에서 확인합니다.",
     screen: <DeliveryPreview />,
   },
   {
     step: "STEP 3",
-    headline: "주문 기록이 고객별로 이어집니다",
-    problem: ["기존 고객이 무엇을 주문했는지 다시 찾아봐야 했습니다."],
+    category: "고객 관리",
+    headline: "주문이 쌓이면 고객 기록도 쌓입니다",
+    problem: ["기존 고객이 무엇을 주문했는지", "다시 찾아봐야 했습니다."],
+    screenIntro: "실제 고객관리 화면입니다 — 주문할 때마다 고객 정보와 이력이 자동으로 정리됩니다.",
     eyebrow: "고객관리",
     points: [
       { n: 1, label: "고객 정보" },
@@ -260,21 +271,23 @@ const STEPS: StepData[] = [
       { n: 3, label: "구매 금액" },
       { n: 4, label: "주문 이력" },
     ],
-    result: "고객을 다시 찾지 않아도 이전 주문과 관계를 이어갈 수 있습니다.",
+    result: "주문할 때마다 고객 기록이 쌓여, 다음 주문을 더 쉽게 관리할 수 있습니다.",
     screen: <CustomersPreview />,
   },
   {
     step: "STEP 4",
-    headline: "배송 완료와 정산을 연결합니다",
-    problem: ["배송이 끝난 뒤 실제 완료된 주문과 금액을 다시 맞춰봐야 했습니다."],
+    category: "정산",
+    headline: "배송이 끝나면 정산까지 연결됩니다",
+    problem: ["배송이 끝난 뒤 실제 완료된 주문과 금액을", "다시 맞춰봐야 했습니다."],
+    screenIntro: "실제 정산관리 화면입니다 — 배송완료부터 정산대상, 금액까지 이 화면에서 확인합니다.",
     eyebrow: "정산관리",
     points: [
       { n: 1, label: "배송 완료" },
       { n: 2, label: "정산 대상" },
-      { n: 3, label: "기간별 금액 확인" },
+      { n: 3, label: "정산 완료 여부" },
       { n: 4, label: "정산 금액" },
     ],
-    result: "배송이 끝난 주문이 정산까지 자연스럽게 이어집니다.",
+    result: "배송 완료된 주문이 정산으로 이어져, 따로 다시 계산할 일을 줄입니다.",
     screen: <SettlementPreview />,
   },
 ];
@@ -292,7 +305,9 @@ function StepBlock({ data }: { data: StepData }) {
   return (
     <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-surface px-6 py-8 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_16px_32px_-16px_rgba(15,23,42,0.15)] sm:px-10 sm:py-10">
       <div className="text-center">
-        <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{data.step}</span>
+        <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          {data.step} · {data.category}
+        </span>
         <h3 className="mt-2 text-xl font-bold text-text-strong sm:text-2xl">{data.headline}</h3>
         <div className="mx-auto mt-3 max-w-md space-y-1 text-sm text-muted-foreground">
           {data.problem.map((line) => (
@@ -301,7 +316,9 @@ function StepBlock({ data }: { data: StepData }) {
         </div>
       </div>
 
-      <div className="relative mt-8">
+      <p className="mx-auto mt-6 max-w-md text-center text-sm font-medium text-text-strong">{data.screenIntro}</p>
+
+      <div className="relative mt-4">
         <div aria-hidden className="absolute inset-6 -z-10 rounded-full bg-primary/10 blur-3xl" />
         {data.screen}
       </div>
@@ -369,8 +386,11 @@ export function FeatureShowcase() {
 
         {/* STEP 5: 새 기능이 아니라 앞의 4단계를 하나로 묶어주는 클로징. */}
         <div className="mx-auto mt-16 max-w-2xl rounded-2xl border border-primary/30 bg-gradient-to-b from-primary-soft/60 to-surface px-6 py-10 text-center sm:px-10">
-          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">STEP 5</span>
-          <h3 className="mt-2 text-xl font-bold text-text-strong sm:text-2xl">복잡한 주문 업무를 한 흐름으로 관리합니다</h3>
+          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">STEP 5 · 업무 흐름</span>
+          <h3 className="mt-2 text-xl font-bold text-text-strong sm:text-2xl">주문부터 정산까지, 한 흐름으로 이어집니다</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            주문을 따로 기록하고, 배송을 다시 확인하고, 정산을 다시 계산하는 일을 줄입니다.
+          </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-3">
             {FLOW_STEPS.map((step, i) => (
               <span key={step} className="flex items-center gap-2">
@@ -379,11 +399,10 @@ export function FeatureShowcase() {
               </span>
             ))}
           </div>
-          <p className="mx-auto mt-6 max-w-md text-sm text-muted-foreground">
-            주문을 받고, 정리하고, 배송하고, 기록하고, 정산하는 일까지.
-            <br />
-            주문:한장은 사장님이 매일 반복하는 주문 업무를 한 흐름으로 연결합니다.
-          </p>
+          <div className="mx-auto mt-6 flex max-w-md items-start gap-2 rounded-lg bg-surface px-3.5 py-2.5 text-left text-sm font-medium text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+            사장님은 주문을 관리하고, 주문:한장이 업무 흐름을 정리합니다.
+          </div>
           <Button asChild size="lg" className="mt-6 gap-2">
             <a href="#recruit">사장님 모집에 참여하기</a>
           </Button>

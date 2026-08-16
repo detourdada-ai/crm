@@ -17,7 +17,20 @@ const PUBLIC_PATHS = ["/", "/login", "/auth/callback", "/signup", "/api/cron"];
 // regardless of auth state, and there's no reason to bounce someone reading
 // Terms just because they happen to have a session. /contact/inquiries are
 // the same case — a logged-in Seller should be able to reach support too.
-const ALWAYS_ACCESSIBLE_PATHS = ["/terms", "/privacy", "/contact", "/inquiries"];
+// SEO/공유 미리보기 개선: opengraph-image/twitter-image/apple-icon/icon.svg는
+// Next.js 파일 컨벤션이 자동 생성하는 이미지 라우트다 — 카카오톡/Slack 등의
+// 링크 미리보기 크롤러는 세션 쿠키가 없으므로, PUBLIC_PATHS로 두면 그대로
+// /login 리다이렉트에 걸려 미리보기 이미지를 영영 가져오지 못한다.
+const ALWAYS_ACCESSIBLE_PATHS = [
+  "/terms",
+  "/privacy",
+  "/contact",
+  "/inquiries",
+  "/opengraph-image",
+  "/twitter-image",
+  "/apple-icon",
+  "/icon.svg",
+];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
