@@ -464,8 +464,10 @@ create trigger trg_tenant_access_keys_updated_at
 
 -- ----------------------------------------------------------------------------
 -- create_seller_signup (Sprint 11: atomic tenant + app_account + membership;
--- Sprint 14-B: Beta Open — signup now auto-grants BETA for 1 calendar month
--- instead of starting at NONE, so ordinary Beta signups never need a Key)
+-- F11: Beta 승인형 접근제어 — 신규 tenant는 access_type='NONE'(미승인)으로만
+-- 생성된다. 실제 이용 시작은 관리자가 Settings "Beta 운영"에서 승인 버튼을
+-- 눌러 extend_beta_access를 호출해야 시작된다 — 가입 자체가 곧 이용 시작이던
+-- Sprint 14-B의 자동부여 동작은 여기서 되돌린다.)
 -- ----------------------------------------------------------------------------
 -- A single PL/pgSQL function call is one implicit transaction in Postgres —
 -- if any insert below fails (e.g. a unique violation), the whole call errors
@@ -486,7 +488,7 @@ begin
   select id into v_plan_id from plans where code = 'STARTER' limit 1;
 
   insert into tenants (name, slug, plan_id, access_type, access_expires_at, industry, bag_management)
-  values (p_company_name, p_username, v_plan_id, 'BETA', now() + interval '1 month', p_industry, p_bag_management)
+  values (p_company_name, p_username, v_plan_id, 'NONE', null, p_industry, p_bag_management)
   returning id into v_tenant_id;
 
   insert into app_accounts (username, password_hash, role, google_email)

@@ -105,3 +105,31 @@ export async function extendBetaAccessAction(targetUsername: string, days: numbe
   const { accessExpiresAt } = await tenantsRepository.extendBetaAccess(tenant.id, days);
   return { ok: true, error: null, accessExpiresAt };
 }
+
+export interface SetTenantStatusActionState {
+  ok: boolean;
+  error: string | null;
+}
+
+/**
+ * F11: 관리자가 이용을 즉시 제한(suspended)하거나 재개(active)한다.
+ * computeAccessStatus는 status==='suspended'를 access_type/만료일과 무관하게
+ * 최우선으로 차단하므로, 이 액션 하나로 "이용 제한"의 최소 요구사항을 만족한다.
+ */
+export async function setTenantStatusAction(
+  targetUsername: string,
+  status: "active" | "suspended"
+): Promise<SetTenantStatusActionState> {
+  const session = await requireSession();
+  if (session.role !== "admin") {
+    return { ok: false, error: "관리자만 이용 상태를 변경할 수 있습니다." };
+  }
+
+  const tenant = await tenantsRepository.findByUsername(targetUsername);
+  if (!tenant) {
+    return { ok: false, error: "해당 계정의 tenant를 찾을 수 없습니다." };
+  }
+
+  await tenantsRepository.setStatus(tenant.id, status);
+  return { ok: true, error: null };
+}

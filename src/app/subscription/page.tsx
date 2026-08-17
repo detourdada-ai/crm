@@ -49,16 +49,16 @@ function NoneContent() {
     <CardContent className="space-y-6 pt-6">
       <div className="space-y-1.5">
         <CardTitle className="flex items-center gap-2 text-xl">
-          서비스 이용 권한 필요
-          <Badge variant="outline">미구독</Badge>
+          승인 대기 중입니다
+          <Badge variant="outline">승인 대기</Badge>
         </CardTitle>
-        <CardDescription>정식 구독을 시작하거나 Access Key를 입력해주세요.</CardDescription>
+        <CardDescription>
+          가입 신청이 완료되었습니다. 관리자가 확인 후 승인하면 서비스를 바로 이용하실 수 있어요.
+        </CardDescription>
       </div>
-      <AccessKeyRedeemForm />
-      <div className="border-t pt-4">
-        <Button type="button" variant="outline" className="w-full" disabled>
-          구독 플랜 보기 (준비 중)
-        </Button>
+      <div className="space-y-2 border-t pt-4">
+        <p className="text-xs text-muted-foreground">Access Key를 받으셨다면 여기에 입력해 바로 시작할 수 있습니다.</p>
+        <AccessKeyRedeemForm />
       </div>
     </CardContent>
   );

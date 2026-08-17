@@ -10,7 +10,7 @@ import { DriverManagementCard } from "@/components/settings/driver-management-ca
 import { TenantProfileCard } from "@/components/settings/tenant-profile-card";
 import { GoogleEmailCell } from "@/components/settings/google-email-cell";
 import { IssueBetaKeyButton } from "@/components/settings/issue-beta-key-button";
-import { ExtendBetaButton } from "@/components/settings/extend-beta-button";
+import { TenantAccessControls } from "@/components/settings/tenant-access-controls";
 import { RecruitApplicationsTable } from "@/components/settings/recruit-applications-table";
 import { InquiryAdminList } from "@/components/settings/inquiry-admin-list";
 import { PageHeader } from "@/components/common/page-header";
@@ -110,6 +110,7 @@ export default async function SettingsPage() {
       })
   );
   const sellerAccounts = accounts.filter((a) => a.role === "user");
+  const pendingApprovalCount = sellerAccounts.filter((a) => accessStatusByUsername.get(a.username) === "NONE").length;
 
   return (
     <div className="space-y-6">
@@ -205,9 +206,13 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Beta 운영</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            Beta 운영
+            {pendingApprovalCount > 0 ? <Badge variant="destructive">승인 대기 {pendingApprovalCount}건</Badge> : null}
+          </CardTitle>
           <CardDescription>
-            Seller별 Beta 시작일/종료일과 현재 이용 상태입니다. 필요 시 종료일을 30일 연장할 수 있습니다.
+            F11: 가입만으로는 이용이 시작되지 않습니다 — &ldquo;승인&rdquo;을 눌러야 해당 사업장이 서비스를 사용할 수
+            있습니다. 이미 승인된 사업장은 기간을 연장하거나 이용을 중지할 수 있습니다.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -216,10 +221,10 @@ export default async function SettingsPage() {
               <TableRow>
                 <TableHead>계정</TableHead>
                 <TableHead>Google 이메일</TableHead>
-                <TableHead>Beta 시작일</TableHead>
+                <TableHead>가입일</TableHead>
                 <TableHead>Beta 종료일</TableHead>
                 <TableHead>상태</TableHead>
-                <TableHead>연장</TableHead>
+                <TableHead>승인/제한</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -233,10 +238,16 @@ export default async function SettingsPage() {
                     <TableCell className="text-muted-foreground">{formatDate(tenant?.created_at ?? null)}</TableCell>
                     <TableCell className="text-muted-foreground">{formatDate(tenant?.access_expires_at ?? null)}</TableCell>
                     <TableCell>
-                      <Badge variant={status === "ACTIVE_BETA" ? "default" : "outline"}>{ACCESS_LABELS[status]}</Badge>
+                      <Badge variant={status === "ACTIVE_BETA" ? "default" : status === "NONE" ? "destructive" : "outline"}>
+                        {status === "NONE" ? "승인 대기" : ACCESS_LABELS[status]}
+                      </Badge>
                     </TableCell>
                     <TableCell>
-                      <ExtendBetaButton username={account.username} />
+                      <TenantAccessControls
+                        username={account.username}
+                        tenantStatus={tenant?.status ?? "active"}
+                        accessStatus={status}
+                      />
                     </TableCell>
                   </TableRow>
                 );

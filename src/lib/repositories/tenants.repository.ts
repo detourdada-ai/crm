@@ -54,4 +54,10 @@ export const tenantsRepository = {
     const { error } = await getSupabaseAdmin().from("tenants").update({ bag_management: enabled }).eq("id", tenantId);
     if (error) throw error;
   },
+
+  /** F11: admin-issued 이용 제한/재개 — computeAccessStatus treats 'suspended' as an unconditional block regardless of access_type/expiry. */
+  async setStatus(tenantId: string, status: "active" | "suspended"): Promise<void> {
+    const { error } = await getSupabaseAdmin().from("tenants").update({ status }).eq("id", tenantId);
+    if (error) throw error;
+  },
 };
