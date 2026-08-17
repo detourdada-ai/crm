@@ -51,7 +51,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         <div className="ml-auto flex gap-2">
           <ManualOrderEditDialog order={order} item={items[0] ?? null} />
           <OrderCancelButton orderId={order.id} deliveryStatus={order.delivery_status} />
-          {order.order_source === "manual" ? <ManualOrderDeleteButton orderId={order.id} /> : null}
+          {order.import_id === null ? <ManualOrderDeleteButton orderId={order.id} /> : null}
         </div>
       </div>
 
@@ -61,7 +61,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <CardTitle>주문 정보</CardTitle>
           </CardHeader>
           <CardContent>
-            <Field label="고객" value={order.recipient_name} />
+            <Field label="수령인" value={order.recipient_name} />
             <Field label="원본 주문번호" value={order.order_number} />
             <div className="flex justify-between gap-3 border-b py-1.5 text-sm last:border-0">
               <span className="text-muted-foreground">고객 상세</span>
@@ -69,10 +69,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 고객 페이지로 이동
               </Link>
             </div>
-            <Field label="수취인 연락처" value={order.phone_snapshot} />
+            <Field label="수령인 연락처" value={order.phone_snapshot} />
             <Field label="배송지" value={order.address_snapshot} />
             <Field label="우편번호" value={order.zipcode} />
-            <Field label="배송메모" value={order.delivery_memo} />
+            <Field label="배송 요청사항" value={order.delivery_memo} />
+            <Field label="주문 메모" value={order.order_memo} />
+            <Field label="내부 메모" value={order.internal_memo} />
             <Field label="구매자명" value={order.buyer_name} />
             <Field label="구매자ID" value={order.buyer_id} />
             <Field label="주문일시" value={formatDateTime(order.order_date)} />

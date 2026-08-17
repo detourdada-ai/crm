@@ -79,8 +79,11 @@ export interface Customer {
   customer_code: string; // e.g. C000001, immutable, the true identity key
   name: string;
   phone: string | null; // normalized 010-1234-1234
-  address: string | null;
+  address: string | null; // F6~F10: composed display value = road_address + detail_address
   address_normalized: string | null;
+  postal_code: string | null;
+  road_address: string | null;
+  detail_address: string | null;
   memo: string | null;
   tags: string[];
   owner_username: string; // account that owns/manages this customer; "admin" sees all
@@ -98,7 +101,9 @@ export interface Customer {
 // verbatim rather than translated into a fixed enum — see schema.sql.
 export type OrderStatus = string;
 
-export type OrderSource = "import" | "manual";
+// F6~F10: 사업자가 실제로 주문을 받은 채널. 엑셀 자동 업로드 파이프라인
+// 여부는 order_source가 아니라 Order.import_id로 구분한다.
+export type OrderSource = "전화" | "문자" | "SNS" | "엑셀" | "기타";
 
 // Internal delivery workflow status, distinct from the freeform Smartstore
 // `status` passthrough text. Driven by driver assignment/completion/cancellation.
@@ -116,9 +121,13 @@ export interface Order {
   // Snapshot fields: captured at order time, never mutated when customer changes
   recipient_name: string;
   phone_snapshot: string | null;
-  address_snapshot: string | null;
-  zipcode: string | null;
+  address_snapshot: string | null; // composed display value = road_address_snapshot + detail_address_snapshot
+  road_address_snapshot: string | null;
+  detail_address_snapshot: string | null;
+  zipcode: string | null; // = postal_code
   delivery_memo: string | null;
+  order_memo: string | null;
+  internal_memo: string | null;
   courier: string | null;
   tracking_number: string | null;
   sales_channel: string | null;

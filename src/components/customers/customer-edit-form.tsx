@@ -41,8 +41,13 @@ export function CustomerEditForm({
         <Input id="phone" name="phone" defaultValue={customer.phone ?? ""} />
       </div>
       <div className="space-y-2 sm:col-span-2">
-        <Label htmlFor="address">주소</Label>
-        <AddressSearchInput id="address" name="address" defaultValue={customer.address ?? ""} />
+        <Label>주소</Label>
+        <AddressSearchInput
+          name="address"
+          defaultPostalCode={customer.postal_code}
+          defaultRoadAddress={customer.road_address ?? customer.address}
+          defaultDetailAddress={customer.detail_address}
+        />
       </div>
       {bagManagementEnabled ? (
         <div className="space-y-2">

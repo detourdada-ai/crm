@@ -70,10 +70,52 @@ export async function resolveCustomerForImportRow(input: ImportCustomerInput): P
   return { customer: created, isNew: true };
 }
 
+export interface CreateCustomerDirectInput {
+  name: string;
+  rawPhone: string | null;
+  postalCode: string | null;
+  roadAddress: string | null;
+  detailAddress: string | null;
+  ownerUsername: string;
+}
+
+/**
+ * F6/F10: 주문 등록 화면에서 사용자가 명시적으로 "신규 고객"을 선택했을 때
+ * 쓰는 생성 경로 — resolveCustomerForImportRow와 달리 기존 고객과 자동으로
+ * 매칭하지 않는다. 사람이 "기존 고객 검색"에서 못 찾아 신규를 선택한
+ * 것이므로, 여기서 뒤로 몰래 매칭해버리면 사용자의 명시적 선택을 무시하는
+ * 셈이 된다("자동 병합은 하지 않는다" 원칙과 동일한 이유).
+ */
+export async function createCustomerDirect(input: CreateCustomerDirectInput): Promise<Customer> {
+  const name = input.name.trim();
+  const phone = formatPhoneNumber(input.rawPhone);
+  const roadAddress = input.roadAddress?.trim() || null;
+  const detailAddress = input.detailAddress?.trim() || null;
+  const composedAddress = [roadAddress, detailAddress].filter(Boolean).join(" ") || null;
+
+  const tenant = await tenantsRepository.findByUsername(input.ownerUsername);
+  if (!tenant) throw new Error(`No tenant membership found for account "${input.ownerUsername}".`);
+
+  return customersRepository.create({
+    name,
+    phone,
+    address: cleanAddress(composedAddress),
+    address_normalized: normalizeAddressForCompare(composedAddress),
+    postal_code: input.postalCode?.trim() || null,
+    road_address: roadAddress,
+    detail_address: detailAddress,
+    owner_username: input.ownerUsername,
+    tenant_id: tenant.id,
+  });
+}
+
 export interface UpdateCustomerInput {
   name: string;
   phone: string | null;
-  address: string | null;
+  // F7: 표준화된 주소 성분 — address(합성 표시값)는 이 셋으로부터 계산된다.
+  postalCode: string | null;
+  roadAddress: string | null;
+  detailAddress: string | null;
   memo: string | null;
   tags: string[];
   status: CustomerStatus;
@@ -95,8 +137,13 @@ export async function updateCustomerProfile(
 
   const name = input.name.trim();
   const phone = formatPhoneNumber(input.phone);
-  const address = cleanAddress(input.address);
-  const addressNormalized = normalizeAddressForCompare(input.address);
+  const postalCode = input.postalCode?.trim() || null;
+  const roadAddress = input.roadAddress?.trim() || null;
+  const detailAddress = input.detailAddress?.trim() || null;
+  // F7: address는 계속 road_address+detail_address로부터 합성된 표시값이다.
+  const composedAddress = [roadAddress, detailAddress].filter(Boolean).join(" ") || null;
+  const address = cleanAddress(composedAddress);
+  const addressNormalized = normalizeAddressForCompare(composedAddress);
   const memo = input.memo?.trim() || null;
   const tags = input.tags;
   const status = input.status;
@@ -178,6 +225,9 @@ export async function updateCustomerProfile(
     phone,
     address,
     address_normalized: addressNormalized,
+    postal_code: postalCode,
+    road_address: roadAddress,
+    detail_address: detailAddress,
     bag_no: input.bagNo,
     memo,
     tags,

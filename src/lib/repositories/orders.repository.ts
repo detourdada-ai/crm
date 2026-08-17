@@ -1,6 +1,7 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { kstDayStartIso, kstDayEndIso } from "@/lib/utils/kst-date";
+import { digitsOnly, formatPhoneNumber } from "@/lib/utils/phone";
 import type { Order, OrderItem, OrderSource, DeliveryStatus } from "@/types/domain";
 
 export interface OrderInsert {
@@ -14,8 +15,12 @@ export interface OrderInsert {
   recipient_name: string;
   phone_snapshot?: string | null;
   address_snapshot?: string | null;
+  road_address_snapshot?: string | null;
+  detail_address_snapshot?: string | null;
   zipcode?: string | null;
   delivery_memo?: string | null;
+  order_memo?: string | null;
+  internal_memo?: string | null;
   courier?: string | null;
   tracking_number?: string | null;
   sales_channel?: string | null;
@@ -46,10 +51,16 @@ export interface OrderUpdate {
   recipient_name?: string;
   phone_snapshot?: string | null;
   address_snapshot?: string | null;
+  road_address_snapshot?: string | null;
+  detail_address_snapshot?: string | null;
+  zipcode?: string | null;
   delivery_memo?: string | null;
+  order_memo?: string | null;
+  internal_memo?: string | null;
   order_date?: string;
   status?: string;
   total_amount?: number;
+  order_source?: OrderSource;
 }
 
 export type OrderSortField =
@@ -70,6 +81,9 @@ export interface OrderSearchParams {
   ownerUsername?: string;
   deliveryStatus?: DeliveryStatus;
   bagReturned?: boolean;
+  /** F8: 고객명(recipient_name)/전화번호(phone_snapshot)/주문번호(order_number, internal_order_number) 통합 검색어. */
+  query?: string;
+  orderSource?: OrderSource;
   /** KST calendar-day strings ("YYYY-MM-DD"); converted to precise UTC instants internally — see kst-date.ts. */
   orderDateFrom?: string;
   orderDateTo?: string;
@@ -163,6 +177,8 @@ export const ordersRepository = {
     ownerUsername,
     deliveryStatus,
     bagReturned,
+    query,
+    orderSource,
     orderDateFrom,
     orderDateTo,
     deliveryDate,
@@ -177,6 +193,17 @@ export const ordersRepository = {
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     if (deliveryStatus) q = q.eq("delivery_status", deliveryStatus);
     if (bagReturned !== undefined) q = q.eq("bag_returned", bagReturned);
+    if (orderSource) q = q.eq("order_source", orderSource);
+    if (query && query.trim()) {
+      const term = query.trim();
+      // F8: 고객명/전화번호(하이픈 유무 무관)/원본·내부 주문번호를 한 번에 검색.
+      const digits = digitsOnly(term);
+      const phoneVariant = digits.length >= 8 ? formatPhoneNumber(digits) : null;
+      const phoneClause = phoneVariant && phoneVariant !== term ? `,phone_snapshot.ilike.%${phoneVariant}%` : "";
+      q = q.or(
+        `recipient_name.ilike.%${term}%,phone_snapshot.ilike.%${term}%${phoneClause},order_number.ilike.%${term}%,internal_order_number.ilike.%${term}%`
+      );
+    }
     // KST calendar-day boundaries, not bare date strings — see kst-date.ts's doc comment for why.
     if (orderDateFrom) q = q.gte("order_date", kstDayStartIso(orderDateFrom));
     if (orderDateTo) q = q.lte("order_date", kstDayEndIso(orderDateTo));
@@ -430,14 +457,14 @@ export const ordersRepository = {
 
   async updateItem(
     itemId: string,
-    input: { product_name: string; quantity: number; unit_price: number; amount: number }
+    input: { product_name: string; option_name?: string | null; quantity: number; unit_price: number; amount: number }
   ): Promise<OrderItem> {
     const { data, error } = await getSupabaseAdmin().from("order_items").update(input).eq("id", itemId).select("*").single();
     if (error) throw error;
     return data as OrderItem;
   },
 
-  /** Deletes a single order (cascades order_items via FK). Only ever called for order_source='manual' orders — imported Smartstore orders are never deletable from the UI. */
+  /** Deletes a single order (cascades order_items via FK). Only ever called for orders with import_id=null — orders created by the Excel bulk-import pipeline are never deletable from the UI. */
   async deleteOne(orderId: string): Promise<void> {
     const { error } = await getSupabaseAdmin().from("orders").delete().eq("id", orderId);
     if (error) throw error;

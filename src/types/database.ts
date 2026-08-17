@@ -65,6 +65,9 @@ export interface Database {
           phone: string | null;
           address: string | null;
           address_normalized: string | null;
+          postal_code: string | null;
+          road_address: string | null;
+          detail_address: string | null;
           memo: string | null;
           tags: string[];
           owner_username: string;
@@ -138,6 +141,9 @@ export interface Database {
           phone: string | null;
           address: string | null;
           address_normalized: string | null;
+          postal_code: string | null;
+          road_address: string | null;
+          detail_address: string | null;
           memo: string | null;
           tags: string[];
           owner_username: string;
@@ -157,6 +163,9 @@ export interface Database {
           phone?: string | null;
           address?: string | null;
           address_normalized?: string | null;
+          postal_code?: string | null;
+          road_address?: string | null;
+          detail_address?: string | null;
           memo?: string | null;
           tags?: string[];
           owner_username?: string;
@@ -184,8 +193,12 @@ export interface Database {
           recipient_name: string;
           phone_snapshot: string | null;
           address_snapshot: string | null;
+          road_address_snapshot: string | null;
+          detail_address_snapshot: string | null;
           zipcode: string | null;
           delivery_memo: string | null;
+          order_memo: string | null;
+          internal_memo: string | null;
           courier: string | null;
           tracking_number: string | null;
           sales_channel: string | null;
@@ -218,8 +231,12 @@ export interface Database {
           recipient_name: string;
           phone_snapshot?: string | null;
           address_snapshot?: string | null;
+          road_address_snapshot?: string | null;
+          detail_address_snapshot?: string | null;
           zipcode?: string | null;
           delivery_memo?: string | null;
+          order_memo?: string | null;
+          internal_memo?: string | null;
           courier?: string | null;
           tracking_number?: string | null;
           sales_channel?: string | null;

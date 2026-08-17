@@ -21,6 +21,7 @@ import {
   ORDER_DATE_QUICK_OPTIONS,
   type QuickDateFilterValue,
 } from "@/lib/utils/kst-date";
+import { isOrderSource } from "@/lib/constants/order-source";
 import type { OrderSortField } from "@/lib/repositories/orders.repository";
 import type { DeliveryStatus } from "@/types/domain";
 
@@ -38,6 +39,8 @@ export default async function OrdersPage({
     deliveryDateFrom?: string;
     deliveryDateTo?: string;
     deliveryStatus?: string;
+    orderSource?: string;
+    q?: string;
     bagReturned?: string;
     sort?: string;
     dir?: string;
@@ -88,6 +91,8 @@ export default async function OrdersPage({
       page,
       pageSize: PAGE_SIZE,
       deliveryStatus: params.deliveryStatus as DeliveryStatus | undefined,
+      orderSource: params.orderSource && isOrderSource(params.orderSource) ? params.orderSource : undefined,
+      query: params.q,
       bagReturned: params.bagReturned === "true" ? true : params.bagReturned === "false" ? false : undefined,
       ...commonDateFilter,
       sortBy: (params.sort as OrderSortField) || "delivery_date",
@@ -114,6 +119,8 @@ export default async function OrdersPage({
     if (params.deliveryDateFrom) search.set("deliveryDateFrom", params.deliveryDateFrom);
     if (params.deliveryDateTo) search.set("deliveryDateTo", params.deliveryDateTo);
     if (params.bagReturned) search.set("bagReturned", params.bagReturned);
+    if (params.orderSource) search.set("orderSource", params.orderSource);
+    if (params.q) search.set("q", params.q);
     if (params.sort) search.set("sort", params.sort);
     if (params.dir) search.set("dir", params.dir);
     if (status !== "all") search.set("deliveryStatus", status);

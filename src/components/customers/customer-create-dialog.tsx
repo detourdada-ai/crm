@@ -18,7 +18,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { createCustomerAction } from "@/actions/customers";
-import { AddressSearchInput } from "@/components/common/address-search-input";
+import { LegacyAddressInput } from "@/components/common/legacy-address-input";
 
 /**
  * Phase 2 P1: 주문 없이 고객만 먼저 등록하는 화면 진입점 ("+ 고객 등록").
@@ -73,7 +73,7 @@ export function CustomerCreateDialog() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="createAddress">주소</Label>
-            <AddressSearchInput id="createAddress" name="address" />
+            <LegacyAddressInput id="createAddress" name="address" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="createMemo">메모</Label>

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { updateManualOrderAction } from "@/actions/orders";
 import { AddressSearchInput } from "@/components/common/address-search-input";
+import { ORDER_SOURCE_OPTIONS } from "@/lib/constants/order-source";
 import type { Order, OrderItem } from "@/types/domain";
 
 export function ManualOrderEditDialog({ order, item }: { order: Order; item: OrderItem | null }) {
@@ -55,20 +57,41 @@ export function ManualOrderEditDialog({ order, item }: { order: Order; item: Ord
         </DialogHeader>
         <form ref={formRef} onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="editName">고객 이름</Label>
+            <Label htmlFor="editName">수령인</Label>
             <Input id="editName" name="name" defaultValue={order.recipient_name} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="editPhone">전화번호</Label>
+            <Label htmlFor="editPhone">수령인 연락처</Label>
             <Input id="editPhone" name="phone" defaultValue={order.phone_snapshot ?? ""} placeholder="010-0000-0000" />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="editAddress">주소</Label>
-            <AddressSearchInput id="editAddress" name="address" defaultValue={order.address_snapshot ?? ""} />
+            <Label>배송지 주소</Label>
+            <AddressSearchInput
+              name="delivery"
+              defaultPostalCode={order.zipcode}
+              defaultRoadAddress={order.road_address_snapshot ?? order.address_snapshot}
+              defaultDetailAddress={order.detail_address_snapshot}
+              required
+            />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="editDeliveryMemo">배송메세지</Label>
+            <Label htmlFor="editDeliveryMemo">배송 요청사항</Label>
             <Input id="editDeliveryMemo" name="deliveryMemo" defaultValue={order.delivery_memo ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editOrderSource">주문 출처</Label>
+            <Select name="orderSource" defaultValue={order.order_source} required>
+              <SelectTrigger id="editOrderSource" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ORDER_SOURCE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt} value={opt}>
+                    {opt}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="editOrderDate">주문일</Label>
@@ -82,6 +105,10 @@ export function ManualOrderEditDialog({ order, item }: { order: Order; item: Ord
             <Label htmlFor="editProductName">상품명</Label>
             <Input id="editProductName" name="productName" defaultValue={item?.product_name ?? ""} required />
           </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="editOptionName">옵션</Label>
+            <Input id="editOptionName" name="optionName" defaultValue={item?.option_name ?? ""} />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="editQuantity">수량</Label>
             <Input id="editQuantity" name="quantity" type="number" min={1} defaultValue={item?.quantity ?? 1} />
@@ -89,6 +116,14 @@ export function ManualOrderEditDialog({ order, item }: { order: Order; item: Ord
           <div className="space-y-2">
             <Label htmlFor="editUnitPrice">단가</Label>
             <Input id="editUnitPrice" name="unitPrice" type="number" min={0} defaultValue={item?.unit_price ?? 0} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="editOrderMemo">주문 메모</Label>
+            <Input id="editOrderMemo" name="orderMemo" defaultValue={order.order_memo ?? ""} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="editInternalMemo">내부 메모</Label>
+            <Input id="editInternalMemo" name="internalMemo" defaultValue={order.internal_memo ?? ""} />
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="editStatus">상태</Label>

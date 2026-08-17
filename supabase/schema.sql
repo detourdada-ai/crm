@@ -93,6 +93,12 @@ create table if not exists customers (
   phone text,
   address text,
   address_normalized text,
+  -- F6~F10: 표준화된 주소 성분. address/address_normalized는 계속
+  -- road_address+detail_address로부터 합성된 전체 주소 표시값/검색값으로
+  -- 유지되며(기존 화면 무변경), 아래 3개가 실제 입력/편집의 근거가 된다.
+  postal_code text,
+  road_address text,
+  detail_address text,
   memo text,
   tags text[] not null default '{}',
   owner_username text not null default 'admin',
@@ -212,8 +218,17 @@ create table if not exists orders (
   recipient_name text not null,
   phone_snapshot text,
   address_snapshot text,
+  -- F6~F10: address_snapshot은 계속 road_address_snapshot+detail_address_snapshot
+  -- 으로부터 합성된 전체 주소 표시값으로 유지된다(기존 화면 무변경). zipcode가
+  -- 곧 postal_code다.
+  road_address_snapshot text,
+  detail_address_snapshot text,
   zipcode text,
   delivery_memo text,
+  -- F6: 배송 요청사항(delivery_memo)과는 별개로 주문 자체에 대한 메모(고객
+  -- 응대용)와 내부 전용 메모(직원만 보는 메모)를 분리해서 둔다.
+  order_memo text,
+  internal_memo text,
   courier text,
   tracking_number text,
   sales_channel text,
@@ -227,7 +242,11 @@ create table if not exists orders (
   delivery_area text,
   bag_number text,
   bag_returned boolean not null default false,
-  order_source text not null default 'import' check (order_source in ('import', 'manual')),
+  -- F6~F10: 주문 출처는 "사업자가 실제로 주문을 받은 채널"이다(전화/문자/SNS/
+  -- 엑셀/기타). 엑셀 업로드 자동 파이프라인 여부는 순전히 import_id로 구분되며
+  -- order_source와는 독립적이다 — 예: "엑셀"은 자동 업로드와 수동으로 엑셀을
+  -- 보고 옮겨적은 주문 모두에 해당할 수 있다.
+  order_source text not null default '기타' check (order_source in ('전화', '문자', 'SNS', '엑셀', '기타')),
   -- 내부 배송 진행 상태(스마트스토어 원본 status와 별개). 기사 배정/배송완료/취소 처리에 따라 전이됨.
   delivery_status text not null default '배송대기' check (delivery_status in ('배송대기', '배송중', '완료', '취소')),
   driver_id uuid references drivers (id) on delete set null,

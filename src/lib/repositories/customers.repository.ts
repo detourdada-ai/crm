@@ -27,6 +27,9 @@ export interface CustomerInsert {
   phone?: string | null;
   address?: string | null;
   address_normalized?: string | null;
+  postal_code?: string | null;
+  road_address?: string | null;
+  detail_address?: string | null;
   memo?: string | null;
   tags?: string[];
   owner_username: string;
@@ -40,6 +43,9 @@ export interface CustomerUpdate {
   phone?: string | null;
   address?: string | null;
   address_normalized?: string | null;
+  postal_code?: string | null;
+  road_address?: string | null;
+  detail_address?: string | null;
   memo?: string | null;
   tags?: string[];
   is_favorite?: boolean;

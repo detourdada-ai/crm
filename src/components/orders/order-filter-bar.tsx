@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   QuickDateRange,
   ORDER_DATE_QUICK_OPTIONS,
@@ -14,9 +15,11 @@ import {
   type QuickDateFilterValue,
 } from "@/components/common/quick-date-range";
 import { DELIVERY_STATUS_OPTIONS } from "@/lib/constants/delivery-status";
+import { ORDER_SOURCE_OPTIONS } from "@/lib/constants/order-source";
 import { resolveKstQuickRange, kstTodayIso } from "@/lib/utils/kst-date";
 
 const STATUS_ALL = "all";
+const SOURCE_ALL = "all";
 const SORT_OPTIONS = [
   { value: "delivery_date:desc", label: "배송일 최신순" },
   { value: "delivery_date:asc", label: "배송일 오래된순" },
@@ -63,6 +66,8 @@ export function OrderFilterBar({
   const [deliveryFrom, setDeliveryFrom] = useState(deliveryDateFrom);
   const [deliveryTo, setDeliveryTo] = useState(deliveryDateTo);
   const [status, setStatus] = useState(searchParams.get("deliveryStatus") ?? STATUS_ALL);
+  const [source, setSource] = useState(searchParams.get("orderSource") ?? SOURCE_ALL);
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [bagNotReturned, setBagNotReturned] = useState(searchParams.get("bagReturned") === "false");
 
   const sortBy = searchParams.get("sort") ?? "delivery_date";
@@ -91,6 +96,8 @@ export function OrderFilterBar({
       if (deliveryTo) params.set("deliveryDateTo", deliveryTo);
     }
     if (status !== STATUS_ALL) params.set("deliveryStatus", status);
+    if (source !== SOURCE_ALL) params.set("orderSource", source);
+    if (query.trim()) params.set("q", query.trim());
     if (bagNotReturned) params.set("bagReturned", "false");
     if (searchParams.get("sort")) params.set("sort", searchParams.get("sort")!);
     if (searchParams.get("dir")) params.set("dir", searchParams.get("dir")!);
@@ -112,6 +119,8 @@ export function OrderFilterBar({
     setDeliveryFrom("");
     setDeliveryTo("");
     setStatus(STATUS_ALL);
+    setSource(SOURCE_ALL);
+    setQuery("");
     setBagNotReturned(false);
     startTransition(() => router.push(pathname));
   }
@@ -154,6 +163,31 @@ export function OrderFilterBar({
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">주문 출처</Label>
+          <Select value={source} onValueChange={setSource}>
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={SOURCE_ALL}>전체</SelectItem>
+              {ORDER_SOURCE_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">검색</Label>
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="고객명·전화번호·주문번호"
+            className="w-44"
+          />
         </div>
         {bagManagementEnabled ? (
           <label className="flex items-center gap-2 pt-6 pb-2 text-sm">

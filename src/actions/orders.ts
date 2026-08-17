@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { ordersRepository, type OrderSortField } from "@/lib/repositories/orders.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
-import { resolveCustomerForImportRow } from "@/lib/services/customer.service";
+import { customersRepository } from "@/lib/repositories/customers.repository";
+import { createCustomerDirect } from "@/lib/services/customer.service";
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
-import { cleanAddress } from "@/lib/utils/address";
 import { ownerScopeFor, requireSession, tenantScopeFor } from "@/lib/auth/current-session";
-import type { Order, OrderItem, DeliveryStatus } from "@/types/domain";
+import { isOrderSource } from "@/lib/constants/order-source";
+import type { Order, OrderItem, DeliveryStatus, OrderSource, Customer } from "@/types/domain";
 
 export async function listOrdersAction(page = 1, pageSize = 20) {
   const session = await requireSession();
@@ -25,6 +26,9 @@ export interface SearchOrdersParams {
   pageSize?: number;
   deliveryStatus?: DeliveryStatus;
   bagReturned?: boolean;
+  /** F8: 고객명/전화번호/주문번호 통합 검색어. */
+  query?: string;
+  orderSource?: OrderSource;
   orderDateFrom?: string;
   orderDateTo?: string;
   /** @deprecated single-day form — prefer deliveryDateFrom/To */
@@ -186,11 +190,22 @@ export interface CreateManualOrderState {
   error: string | null;
 }
 
+/** F7: AddressSearchInput이 `${prefix}PostalCode`/`${prefix}RoadAddress`/`${prefix}DetailAddress` 3개 필드로 제출한 값을 조합한다. */
+function readAddressFields(formData: FormData, prefix: string) {
+  const postalCode = String(formData.get(`${prefix}PostalCode`) || "").trim() || null;
+  const roadAddress = String(formData.get(`${prefix}RoadAddress`) || "").trim() || null;
+  const detailAddress = String(formData.get(`${prefix}DetailAddress`) || "").trim() || null;
+  const composed = [roadAddress, detailAddress].filter(Boolean).join(" ") || null;
+  return { postalCode, roadAddress, detailAddress, composed };
+}
+
 /**
- * Creates an order by hand (phone order, walk-in, correction, etc). Reuses
- * the same customer resolution as the excel import pipeline, so the
- * customer record is created/matched exactly the same way and immediately
- * shows up in customer management — no separate sync step needed.
+ * F6: 표준 수동 주문 등록. 고객은 "기존 고객 검색 후 선택" 또는 "신규 고객
+ * 등록" 중 사용자가 명시적으로 고른 경로로만 정해진다 — 엑셀 임포트처럼
+ * 이름+전화+주소 일치로 뒤에서 자동 매칭하지 않는다(사람이 이미 검색해서
+ * 못 찾았다면 신규가 맞다는 판단을 신뢰한다). 수령인/연락처/주소는 고객의
+ * 현재 정보와 독립된 이 주문만의 snapshot이다(F7) — 고객을 선택해도 값은
+ * 폼에 채워질 뿐 이후 고객 정보가 바뀌어도 이 주문엔 영향이 없다.
  */
 export async function createManualOrderAction(
   _prevState: CreateManualOrderState,
@@ -198,16 +213,24 @@ export async function createManualOrderAction(
 ): Promise<CreateManualOrderState> {
   const session = await requireSession();
 
-  const name = String(formData.get("name") || "").trim();
-  const rawPhone = String(formData.get("phone") || "").trim() || null;
-  const rawAddress = String(formData.get("address") || "").trim() || null;
-  if (!name) return { ok: false, error: "고객 이름을 입력해주세요." };
-  if (!rawPhone && !rawAddress) return { ok: false, error: "전화번호 또는 주소 중 하나는 입력해주세요." };
+  const customerMode = String(formData.get("customerMode") || "new");
+  const recipientName = String(formData.get("recipientName") || "").trim();
+  const recipientPhoneRaw = String(formData.get("recipientPhone") || "").trim() || null;
+  if (!recipientName) return { ok: false, error: "수령인 이름을 입력해주세요." };
+
+  const { postalCode, roadAddress, detailAddress, composed: address } = readAddressFields(formData, "delivery");
+  if (!roadAddress) return { ok: false, error: "주소 검색으로 배송지를 선택해주세요." };
+
+  const orderSourceRaw = String(formData.get("orderSource") || "").trim();
+  if (!isOrderSource(orderSourceRaw)) return { ok: false, error: "주문 출처를 선택해주세요." };
 
   const productName = String(formData.get("productName") || "").trim();
   if (!productName) return { ok: false, error: "상품명을 입력해주세요." };
+  const optionName = String(formData.get("optionName") || "").trim() || null;
 
   const deliveryMemo = String(formData.get("deliveryMemo") || "").trim() || null;
+  const orderMemo = String(formData.get("orderMemo") || "").trim() || null;
+  const internalMemo = String(formData.get("internalMemo") || "").trim() || null;
   const orderDateRaw = String(formData.get("orderDate") || "").trim();
   const deliveryDateRaw = String(formData.get("deliveryDate") || "").trim();
   const status = String(formData.get("status") || "").trim() || "접수완료";
@@ -220,12 +243,31 @@ export async function createManualOrderAction(
 
   try {
     const tenantId = await tenantScopeFor(session);
-    const { customer } = await resolveCustomerForImportRow({
-      name,
-      rawPhone,
-      rawAddress,
-      ownerUsername: session.username,
-    });
+
+    let customer: Customer;
+    if (customerMode === "existing") {
+      const existingCustomerId = String(formData.get("existingCustomerId") || "").trim();
+      if (!existingCustomerId) return { ok: false, error: "기존 고객을 검색해서 선택해주세요." };
+      const found = await customersRepository.findById(existingCustomerId);
+      if (!found) return { ok: false, error: "선택한 고객을 찾을 수 없습니다." };
+      if (session.role !== "admin" && found.owner_username !== session.username) {
+        return { ok: false, error: "이 고객에 대한 권한이 없습니다." };
+      }
+      customer = found;
+    } else {
+      const newCustomerName = String(formData.get("newCustomerName") || "").trim();
+      const newCustomerPhone = String(formData.get("newCustomerPhone") || "").trim() || null;
+      if (!newCustomerName) return { ok: false, error: "신규 고객 이름을 입력해주세요." };
+      customer = await createCustomerDirect({
+        name: newCustomerName,
+        rawPhone: newCustomerPhone,
+        postalCode,
+        roadAddress,
+        detailAddress,
+        ownerUsername: session.username,
+      });
+    }
+
     const [internalOrderNumber] = await allocateOrderNumbers(tenantId, [orderDate]);
 
     // 스마트스토어 주문만 order_number가 필수 — 수동 주문은 없어도 된다 (null).
@@ -237,12 +279,17 @@ export async function createManualOrderAction(
         order_date: orderDate,
         status,
         total_amount: amount,
-        recipient_name: name,
-        phone_snapshot: formatPhoneNumber(rawPhone),
-        address_snapshot: cleanAddress(rawAddress),
+        recipient_name: recipientName,
+        phone_snapshot: formatPhoneNumber(recipientPhoneRaw),
+        address_snapshot: address,
+        road_address_snapshot: roadAddress,
+        detail_address_snapshot: detailAddress,
+        zipcode: postalCode,
         delivery_memo: deliveryMemo,
+        order_memo: orderMemo,
+        internal_memo: internalMemo,
         delivery_date: deliveryDate,
-        order_source: "manual",
+        order_source: orderSourceRaw,
         owner_username: session.username,
         tenant_id: tenantId,
       },
@@ -252,6 +299,7 @@ export async function createManualOrderAction(
       {
         order_id: order.id,
         product_name: productName,
+        option_name: optionName,
         quantity,
         unit_price: unitPrice,
         amount,
@@ -298,16 +346,23 @@ export async function updateManualOrderAction(
     return { ok: false, error: "취소된 주문은 수정할 수 없습니다. 먼저 취소를 해제해주세요." };
   }
 
-  const name = String(formData.get("name") || "").trim();
-  const rawPhone = String(formData.get("phone") || "").trim() || null;
-  const rawAddress = String(formData.get("address") || "").trim() || null;
-  if (!name) return { ok: false, error: "고객 이름을 입력해주세요." };
-  if (!rawPhone && !rawAddress) return { ok: false, error: "전화번호 또는 주소 중 하나는 입력해주세요." };
+  const recipientName = String(formData.get("name") || "").trim();
+  const recipientPhoneRaw = String(formData.get("phone") || "").trim() || null;
+  if (!recipientName) return { ok: false, error: "수령인 이름을 입력해주세요." };
+
+  const { postalCode, roadAddress, detailAddress, composed: address } = readAddressFields(formData, "delivery");
+  if (!roadAddress) return { ok: false, error: "주소 검색으로 배송지를 선택해주세요." };
+
+  const orderSourceRaw = String(formData.get("orderSource") || "").trim();
+  if (!isOrderSource(orderSourceRaw)) return { ok: false, error: "주문 출처를 선택해주세요." };
 
   const productName = String(formData.get("productName") || "").trim();
   if (!productName) return { ok: false, error: "상품명을 입력해주세요." };
+  const optionName = String(formData.get("optionName") || "").trim() || null;
 
   const deliveryMemo = String(formData.get("deliveryMemo") || "").trim() || null;
+  const orderMemo = String(formData.get("orderMemo") || "").trim() || null;
+  const internalMemo = String(formData.get("internalMemo") || "").trim() || null;
   const orderDateRaw = String(formData.get("orderDate") || "").trim();
   const deliveryDateRaw = String(formData.get("deliveryDate") || "").trim();
   const status = String(formData.get("status") || "").trim() || "접수완료";
@@ -320,21 +375,35 @@ export async function updateManualOrderAction(
 
   try {
     await ordersRepository.update(orderId, {
-      recipient_name: name,
-      phone_snapshot: formatPhoneNumber(rawPhone),
-      address_snapshot: cleanAddress(rawAddress),
+      recipient_name: recipientName,
+      phone_snapshot: formatPhoneNumber(recipientPhoneRaw),
+      address_snapshot: address,
+      road_address_snapshot: roadAddress,
+      detail_address_snapshot: detailAddress,
+      zipcode: postalCode,
       delivery_memo: deliveryMemo,
+      order_memo: orderMemo,
+      internal_memo: internalMemo,
       order_date: orderDate,
       delivery_date: deliveryDate,
       status,
       total_amount: amount,
+      order_source: orderSourceRaw,
     });
 
     const [existingItem] = await ordersRepository.findItemsByOrderIds([orderId]);
     if (existingItem) {
-      await ordersRepository.updateItem(existingItem.id, { product_name: productName, quantity, unit_price: unitPrice, amount });
+      await ordersRepository.updateItem(existingItem.id, {
+        product_name: productName,
+        option_name: optionName,
+        quantity,
+        unit_price: unitPrice,
+        amount,
+      });
     } else {
-      await ordersRepository.createItems([{ order_id: orderId, product_name: productName, quantity, unit_price: unitPrice, amount }]);
+      await ordersRepository.createItems([
+        { order_id: orderId, product_name: productName, option_name: optionName, quantity, unit_price: unitPrice, amount },
+      ]);
     }
 
     revalidatePath("/orders");
@@ -351,7 +420,15 @@ export interface DeleteManualOrderState {
   error: string | null;
 }
 
-/** 수동 등록 주문만 삭제 가능. 엑셀 임포트 주문은 업로드 이력 삭제(재처리) 경로로만 제거된다. */
+/**
+ * 수동 등록 주문만 삭제 가능. 엑셀 업로드 자동 파이프라인으로 들어온 주문은
+ * 업로드 이력 삭제(재처리) 경로로만 제거된다.
+ *
+ * F6~F10: order_source가 "전화/문자/SNS/엑셀/기타"라는 순수 채널 메타데이터로
+ * 바뀌면서(엑셀 주문출처를 고른 수동 주문도 존재) 이 판정은 더 이상
+ * order_source로 할 수 없다 — 자동 파이프라인 여부를 정확히 나타내는
+ * import_id(파이프라인이 생성한 주문에만 not null)로 판정한다.
+ */
 export async function deleteManualOrderAction(orderId: string): Promise<DeleteManualOrderState> {
   const session = await requireSession();
   const order = await ordersRepository.findById(orderId);
@@ -359,8 +436,8 @@ export async function deleteManualOrderAction(orderId: string): Promise<DeleteMa
   if (session.role !== "admin" && order.owner_username !== session.username) {
     return { ok: false, error: "이 주문을 삭제할 권한이 없습니다." };
   }
-  if (order.order_source !== "manual") {
-    return { ok: false, error: "엑셀로 등록된 주문은 삭제할 수 없습니다." };
+  if (order.import_id !== null) {
+    return { ok: false, error: "엑셀 업로드로 등록된 주문은 삭제할 수 없습니다." };
   }
 
   try {

@@ -27,6 +27,23 @@ export async function searchCustomersAction(
   });
 }
 
+/**
+ * F6: 주문 등록 화면의 "기존 고객 검색" 전용 — 이름/전화번호로 최대 8건만
+ * 가볍게 찾는다. 항상 세션 소유 범위로 스코프되어 다른 테넌트/계정의 고객이
+ * 노출되지 않는다(F10 tenant isolation 원칙).
+ */
+export async function searchCustomersForOrderAction(query: string): Promise<Customer[]> {
+  const session = await requireSession();
+  if (!query.trim()) return [];
+  const { customers } = await customersRepository.search({
+    query,
+    page: 1,
+    pageSize: 8,
+    ownerUsername: ownerScopeFor(session),
+  });
+  return customers;
+}
+
 export interface CustomerDetail {
   customer: Customer;
   stats: CustomerStats;
@@ -135,7 +152,9 @@ export async function updateCustomerAction(
   if (!name) return { ok: false, error: "이름을 입력해주세요." };
 
   const phone = String(formData.get("phone") || "").trim() || null;
-  const address = String(formData.get("address") || "").trim() || null;
+  const postalCode = String(formData.get("addressPostalCode") || "").trim() || null;
+  const roadAddress = String(formData.get("addressRoadAddress") || "").trim() || null;
+  const detailAddress = String(formData.get("addressDetailAddress") || "").trim() || null;
   const memo = String(formData.get("memo") || "").trim() || null;
   const tagsRaw = String(formData.get("tags") || "").trim();
   const tags = tagsRaw
@@ -148,7 +167,11 @@ export async function updateCustomerAction(
   const bagNo = String(formData.get("bagNo") || "").trim() || null;
 
   try {
-    await updateCustomerProfile(customerId, { name, phone, address, memo, tags, status, bagNo }, session.username);
+    await updateCustomerProfile(
+      customerId,
+      { name, phone, postalCode, roadAddress, detailAddress, memo, tags, status, bagNo },
+      session.username
+    );
     revalidatePath(`/customers/${customerId}`);
     return { ok: true, error: null };
   } catch (e) {
