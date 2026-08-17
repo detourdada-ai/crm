@@ -62,12 +62,15 @@ export function OrderCustomerPicker({ onCustomerChange }: { onCustomerChange?: (
 
         <TabsContent value="existing" className="space-y-2 pt-2">
           {selected ? (
-            <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
-              <span>
+            <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <span className="min-w-0">
                 <span className="font-medium">{selected.name}</span>
                 {selected.phone ? <span className="ml-2 text-muted-foreground">{selected.phone}</span> : null}
+                {selected.address ? (
+                  <span className="block truncate text-xs text-muted-foreground">{selected.address}</span>
+                ) : null}
               </span>
-              <Button type="button" variant="ghost" size="sm" onClick={clearSelection} className="gap-1">
+              <Button type="button" variant="ghost" size="sm" onClick={clearSelection} className="shrink-0 gap-1">
                 <X className="size-3.5" />
                 다시 선택
               </Button>
@@ -85,16 +88,19 @@ export function OrderCustomerPicker({ onCustomerChange }: { onCustomerChange?: (
               </div>
               {isPending ? <p className="text-xs text-muted-foreground">검색 중...</p> : null}
               {results.length > 0 ? (
-                <div className="max-h-40 overflow-y-auto rounded-md border">
+                <div className="max-h-48 overflow-y-auto rounded-md border">
                   {results.map((c) => (
                     <button
                       key={c.id}
                       type="button"
                       onClick={() => selectCustomer(c)}
-                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-accent/50"
+                      className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-accent/50"
                     >
-                      <span className="font-medium">{c.name}</span>
-                      <span className="text-muted-foreground">{c.phone ?? "-"}</span>
+                      <span className="flex w-full items-center justify-between">
+                        <span className="font-medium">{c.name}</span>
+                        <span className="text-muted-foreground">{c.phone ?? "-"}</span>
+                      </span>
+                      {c.address ? <span className="truncate text-xs text-muted-foreground">{c.address}</span> : null}
                     </button>
                   ))}
                 </div>

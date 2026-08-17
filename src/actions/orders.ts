@@ -188,6 +188,7 @@ export async function markBagReturnedAction(
 export interface CreateManualOrderState {
   ok: boolean;
   error: string | null;
+  internalOrderNumber?: string;
 }
 
 /** F7: AddressSearchInput이 `${prefix}PostalCode`/`${prefix}RoadAddress`/`${prefix}DetailAddress` 3개 필드로 제출한 값을 조합한다. */
@@ -217,6 +218,7 @@ export async function createManualOrderAction(
   const recipientName = String(formData.get("recipientName") || "").trim();
   const recipientPhoneRaw = String(formData.get("recipientPhone") || "").trim() || null;
   if (!recipientName) return { ok: false, error: "수령인 이름을 입력해주세요." };
+  if (!recipientPhoneRaw) return { ok: false, error: "수령인 연락처를 입력해주세요." };
 
   const { postalCode, roadAddress, detailAddress, composed: address } = readAddressFields(formData, "delivery");
   if (!roadAddress) return { ok: false, error: "주소 검색으로 배송지를 선택해주세요." };
@@ -233,12 +235,13 @@ export async function createManualOrderAction(
   const internalMemo = String(formData.get("internalMemo") || "").trim() || null;
   const orderDateRaw = String(formData.get("orderDate") || "").trim();
   const deliveryDateRaw = String(formData.get("deliveryDate") || "").trim();
+  if (!deliveryDateRaw) return { ok: false, error: "배송일을 선택해주세요." };
   const status = String(formData.get("status") || "").trim() || "접수완료";
   const quantity = Math.max(1, Number(formData.get("quantity")) || 1);
   const unitPrice = Math.max(0, Number(formData.get("unitPrice")) || 0);
 
   const orderDate = orderDateRaw ? new Date(orderDateRaw).toISOString() : new Date().toISOString();
-  const deliveryDate = deliveryDateRaw ? new Date(deliveryDateRaw).toISOString() : null;
+  const deliveryDate = new Date(deliveryDateRaw).toISOString();
   const amount = quantity * unitPrice;
 
   try {
@@ -309,7 +312,7 @@ export async function createManualOrderAction(
     revalidatePath("/orders");
     revalidatePath("/customers");
     revalidatePath("/");
-    return { ok: true, error: null };
+    return { ok: true, error: null, internalOrderNumber };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "주문 등록 중 오류가 발생했습니다." };
   }
@@ -346,6 +349,11 @@ export async function updateManualOrderAction(
     return { ok: false, error: "취소된 주문은 수정할 수 없습니다. 먼저 취소를 해제해주세요." };
   }
 
+  // F12 STEP15: 신규 주문 등록(createManualOrderAction)에서는 연락처/배송일을
+  // 필수로 바꿨지만, 이 수정 액션은 그대로 둔다 — "배송일 미지정" 주문을
+  // 명시적으로 지원하는 기존 정책(Phase 5 STEP5)과 충돌하지 않기 위해서다.
+  // 연락처가 아예 없던 과거 주문(F6 이전엔 전화/주소 중 하나만 필수)도
+  // 이 수정 화면에서 다른 필드만 고치다가 막히면 안 된다.
   const recipientName = String(formData.get("name") || "").trim();
   const recipientPhoneRaw = String(formData.get("phone") || "").trim() || null;
   if (!recipientName) return { ok: false, error: "수령인 이름을 입력해주세요." };
