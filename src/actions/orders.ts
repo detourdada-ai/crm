@@ -7,6 +7,8 @@ import { customersRepository } from "@/lib/repositories/customers.repository";
 import { createCustomerDirect } from "@/lib/services/customer.service";
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
+import { toActionError } from "@/lib/utils/action-error";
+import { isUuid } from "@/lib/utils/id";
 import { ownerScopeFor, requireSession, tenantScopeFor } from "@/lib/auth/current-session";
 import { isOrderSource } from "@/lib/constants/order-source";
 import type { Order, OrderItem, DeliveryStatus, OrderSource, Customer } from "@/types/domain";
@@ -96,6 +98,7 @@ export interface OrderDetail {
 
 export async function getOrderDetailAction(id: string): Promise<OrderDetail | null> {
   const session = await requireSession();
+  if (!isUuid(id)) return null;
   const order = await ordersRepository.findById(id);
   if (!order) return null;
   if (session.role !== "admin" && order.owner_username !== session.username) return null;
@@ -123,7 +126,11 @@ export async function updateOrderBagAction(
     return { ok: false, error: "이 주문을 수정할 권한이 없습니다." };
   }
 
-  await ordersRepository.update(orderId, { bag_number: input.bagNumber, bag_returned: input.bagReturned });
+  await ordersRepository.update(
+    orderId,
+    { bag_number: input.bagNumber, bag_returned: input.bagReturned },
+    session.role === "admin" ? undefined : session.username
+  );
   revalidatePath("/orders");
   return { ok: true, error: null };
 }
@@ -178,7 +185,11 @@ export async function markBagReturnedAction(
     }
   }
 
-  await ordersRepository.update(orderId, { bag_number: bagNumber, bag_returned: true });
+  await ordersRepository.update(
+    orderId,
+    { bag_number: bagNumber, bag_returned: true },
+    session.role === "admin" ? undefined : session.username
+  );
   await ordersRepository.markManyBagsReturned(includeOrderIds, session.role === "admin" ? undefined : session.username);
   revalidatePath(`/orders/${orderId}`);
   revalidatePath("/orders");
@@ -314,7 +325,7 @@ export async function createManualOrderAction(
     revalidatePath("/");
     return { ok: true, error: null, internalOrderNumber };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "주문 등록 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "주문 등록 중 오류가 발생했습니다.") };
   }
 }
 
@@ -397,7 +408,7 @@ export async function updateManualOrderAction(
       status,
       total_amount: amount,
       order_source: orderSourceRaw,
-    });
+    }, session.role === "admin" ? undefined : session.username);
 
     const [existingItem] = await ordersRepository.findItemsByOrderIds([orderId]);
     if (existingItem) {
@@ -419,7 +430,7 @@ export async function updateManualOrderAction(
     revalidatePath("/");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "주문 수정 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "주문 수정 중 오류가 발생했습니다.") };
   }
 }
 
@@ -449,13 +460,13 @@ export async function deleteManualOrderAction(orderId: string): Promise<DeleteMa
   }
 
   try {
-    await ordersRepository.deleteOne(orderId);
+    await ordersRepository.deleteOne(orderId, session.role === "admin" ? undefined : session.username);
     revalidatePath("/orders");
     revalidatePath("/customers");
     revalidatePath("/");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "주문 삭제 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "주문 삭제 중 오류가 발생했습니다.") };
   }
 }
 
@@ -479,14 +490,14 @@ export async function cancelOrderAction(orderId: string): Promise<OrderCancelAct
   }
 
   try {
-    await ordersRepository.cancelOrder(orderId);
+    await ordersRepository.cancelOrder(orderId, session.role === "admin" ? undefined : session.username);
     revalidatePath("/orders");
     revalidatePath(`/orders/${orderId}`);
     revalidatePath("/delivery");
     revalidatePath("/");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "주문 취소 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "주문 취소 중 오류가 발생했습니다.") };
   }
 }
 
@@ -500,13 +511,13 @@ export async function uncancelOrderAction(orderId: string): Promise<OrderCancelA
   }
 
   try {
-    await ordersRepository.uncancelOrder(orderId);
+    await ordersRepository.uncancelOrder(orderId, session.role === "admin" ? undefined : session.username);
     revalidatePath("/orders");
     revalidatePath(`/orders/${orderId}`);
     revalidatePath("/delivery");
     revalidatePath("/");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "취소 해제 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "취소 해제 중 오류가 발생했습니다.") };
   }
 }

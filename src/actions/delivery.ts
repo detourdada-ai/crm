@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { buildOrderItemSummaries, type OrderItemSummary } from "@/actions/orders";
+import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession, requireDriverSession } from "@/lib/auth/current-session";
 import type { Order, Driver } from "@/types/domain";
 
@@ -71,7 +72,7 @@ export async function assignDriverAction(orderIds: string[], driverId: string): 
     revalidatePath("/delivery");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "기사 배정 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "기사 배정 중 오류가 발생했습니다.") };
   }
 }
 
@@ -97,7 +98,7 @@ export async function unassignDriverAction(orderIds: string[]): Promise<Delivery
     revalidatePath("/orders");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "배정 해제 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "배정 해제 중 오류가 발생했습니다.") };
   }
 }
 
@@ -127,7 +128,7 @@ export async function startDeliveryAction(orderIds: string[]): Promise<DeliveryA
     revalidatePath("/delivery");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "배송 시작 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "배송 시작 중 오류가 발생했습니다.") };
   }
 }
 
@@ -157,7 +158,7 @@ export async function completeDeliveryAction(orderIds: string[]): Promise<Delive
     revalidatePath("/driver");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "배송완료 처리 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "배송완료 처리 중 오류가 발생했습니다.") };
   }
 }
 
@@ -174,11 +175,11 @@ export async function markDeliveredAction(orderId: string): Promise<DeliveryActi
     if (!order) return { ok: false, error: "주문을 찾을 수 없습니다." };
     if (order.driver_id !== driverId) return { ok: false, error: "본인에게 배정된 주문만 처리할 수 있습니다." };
 
-    await ordersRepository.markDelivered(orderId);
+    await ordersRepository.markDelivered(orderId, driverId);
     revalidatePath("/driver");
     revalidatePath("/delivery");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "처리 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "처리 중 오류가 발생했습니다.") };
   }
 }

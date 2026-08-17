@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/current-session";
 import { inquiriesRepository } from "@/lib/repositories/inquiries.repository";
+import { toActionError } from "@/lib/utils/action-error";
 import type { Inquiry, InquiryCategory, InquiryStatus } from "@/types/domain";
 
 export interface InquiryActionState {
@@ -39,7 +40,7 @@ export async function submitInquiryAction(_prevState: InquiryActionState, formDa
     revalidatePath("/inquiries");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "문의 등록 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "문의 등록 중 오류가 발생했습니다.") };
   }
 }
 
@@ -60,7 +61,7 @@ export async function replyInquiryAction(inquiryId: string, reply: string): Prom
     revalidatePath("/settings");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "답변 등록 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "답변 등록 중 오류가 발생했습니다.") };
   }
 }
 
@@ -76,6 +77,6 @@ export async function updateInquiryStatusAction(inquiryId: string, status: Inqui
     revalidatePath("/settings");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "상태 변경 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "상태 변경 중 오류가 발생했습니다.") };
   }
 }

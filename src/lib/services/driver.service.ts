@@ -49,6 +49,6 @@ export async function createDriverWithAccount(input: CreateDriverInput): Promise
   return driver;
 }
 
-export async function updateDriver(id: string, input: DriverUpdate): Promise<Driver> {
-  return driversRepository.update(id, input);
+export async function updateDriver(id: string, input: DriverUpdate, ownerUsername?: string): Promise<Driver> {
+  return driversRepository.update(id, input, ownerUsername);
 }

@@ -38,8 +38,31 @@ export const settlementsRepository = {
     return data;
   },
 
-  async updateStatus(id: string, status: SettlementStatus): Promise<Settlement> {
-    const { data, error } = await getSupabaseAdmin()
+  /**
+   * F15: ownerUsername이 주어지면(비-admin 호출) 정산 건이 속한 기사가
+   * 실제로 그 소유주의 기사인지 DB에서 다시 확인한다 — settlements 테이블
+   * 자체엔 owner_username이 없으므로 driver_id를 경유해 검증한다.
+   */
+  async updateStatus(id: string, status: SettlementStatus, ownerUsername?: string): Promise<Settlement> {
+    const admin = getSupabaseAdmin();
+    if (ownerUsername) {
+      const { data: settlement, error: settlementError } = await admin
+        .from("settlements")
+        .select("driver_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (settlementError) throw settlementError;
+      if (!settlement) throw new Error("정산 건을 찾을 수 없습니다.");
+      const { data: driver, error: driverError } = await admin
+        .from("drivers")
+        .select("id")
+        .eq("id", settlement.driver_id)
+        .eq("owner_username", ownerUsername)
+        .maybeSingle();
+      if (driverError) throw driverError;
+      if (!driver) throw new Error("이 정산 건을 처리할 권한이 없습니다.");
+    }
+    const { data, error } = await admin
       .from("settlements")
       .update({ status, paid_at: status === "paid" ? new Date().toISOString() : null })
       .eq("id", id)

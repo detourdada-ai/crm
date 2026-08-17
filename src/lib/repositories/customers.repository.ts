@@ -149,14 +149,13 @@ export const customersRepository = {
     return data ?? [];
   },
 
-  async update(id: string, input: CustomerUpdate): Promise<Customer> {
-    const { data, error } = await getSupabaseAdmin()
-      .from("customers")
-      .update(input)
-      .eq("id", id)
-      .select("*")
-      .single();
+  /** F15: ownerUsername이 주어지면(비-admin 호출) DB 쿼리에도 소유권 조건을 건다. */
+  async update(id: string, input: CustomerUpdate, ownerUsername?: string): Promise<Customer> {
+    let q = getSupabaseAdmin().from("customers").update(input).eq("id", id);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("*").maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error("고객을 찾을 수 없거나 권한이 없습니다.");
     return data;
   },
 

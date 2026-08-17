@@ -7,6 +7,8 @@ import { changeLogRepository } from "@/lib/repositories/change-log.repository";
 import { updateCustomerProfile, setCustomerFavorite, resolveCustomerForImportRow } from "@/lib/services/customer.service";
 import { getCustomerTimeline, type TimelineEvent } from "@/lib/services/timeline.service";
 import { getVipCriteria } from "@/lib/services/vip.service";
+import { toActionError } from "@/lib/utils/action-error";
+import { isUuid } from "@/lib/utils/id";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { Customer, CustomerChangeLog, CustomerStats, Order, CustomerStatus } from "@/types/domain";
 
@@ -56,6 +58,7 @@ export interface CustomerDetail {
 
 export async function getCustomerDetailAction(id: string): Promise<CustomerDetail | null> {
   const session = await requireSession();
+  if (!isUuid(id)) return null;
   const customer = await customersRepository.findById(id);
   if (!customer) return null;
   if (session.role !== "admin" && customer.owner_username !== session.username) return null;
@@ -82,7 +85,7 @@ export async function toggleCustomerFavoriteAction(id: string): Promise<{ isFavo
     throw new Error("이 고객을 수정할 권한이 없습니다.");
   }
 
-  const updated = await setCustomerFavorite(id, !existing.is_favorite);
+  const updated = await setCustomerFavorite(id, !existing.is_favorite, session.role === "admin" ? undefined : session.username);
   revalidatePath(`/customers/${id}`);
   revalidatePath("/customers");
   return { isFavorite: updated.is_favorite };
@@ -122,12 +125,12 @@ export async function createCustomerAction(
       ownerUsername: session.username,
     });
     if (isNew && memo) {
-      await customersRepository.update(customer.id, { memo });
+      await customersRepository.update(customer.id, { memo }, session.username);
     }
     revalidatePath("/customers");
     return { ok: true, error: null, customerId: customer.id, isNew };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "고객 등록 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "고객 등록 중 오류가 발생했습니다.") };
   }
 }
 
@@ -170,11 +173,12 @@ export async function updateCustomerAction(
     await updateCustomerProfile(
       customerId,
       { name, phone, postalCode, roadAddress, detailAddress, memo, tags, status, bagNo },
-      session.username
+      session.username,
+      session.role === "admin" ? undefined : session.username
     );
     revalidatePath(`/customers/${customerId}`);
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "저장 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "저장 중 오류가 발생했습니다.") };
   }
 }

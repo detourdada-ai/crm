@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/current-session";
 import { betaRecruitApplicationsRepository } from "@/lib/repositories/beta-recruit-applications.repository";
+import { toActionError } from "@/lib/utils/action-error";
 import { PROBLEM_CATEGORIES } from "@/types/domain";
 import type { BetaRecruitApplication, ProblemCategory, RecruitApplicationStatus } from "@/types/domain";
 
@@ -70,7 +71,7 @@ export async function submitBetaRecruitApplicationAction(
     });
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "제출 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "제출 중 오류가 발생했습니다.") };
   }
 }
 
@@ -102,7 +103,7 @@ export async function updateRecruitApplicationStatusAction(
     revalidatePath("/settings");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "상태 변경 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "상태 변경 중 오류가 발생했습니다.") };
   }
 }
 
@@ -143,6 +144,6 @@ export async function updateRecruitInterviewAction(
     revalidatePath("/settings");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "인터뷰 결과 저장 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "인터뷰 결과 저장 중 오류가 발생했습니다.") };
   }
 }

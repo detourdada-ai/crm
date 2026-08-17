@@ -130,7 +130,8 @@ export interface UpdateCustomerInput {
 export async function updateCustomerProfile(
   id: string,
   input: UpdateCustomerInput,
-  performedBy = "admin"
+  performedBy = "admin",
+  ownerUsername?: string
 ): Promise<Customer> {
   const existing = await customersRepository.findById(id);
   if (!existing) throw new Error("고객을 찾을 수 없습니다.");
@@ -220,25 +221,29 @@ export async function updateCustomerProfile(
     });
   }
 
-  const updated = await customersRepository.update(id, {
-    name,
-    phone,
-    address,
-    address_normalized: addressNormalized,
-    postal_code: postalCode,
-    road_address: roadAddress,
-    detail_address: detailAddress,
-    bag_no: input.bagNo,
-    memo,
-    tags,
-    status,
-  });
+  const updated = await customersRepository.update(
+    id,
+    {
+      name,
+      phone,
+      address,
+      address_normalized: addressNormalized,
+      postal_code: postalCode,
+      road_address: roadAddress,
+      detail_address: detailAddress,
+      bag_no: input.bagNo,
+      memo,
+      tags,
+      status,
+    },
+    ownerUsername
+  );
 
   if (logs.length > 0) await changeLogRepository.createMany(logs);
 
   return updated;
 }
 
-export async function setCustomerFavorite(id: string, isFavorite: boolean): Promise<Customer> {
-  return customersRepository.update(id, { is_favorite: isFavorite });
+export async function setCustomerFavorite(id: string, isFavorite: boolean, ownerUsername?: string): Promise<Customer> {
+  return customersRepository.update(id, { is_favorite: isFavorite }, ownerUsername);
 }

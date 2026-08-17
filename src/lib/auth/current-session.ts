@@ -11,6 +11,8 @@ import {
 import type { Role } from "./credentials";
 import { accountsRepository } from "@/lib/repositories/accounts.repository";
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
+import { driversRepository } from "@/lib/repositories/drivers.repository";
+import { computeAccessStatus } from "./access-control";
 
 export async function setSessionCookie(username: string, role: Role): Promise<void> {
   const store = await cookies();
@@ -66,11 +68,26 @@ export async function tenantScopeFor(session: SessionPayload): Promise<string> {
   return tenant.id;
 }
 
-/** Use from driver-only pages/actions (배송관리's driver-facing view). */
+/**
+ * Use from driver-only pages/actions (배송관리's driver-facing view).
+ *
+ * F15: requireActiveAccess()는 role !== "user"(admin/driver)를 통째로
+ * 건너뛰므로, 소속 사업장이 SUSPENDED/미승인이어도 그 사업장의 기사
+ * 계정은 지금까지 배송 조회/시작/완료가 계속 가능했다 — 여기서 기사의
+ * owner_username을 통해 사업장 access status를 다시 확인해 막는다.
+ */
 export async function requireDriverSession(): Promise<{ session: SessionPayload; driverId: string }> {
   const session = await requireSession();
   if (session.role !== "driver") redirect("/dashboard");
   const account = await accountsRepository.findByUsername(session.username);
   if (!account?.driver_id) redirect("/login");
+
+  const driver = await driversRepository.findById(account.driver_id);
+  if (driver) {
+    const tenant = await tenantsRepository.findByUsername(driver.owner_username);
+    const status = tenant ? computeAccessStatus(tenant) : "NONE";
+    if (status !== "ACTIVE_BETA" && status !== "ACTIVE_SUBSCRIPTION") redirect("/login");
+  }
+
   return { session, driverId: account.driver_id };
 }

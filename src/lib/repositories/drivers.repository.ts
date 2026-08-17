@@ -60,9 +60,13 @@ export const driversRepository = {
     return data;
   },
 
-  async update(id: string, input: DriverUpdate): Promise<Driver> {
-    const { data, error } = await getSupabaseAdmin().from("drivers").update(input).eq("id", id).select("*").single();
+  /** F15: ownerUsername이 주어지면(비-admin 호출) DB 쿼리에도 소유권 조건을 건다. */
+  async update(id: string, input: DriverUpdate, ownerUsername?: string): Promise<Driver> {
+    let q = getSupabaseAdmin().from("drivers").update(input).eq("id", id);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("*").maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error("기사를 찾을 수 없거나 권한이 없습니다.");
     return data;
   },
 
@@ -76,8 +80,11 @@ export const driversRepository = {
     return count ?? 0;
   },
 
-  async delete(id: string): Promise<void> {
-    const { error } = await getSupabaseAdmin().from("drivers").delete().eq("id", id);
+  async delete(id: string, ownerUsername?: string): Promise<void> {
+    let q = getSupabaseAdmin().from("drivers").delete().eq("id", id);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("id");
     if (error) throw error;
+    if (!data || data.length === 0) throw new Error("기사를 찾을 수 없거나 권한이 없습니다.");
   },
 };

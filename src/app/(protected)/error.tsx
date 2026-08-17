@@ -14,7 +14,7 @@ export default function ProtectedError({ error, reset }: { error: Error & { dige
       <AlertTriangle className="size-8 text-destructive" />
       <p className="font-medium">문제가 발생했습니다.</p>
       <p className="max-w-md text-sm text-muted-foreground">
-        {error.message || "알 수 없는 오류가 발생했습니다. Supabase 연결 정보(.env.local)를 확인해주세요."}
+        일시적인 오류일 수 있습니다. 다시 시도해도 계속되면 잠시 후 다시 이용해주세요.
       </p>
       <Button onClick={reset}>다시 시도</Button>
     </div>

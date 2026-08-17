@@ -5,6 +5,7 @@ import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { settlementsRepository } from "@/lib/repositories/settlements.repository";
 import { resolvePeriodRange, type SettlementPeriodType } from "@/lib/services/settlement.service";
+import { toActionError } from "@/lib/utils/action-error";
 import { requireSession, requireDriverSession } from "@/lib/auth/current-session";
 import { kstDayStartIso, kstDayEndIso } from "@/lib/utils/kst-date";
 import type { Driver, Settlement } from "@/types/domain";
@@ -81,11 +82,11 @@ export async function markSettlementStatusAction(
       return { ok: false, error: "이 정산 건을 처리할 권한이 없습니다." };
     }
 
-    await settlementsRepository.updateStatus(settlementId, status);
+    await settlementsRepository.updateStatus(settlementId, status, session.role === "admin" ? undefined : session.username);
     revalidatePath("/settlements");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "처리 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "처리 중 오류가 발생했습니다.") };
   }
 }
 

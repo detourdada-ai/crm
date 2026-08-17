@@ -375,15 +375,17 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
-  async markDelivered(orderId: string): Promise<Order> {
-    const { data, error } = await getSupabaseAdmin()
+  /** F15: driverId가 주어지면(기사 세션 호출) 본인에게 배정된 주문만 완료 처리된다. */
+  async markDelivered(orderId: string, driverId?: string): Promise<Order> {
+    let q = getSupabaseAdmin()
       .from("orders")
       .update({ delivery_status: "완료", completed_at: new Date().toISOString() })
       .eq("id", orderId)
-      .neq("delivery_status", "취소")
-      .select("*")
-      .single();
+      .neq("delivery_status", "취소");
+    if (driverId) q = q.eq("driver_id", driverId);
+    const { data, error } = await q.select("*").maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error("이미 취소된 주문이거나 처리 권한이 없습니다.");
     return data as Order;
   },
 
@@ -394,30 +396,30 @@ export const ordersRepository = {
    * "assigned" on a delivery that no longer happens. Blocked for orders
    * already 완료(delivered) — a completed delivery isn't undone by cancelling.
    */
-  async cancelOrder(orderId: string): Promise<Order> {
-    const { data, error } = await getSupabaseAdmin()
+  async cancelOrder(orderId: string, ownerUsername?: string): Promise<Order> {
+    let q = getSupabaseAdmin()
       .from("orders")
       .update({ delivery_status: "취소", cancelled_at: new Date().toISOString(), driver_id: null })
       .eq("id", orderId)
-      .neq("delivery_status", "완료")
-      .select("*")
-      .maybeSingle();
+      .neq("delivery_status", "완료");
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("*").maybeSingle();
     if (error) throw error;
-    if (!data) throw new Error("이미 배송완료된 주문은 취소할 수 없습니다.");
+    if (!data) throw new Error("이미 배송완료된 주문이거나 취소 권한이 없습니다.");
     return data as Order;
   },
 
   /** Reverses cancelOrder — only valid from 취소, returns the order to 배송대기 for normal processing. */
-  async uncancelOrder(orderId: string): Promise<Order> {
-    const { data, error } = await getSupabaseAdmin()
+  async uncancelOrder(orderId: string, ownerUsername?: string): Promise<Order> {
+    let q = getSupabaseAdmin()
       .from("orders")
       .update({ delivery_status: "배송대기", cancelled_at: null })
       .eq("id", orderId)
-      .eq("delivery_status", "취소")
-      .select("*")
-      .maybeSingle();
+      .eq("delivery_status", "취소");
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("*").maybeSingle();
     if (error) throw error;
-    if (!data) throw new Error("취소된 주문이 아닙니다.");
+    if (!data) throw new Error("취소된 주문이 아니거나 처리 권한이 없습니다.");
     return data as Order;
   },
 
@@ -440,9 +442,17 @@ export const ordersRepository = {
     return count ?? 0;
   },
 
-  async update(id: string, input: OrderUpdate): Promise<Order> {
-    const { data, error } = await getSupabaseAdmin().from("orders").update(input).eq("id", id).select("*").single();
+  /**
+   * F15: ownerUsername이 주어지면(비-admin 호출) DB 쿼리 자체에도 소유권
+   * 조건을 걸어, action layer 체크가 우회되더라도 다른 tenant의 주문은
+   * 수정되지 않는다 — assignDriver 등과 동일한 방어 수준으로 통일.
+   */
+  async update(id: string, input: OrderUpdate, ownerUsername?: string): Promise<Order> {
+    let q = getSupabaseAdmin().from("orders").update(input).eq("id", id);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("*").maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error("주문을 찾을 수 없거나 권한이 없습니다.");
     return data as Order;
   },
 
@@ -502,9 +512,12 @@ export const ordersRepository = {
   },
 
   /** Deletes a single order (cascades order_items via FK). Only ever called for orders with import_id=null — orders created by the Excel bulk-import pipeline are never deletable from the UI. */
-  async deleteOne(orderId: string): Promise<void> {
-    const { error } = await getSupabaseAdmin().from("orders").delete().eq("id", orderId);
+  async deleteOne(orderId: string, ownerUsername?: string): Promise<void> {
+    let q = getSupabaseAdmin().from("orders").delete().eq("id", orderId);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("id");
     if (error) throw error;
+    if (!data || data.length === 0) throw new Error("주문을 찾을 수 없거나 권한이 없습니다.");
   },
 
   async findItemsByOrderIds(orderIds: string[]): Promise<OrderItem[]> {

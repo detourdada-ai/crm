@@ -56,8 +56,9 @@ export async function mergeDuplicateCandidate(candidateId: string, session: Sess
     performed_by: session.username,
   });
 
-  await customersRepository.update(incoming.id, { status: "merged", merged_into_id: existing.id });
-  await duplicatesRepository.updateStatus(candidate.id, "merged");
+  const ownerUsername = session.role === "admin" ? undefined : session.username;
+  await customersRepository.update(incoming.id, { status: "merged", merged_into_id: existing.id }, ownerUsername);
+  await duplicatesRepository.updateStatus(candidate.id, "merged", ownerUsername);
   await duplicatesRepository.rejectOtherPendingReferencing(incoming.id, candidate.id);
 
   return { keptCustomerId: existing.id, removedCustomerId: incoming.id, ordersMoved };
@@ -67,12 +68,12 @@ export async function rejectDuplicateCandidate(candidateId: string, session: Ses
   const candidate = await duplicatesRepository.findById(candidateId);
   if (!candidate) throw new MergeError("동일인 후보를 찾을 수 없습니다.");
   assertCanActOn(candidate.owner_username, session);
-  await duplicatesRepository.updateStatus(candidateId, "rejected");
+  await duplicatesRepository.updateStatus(candidateId, "rejected", session.role === "admin" ? undefined : session.username);
 }
 
 export async function holdDuplicateCandidate(candidateId: string, session: SessionPayload): Promise<void> {
   const candidate = await duplicatesRepository.findById(candidateId);
   if (!candidate) throw new MergeError("동일인 후보를 찾을 수 없습니다.");
   assertCanActOn(candidate.owner_username, session);
-  await duplicatesRepository.updateStatus(candidateId, "held");
+  await duplicatesRepository.updateStatus(candidateId, "held", session.role === "admin" ? undefined : session.username);
 }

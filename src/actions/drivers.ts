@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { createDriverWithAccount, updateDriver, DriverServiceError } from "@/lib/services/driver.service";
 import { listAccounts } from "@/lib/auth/credentials";
+import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { Driver } from "@/types/domain";
 import type { SessionPayload } from "@/lib/auth/session";
@@ -65,7 +66,7 @@ export async function createDriverAction(
     revalidatePath("/settings");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "기사 등록 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "기사 등록 중 오류가 발생했습니다.") };
   }
 }
 
@@ -73,12 +74,12 @@ export async function updateDriverStatusAction(driverId: string, status: "active
   try {
     const session = await requireSession();
     await assertOwnsDriver(driverId, session);
-    await updateDriver(driverId, { status });
+    await updateDriver(driverId, { status }, session.role === "admin" ? undefined : session.username);
     revalidatePath("/settings");
     revalidatePath("/delivery");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "처리 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "처리 중 오류가 발생했습니다.") };
   }
 }
 
@@ -86,12 +87,16 @@ export async function updateDriverRateAction(driverId: string, ratePerDelivery: 
   try {
     const session = await requireSession();
     await assertOwnsDriver(driverId, session);
-    await updateDriver(driverId, { rate_per_delivery: Math.max(0, ratePerDelivery) });
+    await updateDriver(
+      driverId,
+      { rate_per_delivery: Math.max(0, ratePerDelivery) },
+      session.role === "admin" ? undefined : session.username
+    );
     revalidatePath("/settings");
     revalidatePath("/settlements");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "처리 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "처리 중 오류가 발생했습니다.") };
   }
 }
 
@@ -106,11 +111,11 @@ export async function deleteDriverAction(driverId: string): Promise<DriverAction
       return { ok: false, error: `배정된 배송 이력이 ${assignedCount}건 있어 삭제할 수 없습니다. 비활성화를 사용해주세요.` };
     }
 
-    await driversRepository.delete(driverId);
+    await driversRepository.delete(driverId, undefined);
     revalidatePath("/settings");
     revalidatePath("/delivery");
     return { ok: true, error: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "삭제 중 오류가 발생했습니다." };
+    return { ok: false, error: toActionError(e, "삭제 중 오류가 발생했습니다.") };
   }
 }

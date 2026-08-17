@@ -52,12 +52,15 @@ export const duplicatesRepository = {
     return count ?? 0;
   },
 
-  async updateStatus(id: string, status: DuplicateStatus): Promise<void> {
-    const { error } = await getSupabaseAdmin()
+  async updateStatus(id: string, status: DuplicateStatus, ownerUsername?: string): Promise<void> {
+    let q = getSupabaseAdmin()
       .from("duplicate_candidates")
       .update({ status, resolved_at: status === "pending" ? null : new Date().toISOString() })
       .eq("id", id);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("id");
     if (error) throw error;
+    if (!data || data.length === 0) throw new Error("항목을 찾을 수 없거나 권한이 없습니다.");
   },
 
   /** After merging `customerId` away, any other still-pending candidate mentioning it no longer makes sense to review independently. */
