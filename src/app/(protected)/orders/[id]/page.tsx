@@ -13,6 +13,7 @@ import { ManualOrderEditDialog } from "@/components/orders/manual-order-edit-dia
 import { ManualOrderDeleteButton } from "@/components/orders/manual-order-delete-button";
 import { OrderCancelButton } from "@/components/orders/order-cancel-button";
 import { OrderDriverAssign } from "@/components/orders/order-driver-assign";
+import { OrderDeliveryStatusAction } from "@/components/orders/order-delivery-status-action";
 import { BackButton } from "@/components/common/back-button";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants/order-status";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
@@ -46,8 +47,17 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-semibold">{order.internal_order_number}</h1>
         <Badge variant="outline">{ORDER_SOURCE_LABELS[order.order_source]}</Badge>
-        <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
-        {order.status ? <Badge variant="secondary">{order.status}</Badge> : null}
+        <div className="flex items-center gap-1.5 text-sm">
+          <span className="text-muted-foreground">배송 상태</span>
+          <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
+          <OrderDeliveryStatusAction orderId={order.id} deliveryStatus={order.delivery_status} />
+        </div>
+        {order.status ? (
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-muted-foreground">주문 상태</span>
+            <Badge variant="secondary">{order.status}</Badge>
+          </div>
+        ) : null}
         <div className="ml-auto flex gap-2">
           <ManualOrderEditDialog order={order} item={items[0] ?? null} />
           <OrderCancelButton orderId={order.id} deliveryStatus={order.delivery_status} />
