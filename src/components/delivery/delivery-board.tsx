@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
+import { Copy, Loader2, MapPin, MessageSquare, Phone } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -10,14 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 import { formatCurrency, formatDate } from "@/lib/constants/order-status";
 import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
-import { assignDriverAction, unassignDriverAction } from "@/actions/delivery";
+import { assignDriverAction, completeDeliveryAction, startDeliveryAction, unassignDriverAction } from "@/actions/delivery";
 import type { OrderItemSummary } from "@/actions/orders";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import type { Order, Driver } from "@/types/domain";
 
 /**
  * 배송 업무 리스트 — 주문번호/고객/배송일/배송지/담당기사/상태를 항상
- * 보여주고, 연락처·배송메모·금액은 상세 정보로 lg 이상에서만 노출한다.
+ * 보여주고, 연락처·금액은 상세 정보로 lg 이상에서만 노출한다.
  * 375px에서는 테이블 대신 카드형 Row로 전환.
  * 기사 배정은 기존 assignDriverAction을 그대로 재사용 — 다건 선택 배정 툴바는
  * 유지하고, "배정 필요" 행에는 그 행만 바로 선택해 툴바로 안내하는 보조
@@ -25,6 +27,12 @@ import type { Order, Driver } from "@/types/domain";
  * assignDriverAction이 덮어쓰기를 허용하므로 새 코드 없이 재배정됨)과
  * "해제"(unassignDriverAction) 버튼을 추가. 완료된 주문은 잠긴 표시만.
  * 취소된 주문은 애초에 이 보드 쿼리에서 제외된다(findByDeliveryDate 참고).
+ *
+ * F13: 기사 배정 없이도(1인 자가배송 등) 배송대기→배송중→완료를 바로 전환할
+ * 수 있도록 "배송 시작"/"배송 완료" 버튼을 상태별로 바로 노출한다(드롭다운
+ * 없음). 배송지는 스냅샷 필드를 재가공 없이 그대로(우편번호/도로명/상세)
+ * 구조화해 보여주고, 배송메모는 breakpoint 숨김 없이 항상 강조 표시하며,
+ * 주소복사/전화/지도(카카오맵 검색 링크, API 키 불필요) 퀵액션을 더했다.
  */
 type DeliverySortField = "delivery_date" | "order_number" | "recipient_name" | "driver_name" | "delivery_status" | "address";
 
@@ -36,6 +44,11 @@ const SORT_OPTIONS: { value: DeliverySortField; label: string }[] = [
   { value: "delivery_status", label: "상태순" },
   { value: "address", label: "배송지순" },
 ];
+
+function composeAddressCopyText(order: Order): string {
+  const road = order.road_address_snapshot ?? order.address_snapshot;
+  return [order.zipcode ? `[${order.zipcode}]` : null, road, order.detail_address_snapshot].filter(Boolean).join(" ");
+}
 
 export function DeliveryBoard({
   orders,
@@ -53,6 +66,7 @@ export function DeliveryBoard({
   const [driverId, setDriverId] = useState<string>("");
   const [sortField, setSortField] = useState<DeliverySortField>("delivery_date");
   const [isPending, startTransition] = useTransition();
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
   const toolbarRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +130,7 @@ export function DeliveryBoard({
   }
 
   function handleUnassign(orderId: string) {
+    setPendingOrderId(orderId);
     startTransition(async () => {
       const result = await unassignDriverAction([orderId]);
       if (result.ok) {
@@ -123,6 +138,33 @@ export function DeliveryBoard({
       } else {
         toast.error(result.error ?? "배정 해제 중 오류가 발생했습니다.");
       }
+      setPendingOrderId(null);
+    });
+  }
+
+  function handleStart(orderId: string) {
+    setPendingOrderId(orderId);
+    startTransition(async () => {
+      const result = await startDeliveryAction([orderId]);
+      if (result.ok) {
+        toast.success("배송을 시작했습니다.");
+      } else {
+        toast.error(result.error ?? "배송 시작 중 오류가 발생했습니다.");
+      }
+      setPendingOrderId(null);
+    });
+  }
+
+  function handleComplete(orderId: string) {
+    setPendingOrderId(orderId);
+    startTransition(async () => {
+      const result = await completeDeliveryAction([orderId]);
+      if (result.ok) {
+        toast.success("배송을 완료했습니다.");
+      } else {
+        toast.error(result.error ?? "배송완료 처리 중 오류가 발생했습니다.");
+      }
+      setPendingOrderId(null);
     });
   }
 
@@ -180,7 +222,6 @@ export function DeliveryBoard({
               <TableHead>상태</TableHead>
               {bagManagementEnabled ? <TableHead>가방 상태</TableHead> : null}
               <TableHead className="hidden lg:table-cell">연락처</TableHead>
-              <TableHead className="hidden xl:table-cell">배송메모</TableHead>
               <TableHead className="hidden lg:table-cell text-right">금액</TableHead>
             </TableRow>
           </TableHeader>
@@ -194,7 +235,9 @@ export function DeliveryBoard({
                   />
                 </TableCell>
                 <TableCell className="font-medium">
-                  <span className="mr-1.5">{order.internal_order_number}</span>
+                  <Link href={`/orders/${order.id}`} className="mr-1.5 hover:underline">
+                    {order.internal_order_number}
+                  </Link>
                   <Badge variant="outline" className="text-muted-foreground">
                     {ORDER_SOURCE_LABELS[order.order_source]}
                   </Badge>
@@ -203,20 +246,34 @@ export function DeliveryBoard({
                 <TableCell>
                   <DeliveryDateLabel isoDate={order.delivery_date} />
                 </TableCell>
-                <TableCell className="max-w-xs truncate text-muted-foreground">{order.address_snapshot ?? "-"}</TableCell>
+                <TableCell className="align-top">
+                  <DeliveryAddressBlock order={order} />
+                </TableCell>
                 <TableCell className="max-w-40 truncate text-muted-foreground">
                   {itemSummaries[order.id]?.productSummary ?? "-"}
+                  {itemSummaries[order.id] ? ` · 총 ${itemSummaries[order.id].totalQuantity}개` : ""}
                 </TableCell>
                 <TableCell>
                   <DriverCell
                     name={order.driver_id ? driverNames[order.driver_id] : undefined}
                     locked={order.delivery_status === "완료"}
+                    disabled={isPending}
                     onAssign={() => quickSelectForAssign(order.id)}
                     onUnassign={() => handleUnassign(order.id)}
                   />
                 </TableCell>
                 <TableCell>
-                  <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
+                  <div className="flex flex-col items-start gap-1.5">
+                    <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
+                    <DeliveryNextActionButton
+                      status={order.delivery_status}
+                      disabled={isPending}
+                      showSpinner={isPending && pendingOrderId === order.id}
+                      onStart={() => handleStart(order.id)}
+                      onComplete={() => handleComplete(order.id)}
+                      className="h-7 px-2.5"
+                    />
+                  </div>
                 </TableCell>
                 {bagManagementEnabled ? (
                   <TableCell>
@@ -233,9 +290,6 @@ export function DeliveryBoard({
                   </TableCell>
                 ) : null}
                 <TableCell className="hidden lg:table-cell text-muted-foreground">{order.phone_snapshot ?? "-"}</TableCell>
-                <TableCell className="hidden xl:table-cell max-w-40 truncate text-muted-foreground">
-                  {order.delivery_memo ?? "-"}
-                </TableCell>
                 <TableCell className="hidden lg:table-cell text-right text-muted-foreground">
                   {formatCurrency(Number(order.total_amount))}
                 </TableCell>
@@ -257,21 +311,24 @@ export function DeliveryBoard({
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-1.5 font-medium text-text-strong">
+                  <Link href={`/orders/${order.id}`} className="flex items-center gap-1.5 font-medium text-text-strong hover:underline">
                     {order.internal_order_number}
                     <Badge variant="outline" className="text-muted-foreground">
                       {ORDER_SOURCE_LABELS[order.order_source]}
                     </Badge>
-                  </span>
+                  </Link>
                   <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
                 </div>
                 <p className="mt-1 font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</p>
                 <div className="mt-1">
                   <DeliveryDateLabel isoDate={order.delivery_date} />
                 </div>
-                <p className="mt-1 truncate text-sm text-muted-foreground">{order.address_snapshot ?? "-"}</p>
-                <p className="mt-1 truncate text-sm text-muted-foreground">
+                <div className="mt-2">
+                  <DeliveryAddressBlock order={order} />
+                </div>
+                <p className="mt-2 truncate text-sm text-muted-foreground">
                   {itemSummaries[order.id]?.productSummary ?? "-"}
+                  {itemSummaries[order.id] ? ` · 총 ${itemSummaries[order.id].totalQuantity}개` : ""}
                 </p>
                 {bagManagementEnabled && order.bag_number ? (
                   <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
@@ -285,10 +342,19 @@ export function DeliveryBoard({
                   <DriverCell
                     name={order.driver_id ? driverNames[order.driver_id] : undefined}
                     locked={order.delivery_status === "완료"}
+                    disabled={isPending}
                     onAssign={() => quickSelectForAssign(order.id)}
                     onUnassign={() => handleUnassign(order.id)}
                   />
                 </div>
+                <DeliveryNextActionButton
+                  status={order.delivery_status}
+                  disabled={isPending}
+                  showSpinner={isPending && pendingOrderId === order.id}
+                  onStart={() => handleStart(order.id)}
+                  onComplete={() => handleComplete(order.id)}
+                  className="mt-2 h-9 w-full"
+                />
               </div>
             </div>
           </div>
@@ -298,14 +364,96 @@ export function DeliveryBoard({
   );
 }
 
+function DeliveryAddressBlock({ order }: { order: Order }) {
+  const road = order.road_address_snapshot ?? order.address_snapshot;
+  const fullText = composeAddressCopyText(order);
+
+  function copyAddress() {
+    if (!fullText) return;
+    navigator.clipboard
+      .writeText(fullText)
+      .then(() => toast.success("주소를 복사했습니다."))
+      .catch(() => toast.error("주소 복사에 실패했습니다."));
+  }
+
+  return (
+    <div className="max-w-[240px] space-y-1.5 text-sm">
+      <div className="space-y-0.5 break-words">
+        {order.zipcode ? <p className="text-xs text-muted-foreground">[{order.zipcode}]</p> : null}
+        <p className="text-text-strong">{road ?? "-"}</p>
+        {order.detail_address_snapshot ? <p className="text-muted-foreground">{order.detail_address_snapshot}</p> : null}
+      </div>
+      {order.delivery_memo ? (
+        <p className="flex items-start gap-1 rounded-md bg-warning-soft px-1.5 py-1 text-xs text-warning">
+          <MessageSquare className="mt-0.5 size-3 shrink-0" />
+          <span className="break-words">{order.delivery_memo}</span>
+        </p>
+      ) : null}
+      <div className="flex items-center gap-1">
+        <Button type="button" size="icon" variant="ghost" className="size-6" onClick={copyAddress} aria-label="주소 복사">
+          <Copy className="size-3.5" />
+        </Button>
+        {order.phone_snapshot ? (
+          <Button asChild type="button" size="icon" variant="ghost" className="size-6" aria-label="전화 걸기">
+            <a href={`tel:${order.phone_snapshot}`}>
+              <Phone className="size-3.5" />
+            </a>
+          </Button>
+        ) : null}
+        {fullText ? (
+          <Button asChild type="button" size="icon" variant="ghost" className="size-6" aria-label="지도에서 보기">
+            <a href={`https://map.kakao.com/link/search/${encodeURIComponent(fullText)}`} target="_blank" rel="noopener noreferrer">
+              <MapPin className="size-3.5" />
+            </a>
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function DeliveryNextActionButton({
+  status,
+  disabled,
+  showSpinner,
+  onStart,
+  onComplete,
+  className,
+}: {
+  status: Order["delivery_status"];
+  disabled: boolean;
+  showSpinner: boolean;
+  onStart: () => void;
+  onComplete: () => void;
+  className?: string;
+}) {
+  if (status === "배송대기") {
+    return (
+      <Button type="button" size="sm" className={className} disabled={disabled} onClick={onStart}>
+        {showSpinner ? <Loader2 className="size-3.5 animate-spin" /> : "배송 시작"}
+      </Button>
+    );
+  }
+  if (status === "배송중") {
+    return (
+      <Button type="button" size="sm" className={className} disabled={disabled} onClick={onComplete}>
+        {showSpinner ? <Loader2 className="size-3.5 animate-spin" /> : "배송 완료"}
+      </Button>
+    );
+  }
+  return null;
+}
+
 function DriverCell({
   name,
   locked,
+  disabled,
   onAssign,
   onUnassign,
 }: {
   name: string | undefined;
   locked: boolean;
+  disabled: boolean;
   onAssign: () => void;
   onUnassign: () => void;
 }) {
@@ -314,10 +462,10 @@ function DriverCell({
     return (
       <div className="flex items-center gap-2">
         <span className="text-text-strong">{name}</span>
-        <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" onClick={onAssign}>
+        <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" disabled={disabled} onClick={onAssign}>
           변경
         </Button>
-        <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" onClick={onUnassign}>
+        <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" disabled={disabled} onClick={onUnassign}>
           해제
         </Button>
       </div>
@@ -326,7 +474,7 @@ function DriverCell({
   return (
     <div className="flex items-center gap-2">
       <span className="font-medium text-warning">배정 필요</span>
-      <Button size="sm" variant="outline" onClick={onAssign}>
+      <Button size="sm" variant="outline" disabled={disabled} onClick={onAssign}>
         배정
       </Button>
     </div>

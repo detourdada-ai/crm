@@ -101,6 +101,66 @@ export async function unassignDriverAction(orderIds: string[]): Promise<Delivery
   }
 }
 
+/**
+ * F13: Seller가 기사 배정 없이 직접 배송을 시작한다(배송대기→배송중). 1인
+ * 사업자의 자가배송 등 기사 개념이 필요 없는 흐름을 위한 버튼용 액션 —
+ * assignDriverAction과 동일한 owner 검증 패턴(action layer + repository
+ * layer 이중 검증)을 그대로 재사용한다.
+ */
+export async function startDeliveryAction(orderIds: string[]): Promise<DeliveryActionState> {
+  try {
+    const session = await requireSession();
+    if (orderIds.length === 0) return { ok: false, error: "배송을 시작할 주문을 선택해주세요." };
+
+    if (session.role !== "admin") {
+      const orders = await ordersRepository.findByIds(orderIds);
+      const allOwned = orders.length === orderIds.length && orders.every((o) => o.owner_username === session.username);
+      if (!allOwned) {
+        return { ok: false, error: "권한이 없는 주문이 포함되어 있습니다." };
+      }
+    }
+
+    const updated = await ordersRepository.startDelivery(orderIds, session.role === "admin" ? undefined : session.username);
+    if (updated === 0) {
+      return { ok: false, error: "배송을 시작할 수 있는 주문이 없습니다. (이미 처리되었을 수 있습니다)" };
+    }
+    revalidatePath("/delivery");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "배송 시작 중 오류가 발생했습니다." };
+  }
+}
+
+/**
+ * F13: Seller가 직접 배송완료 처리한다(배송중→완료). 기사 세션 전용인
+ * markDeliveredAction과 목적지 상태는 같지만, 이쪽은 Seller 세션에서 소유권을
+ * 검증하는 별도 경로다(기사 앱 흐름은 변경하지 않는다).
+ */
+export async function completeDeliveryAction(orderIds: string[]): Promise<DeliveryActionState> {
+  try {
+    const session = await requireSession();
+    if (orderIds.length === 0) return { ok: false, error: "배송완료 처리할 주문을 선택해주세요." };
+
+    if (session.role !== "admin") {
+      const orders = await ordersRepository.findByIds(orderIds);
+      const allOwned = orders.length === orderIds.length && orders.every((o) => o.owner_username === session.username);
+      if (!allOwned) {
+        return { ok: false, error: "권한이 없는 주문이 포함되어 있습니다." };
+      }
+    }
+
+    const updated = await ordersRepository.completeDelivery(orderIds, session.role === "admin" ? undefined : session.username);
+    if (updated === 0) {
+      return { ok: false, error: "배송완료 처리할 수 있는 주문이 없습니다. (이미 처리되었을 수 있습니다)" };
+    }
+    revalidatePath("/delivery");
+    revalidatePath("/driver");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "배송완료 처리 중 오류가 발생했습니다." };
+  }
+}
+
 /** 기사 화면: this driver's own in-progress (배송중) deliveries. */
 export async function listMyDeliveriesAction(): Promise<Order[]> {
   const { driverId } = await requireDriverSession();

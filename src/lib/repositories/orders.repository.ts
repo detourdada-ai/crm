@@ -329,6 +329,43 @@ export const ordersRepository = {
     if (error) throw error;
   },
 
+  /**
+   * F13: Seller가 (기사 배정 없이) 직접 "배송 시작"을 눌러 배송대기→배송중으로
+   * 전환한다 — 1인 사업자의 자가배송처럼 기사 개념이 필요 없는 경우를 위한
+   * 경로. assignDriver와 달리 driver_id는 건드리지 않는다. 대상 중 이미
+   * 배송대기가 아닌 건(배송중/완료/취소)은 조용히 건너뛰고, 실제로 전환된
+   * 건수만 반환 — 다건 선택 시 일부만 대상이어도 전체가 실패하지 않는다.
+   */
+  async startDelivery(orderIds: string[], ownerUsername?: string): Promise<number> {
+    if (orderIds.length === 0) return 0;
+    const admin = getSupabaseAdmin();
+    let q = admin.from("orders").update({ delivery_status: "배송중" }).in("id", orderIds).eq("delivery_status", "배송대기");
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("id");
+    if (error) throw error;
+    return data?.length ?? 0;
+  },
+
+  /**
+   * F13: Seller가 직접 "배송 완료"를 눌러 배송중→완료로 전환한다(기사 앱의
+   * markDelivered와 동일한 목적지 상태지만, 기사 세션이 아닌 Seller 세션에서
+   * 호출되므로 별도 메서드로 둔다 — driver_id 소유 검증 대신 owner_username
+   * 검증). startDelivery와 동일하게 대상이 아닌 건은 조용히 건너뛴다.
+   */
+  async completeDelivery(orderIds: string[], ownerUsername?: string): Promise<number> {
+    if (orderIds.length === 0) return 0;
+    const admin = getSupabaseAdmin();
+    let q = admin
+      .from("orders")
+      .update({ delivery_status: "완료", completed_at: new Date().toISOString() })
+      .in("id", orderIds)
+      .eq("delivery_status", "배송중");
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("id");
+    if (error) throw error;
+    return data?.length ?? 0;
+  },
+
   /** A driver's own orders — either their currently in-progress deliveries or (with includeCompleted) their full history, for the driver-only delivery view. */
   async findByDriverId(driverId: string, deliveryStatus?: DeliveryStatus): Promise<Order[]> {
     let q = getSupabaseAdmin().from("orders").select("*").eq("driver_id", driverId);
