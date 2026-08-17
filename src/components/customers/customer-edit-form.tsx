@@ -14,7 +14,14 @@ import type { Customer } from "@/types/domain";
 
 const initialState: UpdateCustomerActionState = { ok: false, error: null };
 
-export function CustomerEditForm({ customer }: { customer: Customer }) {
+export function CustomerEditForm({
+  customer,
+  bagManagementEnabled = false,
+}: {
+  customer: Customer;
+  /** Phase 10: 가방 관리 미사용 사업장에서는 "평소 가방번호" 입력을 숨긴다. */
+  bagManagementEnabled?: boolean;
+}) {
   const boundAction = updateCustomerAction.bind(null, customer.id);
   const [state, formAction, isPending] = useActionState(boundAction, initialState);
 
@@ -37,10 +44,12 @@ export function CustomerEditForm({ customer }: { customer: Customer }) {
         <Label htmlFor="address">주소</Label>
         <AddressSearchInput id="address" name="address" defaultValue={customer.address ?? ""} />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="bagNo">평소 가방번호</Label>
-        <Input id="bagNo" name="bagNo" defaultValue={customer.bag_no ?? ""} placeholder="예: 12" />
-      </div>
+      {bagManagementEnabled ? (
+        <div className="space-y-2">
+          <Label htmlFor="bagNo">평소 가방번호</Label>
+          <Input id="bagNo" name="bagNo" defaultValue={customer.bag_no ?? ""} placeholder="예: 12" />
+        </div>
+      ) : null}
       <div className="space-y-2">
         <Label htmlFor="status">고객 상태</Label>
         <Select name="status" defaultValue={customer.status}>

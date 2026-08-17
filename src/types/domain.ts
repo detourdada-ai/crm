@@ -42,6 +42,10 @@ export interface Tenant {
   access_expires_at: ISODateString | null;
   beta_welcome_email_sent_at: ISODateString | null;
   beta_ended_email_sent_at: ISODateString | null;
+  // Phase 10: industry는 추천값 산정용 프로필일 뿐 — 기능 사용 여부는 별도
+  // feature 컬럼(bag_management 등)이 결정하며 industry로 자동 강제되지 않는다.
+  industry: string | null;
+  bag_management: boolean;
   created_at: ISODateString;
   updated_at: ISODateString;
 }

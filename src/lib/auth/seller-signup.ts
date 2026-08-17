@@ -21,7 +21,12 @@ function generateUsername(): string {
  * surfaced value — this account is Google-only and was never meant to log
  * in via ID/PW (same reasoning as Sprint 9's synthetic-email accounts).
  */
-export async function createSellerSignup(companyName: string, googleEmail: string): Promise<{ username: string }> {
+export async function createSellerSignup(
+  companyName: string,
+  googleEmail: string,
+  industry: string | null = null,
+  bagManagement = false
+): Promise<{ username: string }> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const username = generateUsername();
     const existing = await accountsRepository.findByUsername(username);
@@ -33,6 +38,8 @@ export async function createSellerSignup(companyName: string, googleEmail: strin
       p_company_name: companyName,
       p_google_email: googleEmail,
       p_password_hash: passwordHash,
+      p_industry: industry,
+      p_bag_management: bagManagement,
     });
     if (error) {
       if (/duplicate key/i.test(error.message)) continue;

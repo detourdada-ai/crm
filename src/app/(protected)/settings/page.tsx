@@ -7,6 +7,7 @@ import { getVipCriteria } from "@/lib/services/vip.service";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
 import { DriverManagementCard } from "@/components/settings/driver-management-card";
+import { TenantProfileCard } from "@/components/settings/tenant-profile-card";
 import { GoogleEmailCell } from "@/components/settings/google-email-cell";
 import { IssueBetaKeyButton } from "@/components/settings/issue-beta-key-button";
 import { ExtendBetaButton } from "@/components/settings/extend-beta-button";
@@ -39,10 +40,23 @@ export default async function SettingsPage() {
     : [[], []];
 
   if (!isAdmin) {
-    const vipCriteria = await getVipCriteria(session.username);
+    const [vipCriteria, tenant] = await Promise.all([
+      getVipCriteria(session.username),
+      tenantsRepository.findByUsername(session.username),
+    ]);
     return (
       <div className="space-y-6">
         <PageHeader title="설정" description="서비스 운영에 필요한 정보를 관리하세요." />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>사업장 정보</CardTitle>
+            <CardDescription>업종은 추천 기능을 보여줄 뿐 강제하지 않습니다. 사용 기능은 언제든 직접 켜고 끌 수 있어요.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TenantProfileCard industry={tenant?.industry ?? null} bagManagement={tenant?.bag_management ?? false} />
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

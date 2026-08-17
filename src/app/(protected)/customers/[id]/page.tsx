@@ -12,11 +12,14 @@ import { CustomerFavoriteButton } from "@/components/customers/customer-favorite
 import { OrderTable } from "@/components/orders/order-table";
 import { BackButton } from "@/components/common/back-button";
 import { CUSTOMER_STATUS_LABELS } from "@/lib/constants/customer-status";
+import { requireSession } from "@/lib/auth/current-session";
+import { getTenantFeaturesForSession } from "@/lib/tenant/features";
 import type { CustomerStatus } from "@/types/domain";
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const detail = await getCustomerDetailAction(id);
+  const session = await requireSession();
+  const [detail, features] = await Promise.all([getCustomerDetailAction(id), getTenantFeaturesForSession(session)]);
   if (!detail) notFound();
 
   const { customer, stats, orders, changeLogs, timeline, isVip, mergedIntoCustomer } = detail;
@@ -60,7 +63,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <CardTitle>고객 정보</CardTitle>
         </CardHeader>
         <CardContent>
-          <CustomerEditForm customer={customer} />
+          <CustomerEditForm customer={customer} bagManagementEnabled={features.bagManagement} />
         </CardContent>
       </Card>
 
@@ -69,7 +72,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <CardTitle>주문목록</CardTitle>
         </CardHeader>
         <CardContent>
-          <OrderTable orders={orders} />
+          <OrderTable orders={orders} bagManagementEnabled={features.bagManagement} />
         </CardContent>
       </Card>
 

@@ -11,6 +11,7 @@ import Link from "next/link";
 import { getDeliveryBoardAction } from "@/actions/delivery";
 import { listDriversAction } from "@/actions/drivers";
 import { requireSession } from "@/lib/auth/current-session";
+import { getTenantFeaturesForSession } from "@/lib/tenant/features";
 import { listAccounts } from "@/lib/auth/credentials";
 import { isValidDateString } from "@/lib/utils/date";
 import { kstTodayIso, resolveKstQuickRange, isQuickDateFilter, type QuickDateFilterValue } from "@/lib/utils/kst-date";
@@ -52,8 +53,9 @@ export default async function DeliveryPage({
 
   const activeFilter: DeliveryFilter = isDeliveryFilter(params.filter) ? params.filter : "all";
 
-  const [session, boardResult, allDrivers, accounts] = await Promise.all([
-    requireSession(),
+  const session = await requireSession();
+  const [features, boardResult, allDrivers, accounts] = await Promise.all([
+    getTenantFeaturesForSession(session),
     getDeliveryBoardAction(range?.start ?? null, range?.end),
     listDriversAction(),
     listAccounts(),
@@ -146,7 +148,12 @@ export default async function DeliveryPage({
             <CardDescription>배송 예정 주문을 확인하고 기사 배정을 관리하세요.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <DeliveryBoard orders={visibleOrders} drivers={drivers} itemSummaries={itemSummaries} />
+            <DeliveryBoard
+              orders={visibleOrders}
+              drivers={drivers}
+              itemSummaries={itemSummaries}
+              bagManagementEnabled={features.bagManagement}
+            />
           </CardContent>
         </Card>
       )}

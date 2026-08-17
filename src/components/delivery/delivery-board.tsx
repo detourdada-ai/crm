@@ -41,10 +41,13 @@ export function DeliveryBoard({
   orders,
   drivers,
   itemSummaries,
+  bagManagementEnabled = false,
 }: {
   orders: Order[];
   drivers: Driver[];
   itemSummaries: Record<string, OrderItemSummary>;
+  /** Phase 10: 가방 관리 미사용 사업장에서는 가방 상태 컬럼/표시를 숨긴다. */
+  bagManagementEnabled?: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [driverId, setDriverId] = useState<string>("");
@@ -175,7 +178,7 @@ export function DeliveryBoard({
               <TableHead>상품/주문 요약</TableHead>
               <TableHead>담당기사</TableHead>
               <TableHead>상태</TableHead>
-              <TableHead>가방 상태</TableHead>
+              {bagManagementEnabled ? <TableHead>가방 상태</TableHead> : null}
               <TableHead className="hidden lg:table-cell">연락처</TableHead>
               <TableHead className="hidden xl:table-cell">배송메모</TableHead>
               <TableHead className="hidden lg:table-cell text-right">금액</TableHead>
@@ -215,18 +218,20 @@ export function DeliveryBoard({
                 <TableCell>
                   <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
                 </TableCell>
-                <TableCell>
-                  {order.bag_number ? (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <span>{order.bag_number}</span>
-                      <Badge variant={order.bag_returned ? "secondary" : "outline"}>
-                        {order.bag_returned ? "회수완료" : "미회수"}
-                      </Badge>
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">-</span>
-                  )}
-                </TableCell>
+                {bagManagementEnabled ? (
+                  <TableCell>
+                    {order.bag_number ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>{order.bag_number}</span>
+                        <Badge variant={order.bag_returned ? "secondary" : "outline"}>
+                          {order.bag_returned ? "회수완료" : "미회수"}
+                        </Badge>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                ) : null}
                 <TableCell className="hidden lg:table-cell text-muted-foreground">{order.phone_snapshot ?? "-"}</TableCell>
                 <TableCell className="hidden xl:table-cell max-w-40 truncate text-muted-foreground">
                   {order.delivery_memo ?? "-"}
@@ -268,14 +273,14 @@ export function DeliveryBoard({
                 <p className="mt-1 truncate text-sm text-muted-foreground">
                   {itemSummaries[order.id]?.productSummary ?? "-"}
                 </p>
-                {order.bag_number && (
+                {bagManagementEnabled && order.bag_number ? (
                   <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
                     <span>가방 {order.bag_number}</span>
                     <Badge variant={order.bag_returned ? "secondary" : "outline"}>
                       {order.bag_returned ? "회수완료" : "미회수"}
                     </Badge>
                   </div>
-                )}
+                ) : null}
                 <div className="mt-3">
                   <DriverCell
                     name={order.driver_id ? driverNames[order.driver_id] : undefined}

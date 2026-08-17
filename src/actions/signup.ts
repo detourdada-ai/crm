@@ -10,6 +10,7 @@ import { setSessionCookie } from "@/lib/auth/current-session";
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { sendBetaWelcomeEmail } from "@/lib/email/send";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { isIndustry } from "@/lib/constants/industry";
 
 export interface SignupActionState {
   error: string | null;
@@ -24,6 +25,12 @@ export interface SignupActionState {
 export async function signupAction(_prevState: SignupActionState, formData: FormData): Promise<SignupActionState> {
   const companyName = String(formData.get("companyName") || "").trim();
   const agreed = formData.get("agreed") === "on";
+  // Phase 10: 업종은 추천값 산정용 프로필일 뿐 — 가방 관리 사용 여부는
+  // 사장님이 체크박스로 직접 결정한 값을 그대로 저장한다(업종에 따라
+  // 서버에서 강제로 재계산하지 않는다).
+  const industryRaw = String(formData.get("industry") || "").trim();
+  const industry = isIndustry(industryRaw) ? industryRaw : null;
+  const bagManagement = formData.get("bagManagement") === "on";
 
   if (!companyName) return { error: "Workspace 이름을 입력해주세요." };
   if (!agreed) return { error: "서비스 이용약관에 동의해주세요." };
@@ -45,7 +52,7 @@ export async function signupAction(_prevState: SignupActionState, formData: Form
     redirect("/dashboard");
   }
 
-  const { username } = await createSellerSignup(companyName, googleEmail);
+  const { username } = await createSellerSignup(companyName, googleEmail, industry, bagManagement);
 
   // Best-effort only — a Resend outage or missing API key must never turn a
   // successful signup into a failure. See sendBetaWelcomeEmail's own doc

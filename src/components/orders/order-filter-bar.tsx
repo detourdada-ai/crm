@@ -40,6 +40,7 @@ export function OrderFilterBar({
   deliveryDateFilter,
   deliveryDateFrom,
   deliveryDateTo,
+  bagManagementEnabled = false,
 }: {
   orderDateFilter: QuickDateFilterValue;
   orderDateFrom: string;
@@ -47,6 +48,8 @@ export function OrderFilterBar({
   deliveryDateFilter: QuickDateFilterValue;
   deliveryDateFrom: string;
   deliveryDateTo: string;
+  /** Phase 10: 가방 관리 미사용 사업장에서는 "가방 미회수" 필터도 숨긴다. */
+  bagManagementEnabled?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -152,10 +155,12 @@ export function OrderFilterBar({
             </SelectContent>
           </Select>
         </div>
-        <label className="flex items-center gap-2 pt-6 pb-2 text-sm">
-          <Checkbox checked={bagNotReturned} onCheckedChange={(checked) => setBagNotReturned(checked === true)} />
-          가방 미회수
-        </label>
+        {bagManagementEnabled ? (
+          <label className="flex items-center gap-2 pt-6 pb-2 text-sm">
+            <Checkbox checked={bagNotReturned} onCheckedChange={(checked) => setBagNotReturned(checked === true)} />
+            가방 미회수
+          </label>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">

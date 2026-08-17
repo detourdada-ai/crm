@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { ClipboardList } from "lucide-react";
 import { searchOrdersAction } from "@/actions/orders";
 import { requireSession } from "@/lib/auth/current-session";
+import { getTenantFeaturesForSession } from "@/lib/tenant/features";
 import { isValidDateString } from "@/lib/utils/date";
 import { DELIVERY_STATUS_OPTIONS } from "@/lib/constants/delivery-status";
 import {
@@ -80,8 +81,9 @@ export default async function OrdersPage({
   const activeStatus = (params.deliveryStatus as DeliveryStatus | undefined) ?? "all";
   const commonDateFilter = { orderDateFrom, orderDateTo, deliveryDateFrom, deliveryDateTo };
 
-  const [session, { orders, total, itemSummaries, driverNames }, { total: allTimeTotal }, ...statusCounts] = await Promise.all([
-    requireSession(),
+  const session = await requireSession();
+  const [features, { orders, total, itemSummaries, driverNames }, { total: allTimeTotal }, ...statusCounts] = await Promise.all([
+    getTenantFeaturesForSession(session),
     searchOrdersAction({
       page,
       pageSize: PAGE_SIZE,
@@ -143,6 +145,7 @@ export default async function OrdersPage({
         deliveryDateFilter={deliveryDateFilter}
         deliveryDateFrom={deliveryDateFrom ?? today}
         deliveryDateTo={deliveryDateTo ?? today}
+        bagManagementEnabled={features.bagManagement}
       />
 
       {total === 0 ? (
@@ -174,7 +177,8 @@ export default async function OrdersPage({
               driverNames={driverNames}
               showCustomerLink
               showOwner={session.role === "admin"}
-              editableBag
+              bagManagementEnabled={features.bagManagement}
+              editableBag={features.bagManagement}
             />
             <PaginationControls page={page} pageSize={PAGE_SIZE} total={total} />
           </CardContent>

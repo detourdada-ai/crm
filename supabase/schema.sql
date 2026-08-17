@@ -68,6 +68,10 @@ create table if not exists tenants (
   -- Sprint 14-C: email-dedup tracking only, never read by access control.
   beta_welcome_email_sent_at timestamptz,
   beta_ended_email_sent_at timestamptz,
+  -- Phase 10: 업종은 추천값 산정용 프로필일 뿐, 기능 사용 여부를 강제하지
+  -- 않는다 — 실제 ON/OFF는 bag_management 같은 개별 feature 컬럼이 결정한다.
+  industry text,
+  bag_management boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -452,7 +456,9 @@ create or replace function create_seller_signup(
   p_username text,
   p_company_name text,
   p_google_email text,
-  p_password_hash text
+  p_password_hash text,
+  p_industry text default null,
+  p_bag_management boolean default false
 ) returns table (tenant_id uuid, username text) as $$
 declare
   v_plan_id uuid;
@@ -460,8 +466,8 @@ declare
 begin
   select id into v_plan_id from plans where code = 'STARTER' limit 1;
 
-  insert into tenants (name, slug, plan_id, access_type, access_expires_at)
-  values (p_company_name, p_username, v_plan_id, 'BETA', now() + interval '1 month')
+  insert into tenants (name, slug, plan_id, access_type, access_expires_at, industry, bag_management)
+  values (p_company_name, p_username, v_plan_id, 'BETA', now() + interval '1 month', p_industry, p_bag_management)
   returning id into v_tenant_id;
 
   insert into app_accounts (username, password_hash, role, google_email)

@@ -101,7 +101,14 @@ export interface Database {
         Returns: { total_amount: number; order_count: number }[];
       };
       create_seller_signup: {
-        Args: { p_username: string; p_company_name: string; p_google_email: string; p_password_hash: string };
+        Args: {
+          p_username: string;
+          p_company_name: string;
+          p_google_email: string;
+          p_password_hash: string;
+          p_industry?: string | null;
+          p_bag_management?: boolean;
+        };
         Returns: { tenant_id: string; username: string }[];
       };
       issue_beta_access_key: {
@@ -592,6 +599,8 @@ export interface Database {
           access_expires_at: string | null;
           beta_welcome_email_sent_at: string | null;
           beta_ended_email_sent_at: string | null;
+          industry: string | null;
+          bag_management: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -605,6 +614,8 @@ export interface Database {
           access_expires_at?: string | null;
           beta_welcome_email_sent_at?: string | null;
           beta_ended_email_sent_at?: string | null;
+          industry?: string | null;
+          bag_management?: boolean;
           created_at?: string;
           updated_at?: string;
         };

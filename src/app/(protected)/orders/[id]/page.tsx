@@ -7,6 +7,8 @@ import { getOrderDetailAction } from "@/actions/orders";
 import { listDriversAction } from "@/actions/drivers";
 import { OrderItemRawData } from "@/components/orders/order-item-raw-data";
 import { OrderBagManagement } from "@/components/orders/order-bag-management";
+import { requireSession } from "@/lib/auth/current-session";
+import { getTenantFeaturesForSession } from "@/lib/tenant/features";
 import { ManualOrderEditDialog } from "@/components/orders/manual-order-edit-dialog";
 import { ManualOrderDeleteButton } from "@/components/orders/manual-order-delete-button";
 import { OrderCancelButton } from "@/components/orders/order-cancel-button";
@@ -28,7 +30,12 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [detail, drivers] = await Promise.all([getOrderDetailAction(id), listDriversAction()]);
+  const session = await requireSession();
+  const [detail, drivers, features] = await Promise.all([
+    getOrderDetailAction(id),
+    listDriversAction(),
+    getTenantFeaturesForSession(session),
+  ]);
   if (!detail) notFound();
 
   const { order, items, driverName } = detail;
@@ -110,18 +117,20 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>가방 관리</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <OrderBagManagement
-              orderId={order.id}
-              initialBagNumber={order.bag_number}
-              initialBagReturned={order.bag_returned}
-            />
-          </CardContent>
-        </Card>
+        {features.bagManagement ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>가방 관리</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <OrderBagManagement
+                orderId={order.id}
+                initialBagNumber={order.bag_number}
+                initialBagReturned={order.bag_returned}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
 
       <Card>

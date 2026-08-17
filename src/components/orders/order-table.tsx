@@ -20,6 +20,7 @@ export function OrderTable({
   driverNames,
   showCustomerLink = false,
   showOwner = false,
+  bagManagementEnabled = false,
   editableBag = false,
 }: {
   orders: Order[];
@@ -27,6 +28,9 @@ export function OrderTable({
   driverNames?: Record<string, string>;
   showCustomerLink?: boolean;
   showOwner?: boolean;
+  /** Phase 10: 가방 관리 미사용 사업장에서는 컬럼 자체를 숨긴다. */
+  bagManagementEnabled?: boolean;
+  /** 컬럼이 보일 때, 인라인으로 값을 수정할 수 있게 할지(false면 읽기 전용 배지만). */
   editableBag?: boolean;
 }) {
   if (orders.length === 0) {
@@ -57,7 +61,7 @@ export function OrderTable({
               배송지주소
             </SortableTableHead>
             <TableHead className="hidden xl:table-cell">배송메세지</TableHead>
-            <TableHead className="hidden lg:table-cell">가방번호 / 회수</TableHead>
+            {bagManagementEnabled ? <TableHead className="hidden lg:table-cell">가방번호 / 회수</TableHead> : null}
             <SortableTableHead field="driver_id" className="hidden lg:table-cell">
               담당기사
             </SortableTableHead>
@@ -110,22 +114,24 @@ export function OrderTable({
                 <TableCell className="hidden xl:table-cell max-w-40 truncate text-muted-foreground">
                   {order.delivery_memo ?? "-"}
                 </TableCell>
-                <TableCell className="hidden lg:table-cell">
-                  {editableBag ? (
-                    <OrderBagCell
-                      orderId={order.id}
-                      initialBagNumber={order.bag_number}
-                      initialBagReturned={order.bag_returned}
-                    />
-                  ) : (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <span>{order.bag_number ?? "-"}</span>
-                      <Badge variant={order.bag_returned ? "secondary" : "outline"}>
-                        {order.bag_returned ? "회수완료" : "미회수"}
-                      </Badge>
-                    </div>
-                  )}
-                </TableCell>
+                {bagManagementEnabled ? (
+                  <TableCell className="hidden lg:table-cell">
+                    {editableBag ? (
+                      <OrderBagCell
+                        orderId={order.id}
+                        initialBagNumber={order.bag_number}
+                        initialBagReturned={order.bag_returned}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>{order.bag_number ?? "-"}</span>
+                        <Badge variant={order.bag_returned ? "secondary" : "outline"}>
+                          {order.bag_returned ? "회수완료" : "미회수"}
+                        </Badge>
+                      </div>
+                    )}
+                  </TableCell>
+                ) : null}
                 <TableCell className="hidden lg:table-cell text-muted-foreground">
                   {order.driver_id ? (driverNames?.[order.driver_id] ?? "-") : "-"}
                 </TableCell>
