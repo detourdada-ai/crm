@@ -235,6 +235,38 @@ create unique index if not exists idx_driver_regions_unique
   on driver_regions (driver_id, sido, coalesce(sigungu, ''), coalesce(eupmyeondong, ''));
 
 -- ----------------------------------------------------------------------------
+-- delivery_groups (Phase 4: 좌표 기반 배송 그룹화 — 0035_delivery_groups.sql 참고)
+-- ----------------------------------------------------------------------------
+-- status 컬럼은 두지 않는다 — driver_id 유무 + 구성원 주문들의 delivery_status로
+-- 매번 계산해서 보여준다(이중 소스 동기화 위험 회피, F15 원칙과 동일).
+create table if not exists delivery_groups (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenants (id),
+  owner_username text not null,
+  delivery_date date not null,
+  group_no int not null,
+  center_latitude double precision not null,
+  center_longitude double precision not null,
+  order_count int not null default 0,
+  representative_sido text,
+  representative_sigungu text,
+  representative_eupmyeondong text,
+  driver_id uuid references drivers (id) on delete set null,
+  radius_meters int not null default 50,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (tenant_id, delivery_date, group_no)
+);
+
+create index if not exists idx_delivery_groups_tenant_date on delivery_groups (tenant_id, delivery_date);
+create index if not exists idx_delivery_groups_owner_username on delivery_groups (owner_username);
+create index if not exists idx_delivery_groups_driver_id on delivery_groups (driver_id);
+
+create trigger trg_delivery_groups_updated_at
+  before update on delivery_groups
+  for each row execute function set_updated_at();
+
+-- ----------------------------------------------------------------------------
 -- orders
 -- ----------------------------------------------------------------------------
 create table if not exists orders (
@@ -327,6 +359,10 @@ create index if not exists idx_orders_delivery_area on orders (delivery_area);
 create index if not exists idx_orders_internal_order_number on orders (internal_order_number);
 create index if not exists idx_orders_region on orders (sido, sigungu, eupmyeondong);
 create index if not exists idx_orders_geocode_status on orders (geocode_status) where geocode_status <> 'success';
+
+-- Phase 4: 배송 그룹 소속 — 그룹이 삭제돼도 주문 자체는 영향받지 않는다.
+alter table orders add column if not exists delivery_group_id uuid references delivery_groups (id) on delete set null;
+create index if not exists idx_orders_delivery_group_id on orders (delivery_group_id);
 
 -- ----------------------------------------------------------------------------
 -- order_number_counters + next_order_seq_batch: Phase 5 원자적 채번 —

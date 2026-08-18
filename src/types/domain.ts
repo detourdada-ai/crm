@@ -167,6 +167,7 @@ export interface Order {
   order_source: OrderSource;
   delivery_status: DeliveryStatus;
   driver_id: UUID | null;
+  delivery_group_id: UUID | null;
   completed_at: ISODateString | null;
   cancelled_at: ISODateString | null;
   import_id: UUID | null;
@@ -203,6 +204,27 @@ export interface DriverRegion {
   owner_username: string;
   tenant_id: UUID;
   created_at: ISODateString;
+}
+
+// Phase 4: 배송 그룹 — "특정 배송일에 좌표상 50m 이내로 연결된 주문들의
+// 묶음"의 스냅샷. status는 저장하지 않고 driver_id 유무 + 구성원 주문들의
+// delivery_status로 매번 계산한다(actions/delivery-groups.ts 참고).
+export interface DeliveryGroup {
+  id: UUID;
+  tenant_id: UUID;
+  owner_username: string;
+  delivery_date: string; // YYYY-MM-DD (KST calendar day)
+  group_no: number;
+  center_latitude: number;
+  center_longitude: number;
+  order_count: number;
+  representative_sido: string | null;
+  representative_sigungu: string | null;
+  representative_eupmyeondong: string | null;
+  driver_id: UUID | null;
+  radius_meters: number;
+  created_at: ISODateString;
+  updated_at: ISODateString;
 }
 
 // Phase 3-B: 상품 카탈로그 — tenant별 완전 격리. name/unit_price는 "현재"

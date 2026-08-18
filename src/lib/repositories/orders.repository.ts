@@ -142,6 +142,21 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
+  /** Phase 4: 그룹 기사 배정 시 이 그룹에 속한 주문 id 목록을 얻는 데 쓴다(기존 assignDriver를 그대로 재사용하기 위함). */
+  async findByGroupId(groupId: string): Promise<Order[]> {
+    const { data, error } = await getSupabaseAdmin().from("orders").select("*").eq("delivery_group_id", groupId);
+    if (error) throw error;
+    return (data as Order[]) ?? [];
+  },
+
+  /** Phase 4: 그룹 재계산 시 "재계산 직전" 소속 스냅샷을 한 번에 가져오는 데 쓴다(기존 그룹 ↔ 새 클러스터 매칭용). */
+  async findByGroupIds(groupIds: string[]): Promise<Order[]> {
+    if (groupIds.length === 0) return [];
+    const { data, error } = await getSupabaseAdmin().from("orders").select("*").in("delivery_group_id", groupIds);
+    if (error) throw error;
+    return (data as Order[]) ?? [];
+  },
+
   async findByOrderNumber(orderNumber: string): Promise<Order | null> {
     const { data, error } = await getSupabaseAdmin()
       .from("orders")
@@ -276,6 +291,47 @@ export const ordersRepository = {
     const { data, error } = await q.order("created_at", { ascending: true });
     if (error) throw error;
     return (data as Order[]) ?? [];
+  },
+
+  /**
+   * Phase 4: 배송 그룹화 대상 — 취소 주문 제외(findByDeliveryDate와 동일
+   * 원칙 재사용) + 좌표 확보(geocode_status='success', 위경도 not null)까지
+   * 추가로 요구한다. 좌표가 없거나 지오코딩 실패한 주문은 여기서 아예 걸러져
+   * 화면에서 "미그룹 — 좌표 없음"으로 별도 표시된다(actions/delivery-groups.ts).
+   */
+  async findEligibleForGrouping(dateStr: string, ownerUsername?: string): Promise<Order[]> {
+    let q = getSupabaseAdmin()
+      .from("orders")
+      .select("*")
+      .neq("delivery_status", "취소")
+      .eq("geocode_status", "success")
+      .not("latitude", "is", null)
+      .not("longitude", "is", null)
+      .gte("delivery_date", kstDayStartIso(dateStr))
+      .lte("delivery_date", kstDayEndIso(dateStr));
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data as Order[]) ?? [];
+  },
+
+  /** Phase 4: 그룹 재계산 시작 시 해당 (tenant, 배송일)의 기존 그룹 소속을 모두 비운다 — 이후 새 클러스터링 결과로 다시 채운다. */
+  async clearDeliveryGroupsForDate(tenantId: string, dateStr: string): Promise<void> {
+    const { error } = await getSupabaseAdmin()
+      .from("orders")
+      .update({ delivery_group_id: null })
+      .eq("tenant_id", tenantId)
+      .gte("delivery_date", kstDayStartIso(dateStr))
+      .lte("delivery_date", kstDayEndIso(dateStr))
+      .not("delivery_group_id", "is", null);
+    if (error) throw error;
+  },
+
+  /** Phase 4: 클러스터링 결과에 따라 주문들을 그룹에 배정한다. */
+  async assignOrdersToGroup(orderIds: string[], groupId: string): Promise<void> {
+    if (orderIds.length === 0) return;
+    const { error } = await getSupabaseAdmin().from("orders").update({ delivery_group_id: groupId }).in("id", orderIds);
+    if (error) throw error;
   },
 
   /**

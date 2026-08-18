@@ -253,6 +253,7 @@ export interface Database {
           order_source: OrderSource;
           delivery_status: DeliveryStatus;
           driver_id: string | null;
+          delivery_group_id: string | null;
           completed_at: string | null;
           cancelled_at: string | null;
           import_id: string | null;
@@ -301,6 +302,7 @@ export interface Database {
           order_source?: OrderSource;
           delivery_status?: DeliveryStatus;
           driver_id?: string | null;
+          delivery_group_id?: string | null;
           completed_at?: string | null;
           cancelled_at?: string | null;
           import_id?: string | null;
@@ -364,6 +366,44 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["driver_regions"]["Insert"]>;
+        Relationships: [];
+      };
+      delivery_groups: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          owner_username: string;
+          delivery_date: string;
+          group_no: number;
+          center_latitude: number;
+          center_longitude: number;
+          order_count: number;
+          representative_sido: string | null;
+          representative_sigungu: string | null;
+          representative_eupmyeondong: string | null;
+          driver_id: string | null;
+          radius_meters: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          owner_username: string;
+          delivery_date: string;
+          group_no: number;
+          center_latitude: number;
+          center_longitude: number;
+          order_count?: number;
+          representative_sido?: string | null;
+          representative_sigungu?: string | null;
+          representative_eupmyeondong?: string | null;
+          driver_id?: string | null;
+          radius_meters?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["delivery_groups"]["Insert"]>;
         Relationships: [];
       };
       settlements: {

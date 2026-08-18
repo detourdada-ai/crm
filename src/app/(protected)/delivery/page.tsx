@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Truck } from "lucide-react";
 import Link from "next/link";
 import { getDeliveryBoardAction } from "@/actions/delivery";
+import { listDeliveryGroupsAction } from "@/actions/delivery-groups";
+import { DeliveryGroupSection } from "@/components/delivery/delivery-group-section";
 import { listDriversAction } from "@/actions/drivers";
 import { listKnownRegionsAction } from "@/actions/driver-regions";
 import { requireSession } from "@/lib/auth/current-session";
@@ -54,13 +56,19 @@ export default async function DeliveryPage({
 
   const activeFilter: DeliveryFilter = isDeliveryFilter(params.filter) ? params.filter : "all";
 
+  // Phase 4: 배송 그룹화는 "특정 하루"를 선택했을 때만 의미가 있다(그룹은
+  // 배송일 하나 단위로 계산되는 개념 — 작업지시서 원문). 기간 조회(이번주/
+  // 이번달/전체)에서는 그룹 섹션 자체를 숨기고 기존 화면 그대로 보여준다.
+  const isSingleDay = range !== null && range.start === range.end;
+
   const session = await requireSession();
-  const [features, boardResult, allDrivers, accounts, knownRegions] = await Promise.all([
+  const [features, boardResult, allDrivers, accounts, knownRegions, groupResult] = await Promise.all([
     getTenantFeaturesForSession(session),
     getDeliveryBoardAction(range?.start ?? null, range?.end),
     listDriversAction(),
     listAccounts(),
     listKnownRegionsAction(),
+    isSingleDay ? listDeliveryGroupsAction(range.start) : Promise.resolve(null),
   ]);
   const { orders: fetchedOrders, drivers, itemSummaries } = boardResult;
   const isAdmin = session.role === "admin";
@@ -149,6 +157,16 @@ export default async function DeliveryPage({
               <Link href="/orders">주문관리로 이동</Link>
             </Button>
           }
+        />
+      ) : isSingleDay && groupResult ? (
+        <DeliveryGroupSection
+          dateStr={range!.start}
+          groups={groupResult.groups}
+          ungrouped={groupResult.ungrouped}
+          orders={visibleOrders}
+          drivers={drivers}
+          itemSummaries={itemSummaries}
+          bagManagementEnabled={features.bagManagement}
         />
       ) : (
         <Card>
