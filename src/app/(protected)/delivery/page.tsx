@@ -11,6 +11,7 @@ import Link from "next/link";
 import { getDeliveryBoardAction } from "@/actions/delivery";
 import { listDeliveryGroupsAction } from "@/actions/delivery-groups";
 import { DeliveryGroupSection } from "@/components/delivery/delivery-group-section";
+import { DeliveryGroupCreateButton } from "@/components/delivery/delivery-group-create-button";
 import { listDriversAction } from "@/actions/drivers";
 import { listKnownRegionsAction } from "@/actions/driver-regions";
 import { requireSession } from "@/lib/auth/current-session";
@@ -147,6 +148,19 @@ export default async function DeliveryPage({
         drivers={drivers}
       />
 
+      {/* F-P4UX(★): CEO가 "배송그룹 생성 버튼이 안 보인다"고 한 게 이번 라운드
+          최우선 이슈였다 — 그룹 카드 영역 안쪽에 작게 있던 버튼을 배송관리
+          상단(필터 바로 아래, 목록 위)으로 꺼내 항상 눈에 띄게 둔다. */}
+      {isSingleDay && orders.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-primary/40 bg-primary-soft/40 px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-text-strong">배송 그룹</p>
+            <p className="text-xs text-muted-foreground">좌표가 확인된 배송지를 50m 이내로 자동으로 묶어드립니다.</p>
+          </div>
+          <DeliveryGroupCreateButton dateStr={range!.start} orderCount={orders.length} />
+        </div>
+      ) : null}
+
       {orders.length === 0 ? (
         <EmptyState
           icon={Truck}
@@ -160,7 +174,6 @@ export default async function DeliveryPage({
         />
       ) : isSingleDay && groupResult ? (
         <DeliveryGroupSection
-          dateStr={range!.start}
           groups={groupResult.groups}
           ungrouped={groupResult.ungrouped}
           orders={visibleOrders}

@@ -216,8 +216,8 @@ export function DeliveryBoard({
               <TableHead>주문번호</TableHead>
               <TableHead>고객</TableHead>
               <TableHead>배송일</TableHead>
-              <TableHead>배송지</TableHead>
-              <TableHead>상품/주문 요약</TableHead>
+              <TableHead className="w-56">배송지</TableHead>
+              <TableHead className="w-40">상품/주문 요약</TableHead>
               <TableHead>담당기사</TableHead>
               <TableHead>상태</TableHead>
               {bagManagementEnabled ? <TableHead>가방 상태</TableHead> : null}
@@ -246,12 +246,11 @@ export function DeliveryBoard({
                 <TableCell>
                   <DeliveryDateLabel isoDate={order.delivery_date} />
                 </TableCell>
-                <TableCell className="align-top">
+                <TableCell className="w-56 align-top">
                   <DeliveryAddressBlock order={order} />
                 </TableCell>
-                <TableCell className="max-w-40 truncate text-muted-foreground">
-                  {itemSummaries[order.id]?.productSummary ?? "-"}
-                  {itemSummaries[order.id] ? ` · 총 ${itemSummaries[order.id].totalQuantity}개` : ""}
+                <TableCell className="w-40 max-w-40 align-top whitespace-normal">
+                  <ItemSummaryBlock summary={itemSummaries[order.id]} />
                 </TableCell>
                 <TableCell>
                   <DriverCell
@@ -326,10 +325,9 @@ export function DeliveryBoard({
                 <div className="mt-2">
                   <DeliveryAddressBlock order={order} />
                 </div>
-                <p className="mt-2 truncate text-sm text-muted-foreground">
-                  {itemSummaries[order.id]?.productSummary ?? "-"}
-                  {itemSummaries[order.id] ? ` · 총 ${itemSummaries[order.id].totalQuantity}개` : ""}
-                </p>
+                <div className="mt-2">
+                  <ItemSummaryBlock summary={itemSummaries[order.id]} />
+                </div>
                 {bagManagementEnabled && order.bag_number ? (
                   <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
                     <span>가방 {order.bag_number}</span>
@@ -364,6 +362,25 @@ export function DeliveryBoard({
   );
 }
 
+/**
+ * F-P4UX: 상품/주문 요약 — 배송지 컬럼과 겹쳐 보이던 문제의 절반은 이 컬럼도
+ * max-w만 있고 whitespace-normal이 없어 사실상 무시되고 있었기 때문이다.
+ * 상품명(1순위, 1줄 말줄임)과 수량(2순위, 항상 보임)을 시각적으로 분리해
+ * 우선순위를 명확히 한다 — productSummary 자체는 기존 buildOrderItemSummaries
+ * 로직(상품명 우선, 여러 건이면 "외 N건") 그대로 재사용, 표시만 바꾼다.
+ */
+function ItemSummaryBlock({ summary }: { summary: OrderItemSummary | undefined }) {
+  if (!summary) return <span className="text-sm text-muted-foreground">-</span>;
+  return (
+    <div className="w-40 max-w-40 space-y-0.5 text-sm">
+      <p className="line-clamp-1 break-words text-text-strong" title={summary.productSummary}>
+        {summary.productSummary}
+      </p>
+      <p className="text-xs text-muted-foreground">총 {summary.totalQuantity}개</p>
+    </div>
+  );
+}
+
 function DeliveryAddressBlock({ order }: { order: Order }) {
   const road = order.road_address_snapshot ?? order.address_snapshot;
   const fullText = composeAddressCopyText(order);
@@ -377,16 +394,22 @@ function DeliveryAddressBlock({ order }: { order: Order }) {
   }
 
   return (
-    <div className="max-w-[240px] space-y-1.5 text-sm">
-      <div className="space-y-0.5 break-words">
+    <div className="w-52 max-w-52 space-y-1.5 text-sm">
+      {/* F-P4UX: TableCell 기본 클래스(whitespace-nowrap)가 아래로 상속되면 주소가
+          줄바꿈 없이 한 줄로 넘쳐 옆 컬럼(상품/주문 요약)과 겹쳐 보이는 게 실제
+          원인이었다 — whitespace-normal로 상속을 끊고 line-clamp로 최대 줄 수를
+          제한한다. 전체 주소는 title(hover) + 주문 상세 페이지에서 그대로 확인 가능. */}
+      <div className="space-y-0.5 whitespace-normal" title={fullText || undefined}>
         {order.zipcode ? <p className="text-xs text-muted-foreground">[{order.zipcode}]</p> : null}
-        <p className="text-text-strong">{road ?? "-"}</p>
-        {order.detail_address_snapshot ? <p className="text-muted-foreground">{order.detail_address_snapshot}</p> : null}
+        <p className="line-clamp-2 break-words text-text-strong">{road ?? "-"}</p>
+        {order.detail_address_snapshot ? (
+          <p className="line-clamp-1 break-words text-muted-foreground">{order.detail_address_snapshot}</p>
+        ) : null}
       </div>
       {order.delivery_memo ? (
-        <p className="flex items-start gap-1 rounded-md bg-warning-soft px-1.5 py-1 text-xs text-warning">
+        <p className="flex items-start gap-1 whitespace-normal rounded-md bg-warning-soft px-1.5 py-1 text-xs text-warning">
           <MessageSquare className="mt-0.5 size-3 shrink-0" />
-          <span className="break-words">{order.delivery_memo}</span>
+          <span className="line-clamp-2 break-words">{order.delivery_memo}</span>
         </p>
       ) : null}
       <div className="flex items-center gap-1">

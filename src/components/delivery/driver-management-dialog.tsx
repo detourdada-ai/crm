@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DriverManagementCard } from "@/components/settings/driver-management-card";
 import type { DriverWithAccount } from "@/actions/drivers";
 
@@ -31,17 +31,27 @@ export function DriverManagementDialog({
           배송기사 관리
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+      {/* F-P4UX: 기존엔 DialogContent 전체가 통째로 스크롤돼 헤더까지 같이
+          밀려나고 리스트가 잘려 보였다 — Header/Footer는 고정하고 목록
+          영역만 내부 스크롤되도록 flex 레이아웃으로 바꾼다. */}
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>배송기사 관리</DialogTitle>
           <DialogDescription>배송 기사와 로그인 계정을 관리합니다. 건당 배송비는 정산관리에 사용됩니다.</DialogDescription>
         </DialogHeader>
-        <DriverManagementCard
-          drivers={drivers}
-          isAdmin={isAdmin}
-          accountUsernames={accountUsernames}
-          knownRegions={knownRegions}
-        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <DriverManagementCard
+            drivers={drivers}
+            isAdmin={isAdmin}
+            accountUsernames={accountUsernames}
+            knownRegions={knownRegions}
+          />
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            닫기
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

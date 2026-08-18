@@ -3,14 +3,14 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Users, MapPin, AlertTriangle } from "lucide-react";
+import { Users, MapPin, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { DeliveryBoard } from "@/components/delivery/delivery-board";
-import { regenerateDeliveryGroupsAction, assignGroupDriverAction } from "@/actions/delivery-groups";
+import { assignGroupDriverAction } from "@/actions/delivery-groups";
 import type { DeliveryGroupWithCandidates, UngroupedOrder } from "@/actions/delivery-groups";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { Order, Driver } from "@/types/domain";
@@ -36,7 +36,6 @@ function representativeRegionLabel(group: DeliveryGroupWithCandidates): string {
  * 컴포넌트를 그대로 재사용 — "기존 화면을 크게 깨지 않는다" 원칙).
  */
 export function DeliveryGroupSection({
-  dateStr,
   groups,
   ungrouped,
   orders,
@@ -44,7 +43,6 @@ export function DeliveryGroupSection({
   itemSummaries,
   bagManagementEnabled,
 }: {
-  dateStr: string;
   groups: DeliveryGroupWithCandidates[];
   ungrouped: UngroupedOrder[];
   orders: Order[];
@@ -59,18 +57,6 @@ export function DeliveryGroupSection({
 
   const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
   const driverNames = useMemo(() => new Map(drivers.map((d) => [d.id, d.name])), [drivers]);
-
-  function handleRegenerate() {
-    startTransition(async () => {
-      const result = await regenerateDeliveryGroupsAction(dateStr);
-      if (result.ok) {
-        toast.success("배송 그룹을 갱신했습니다.");
-        router.refresh();
-      } else {
-        toast.error(result.error ?? "배송 그룹 계산 중 오류가 발생했습니다.");
-      }
-    });
-  }
 
   function handleAssignDriver(groupId: string, driverId: string) {
     setAssigningGroupId(groupId);
@@ -110,22 +96,16 @@ export function DeliveryGroupSection({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold text-text-strong">배송 그룹</h2>
-          <p className="text-sm text-muted-foreground">
-            좌표가 50m 이내로 가까운 주문들을 자동으로 묶습니다. 최적 경로가 아니라 &ldquo;가까운 주문 묶음&rdquo;입니다.
-          </p>
-        </div>
-        <Button size="sm" variant="outline" disabled={isPending} onClick={handleRegenerate} className="gap-1.5">
-          {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-          배송 그룹 생성/새로고침
-        </Button>
+      <div>
+        <h2 className="text-lg font-semibold text-text-strong">배송 그룹</h2>
+        <p className="text-sm text-muted-foreground">
+          좌표가 50m 이내로 가까운 주문들을 자동으로 묶습니다. 최적 경로가 아니라 &ldquo;가까운 주문 묶음&rdquo;입니다.
+        </p>
       </div>
 
       {groups.length === 0 && ungrouped.length === 0 ? (
         <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-          아직 배송 그룹이 없습니다. &ldquo;배송 그룹 생성/새로고침&rdquo;을 눌러 좌표가 확인된 주문을 그룹화해보세요.
+          아직 배송 그룹이 없습니다. 위의 &ldquo;배송 그룹 생성&rdquo; 버튼을 눌러 좌표가 확인된 주문을 그룹화해보세요.
         </p>
       ) : (
         <>
