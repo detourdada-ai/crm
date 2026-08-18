@@ -2,7 +2,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { kstDayStartIso, kstDayEndIso } from "@/lib/utils/kst-date";
 import { digitsOnly, formatPhoneNumber } from "@/lib/utils/phone";
-import type { Order, OrderItem, OrderSource, DeliveryStatus, GeocodeStatus } from "@/types/domain";
+import type { Order, OrderItem, OrderSource, DeliveryStatus, FulfillmentMethod, GeocodeStatus } from "@/types/domain";
 
 export interface OrderInsert {
   id?: string; // client-generated (crypto.randomUUID()) for batch import — lets order_items reference the order before the actual insert round-trip
@@ -43,6 +43,7 @@ export interface OrderInsert {
   bag_returned?: boolean;
   order_source?: OrderSource;
   delivery_status?: DeliveryStatus;
+  fulfillment_method?: FulfillmentMethod;
   driver_id?: string | null;
   completed_at?: string | null;
   import_id?: string | null;
@@ -55,6 +56,7 @@ export interface OrderUpdate {
   bag_returned?: boolean;
   delivery_date?: string | null;
   delivery_status?: DeliveryStatus;
+  fulfillment_method?: FulfillmentMethod;
   driver_id?: string | null;
   completed_at?: string | null;
   cancelled_at?: string | null;
@@ -173,14 +175,26 @@ export const ordersRepository = {
    * PostgREST sends `.in()` filters as a GET query string, which hits
    * Node's ~16KB header-size limit somewhere past ~1000 order numbers — so
    * this chunks the check rather than sending it all as a single filter.
+   *
+   * P5: tenantId is required now — this previously queried across ALL
+   * tenants, so two sellers whose Smartstore order_number happened to
+   * collide would have tenant B's import silently skip a row as
+   * "already exists" (tenant A's row), a cross-tenant silent-skip bug found
+   * during the 엑셀 261→157 investigation. order_number itself isn't unique
+   * per-tenant in the DB either, so this filter is the only thing preventing
+   * the collision now.
    */
-  async findExistingOrderNumbers(orderNumbers: string[]): Promise<Set<string>> {
+  async findExistingOrderNumbers(orderNumbers: string[], tenantId: string): Promise<Set<string>> {
     if (orderNumbers.length === 0) return new Set();
     const CHUNK_SIZE = 300;
     const found = new Set<string>();
     for (let i = 0; i < orderNumbers.length; i += CHUNK_SIZE) {
       const chunk = orderNumbers.slice(i, i + CHUNK_SIZE);
-      const { data, error } = await getSupabaseAdmin().from("orders").select("order_number").in("order_number", chunk);
+      const { data, error } = await getSupabaseAdmin()
+        .from("orders")
+        .select("order_number")
+        .eq("tenant_id", tenantId)
+        .in("order_number", chunk);
       if (error) throw error;
       for (const r of data ?? []) found.add(r.order_number as string);
     }
@@ -416,7 +430,70 @@ export const ordersRepository = {
   async startDelivery(orderIds: string[], ownerUsername?: string): Promise<number> {
     if (orderIds.length === 0) return 0;
     const admin = getSupabaseAdmin();
-    let q = admin.from("orders").update({ delivery_status: "배송중" }).in("id", orderIds).eq("delivery_status", "배송대기");
+    // P5 12번: 기사 미배정 + 배송대기 상태에서는 배송중으로 갈 수 없다.
+    // 단, 직접수령(fulfillment_method='direct_pickup')은 예외 — driver_id
+    // 없이도 배송중으로 진행 가능(고객이 매장에서 직접 받는 흐름이므로).
+    let q = admin
+      .from("orders")
+      .update({ delivery_status: "배송중" })
+      .in("id", orderIds)
+      .eq("delivery_status", "배송대기")
+      .or("driver_id.not.is.null,fulfillment_method.eq.direct_pickup");
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("id");
+    if (error) throw error;
+    return data?.length ?? 0;
+  },
+
+  /**
+   * P5 11번: 클릭 한 번으로 배송대기/배송중/완료 사이를 양방향으로 전환한다
+   * (되돌리기 포함 — 완료→배송중, 배송중→배송대기 등 운영상 실수/재조정을
+   * 위해 허용). 취소된 주문은 대상에서 제외(취소/복구는 별도 흐름 유지).
+   * 배송중으로 "가는" 경우에만 startDelivery와 동일한 기사-또는-직접수령
+   * 규칙을 적용 — 배송대기/완료로 가는 데는 그 제약이 없다.
+   * 완료를 벗어나면 completed_at을 지운다(되돌렸다는 사실을 반영).
+   */
+  async setDeliveryStatus(
+    orderIds: string[],
+    status: "배송대기" | "배송중" | "완료",
+    ownerUsername?: string
+  ): Promise<number> {
+    if (orderIds.length === 0) return 0;
+    const admin = getSupabaseAdmin();
+    let q = admin
+      .from("orders")
+      .update({
+        delivery_status: status,
+        completed_at: status === "완료" ? new Date().toISOString() : null,
+      })
+      .in("id", orderIds)
+      .neq("delivery_status", "취소");
+    if (status === "배송중") {
+      q = q.or("driver_id.not.is.null,fulfillment_method.eq.direct_pickup");
+    }
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("id");
+    if (error) throw error;
+    return data?.length ?? 0;
+  },
+
+  /**
+   * P5 13번: "직접수령" 선택 — 가짜 기사 레코드를 만들지 않고
+   * fulfillment_method 컬럼만 바꾼다. direct_pickup으로 바꿀 때는 driver_id를
+   * 같이 비운다(배정된 기사와 직접수령은 동시에 성립할 수 없는 상태이므로,
+   * 배송관리 상단 집계의 "기사배정/미배정/직접수령" 세 버킷이 항상 서로
+   * 배타적이도록). delivery로 되돌릴 때는 driver_id를 건드리지 않는다(원래
+   * 없었으니 그대로 미배정 상태로 남고, 필요하면 별도로 기사를 배정한다).
+   */
+  async setFulfillmentMethod(orderIds: string[], method: FulfillmentMethod, ownerUsername?: string): Promise<number> {
+    if (orderIds.length === 0) return 0;
+    const admin = getSupabaseAdmin();
+    let q = admin
+      .from("orders")
+      .update(method === "direct_pickup" ? { fulfillment_method: method, driver_id: null } : { fulfillment_method: method })
+      .in("id", orderIds)
+      .neq("delivery_status", "완료")
+      .neq("delivery_status", "취소");
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     const { data, error } = await q.select("id");
     if (error) throw error;

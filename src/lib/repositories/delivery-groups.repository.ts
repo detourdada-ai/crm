@@ -13,7 +13,6 @@ export interface DeliveryGroupInsert {
   representative_sido: string | null;
   representative_sigungu: string | null;
   representative_eupmyeondong: string | null;
-  driver_id?: string | null;
 }
 
 export interface DeliveryGroupRecompute {
@@ -63,15 +62,5 @@ export const deliveryGroupsRepository = {
     if (ids.length === 0) return;
     const { error } = await getSupabaseAdmin().from("delivery_groups").delete().in("id", ids);
     if (error) throw error;
-  },
-
-  /** F15 패턴: ownerUsername이 주어지면(비-admin 호출) DB 쿼리에도 소유권 조건을 건다. */
-  async assignDriver(groupId: string, driverId: string | null, ownerUsername?: string): Promise<DeliveryGroup> {
-    let q = getSupabaseAdmin().from("delivery_groups").update({ driver_id: driverId }).eq("id", groupId);
-    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
-    const { data, error } = await q.select("*").maybeSingle();
-    if (error) throw error;
-    if (!data) throw new Error("배송 그룹을 찾을 수 없거나 권한이 없습니다.");
-    return data as DeliveryGroup;
   },
 };

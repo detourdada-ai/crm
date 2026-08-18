@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ExcelParseError, parseSpreadsheet } from "@/lib/services/excel-parser.service";
 import { autoMapColumns } from "@/lib/services/column-mapping.service";
-import { runImport, deleteImport } from "@/lib/services/import.service";
+import { runImport, deleteImport, deleteAllImports } from "@/lib/services/import.service";
 import { importsRepository } from "@/lib/repositories/imports.repository";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
@@ -95,5 +95,26 @@ export async function deleteImportAction(importId: string): Promise<DeleteImport
     return { ok: true, error: null };
   } catch (e) {
     return { ok: false, error: toActionError(e, "삭제 중 오류가 발생했습니다.") };
+  }
+}
+
+/**
+ * P5: "엑셀 이력 전체 삭제" — 항상 session.username(실제 로그인한 계정) 소속
+ * 이력만 지운다. admin이 눌러도 ownerScopeFor(admin이면 undefined = 전체
+ * 테넌트)를 쓰지 않는 이유: "전체삭제"는 "내 업로드 이력을 전부 지운다"는
+ * 의미지 "다른 사장님 이력까지 지운다"는 뜻이 아니다(다른 사장님 데이터
+ * 무영향 원칙).
+ */
+export async function deleteAllImportsAction(): Promise<DeleteImportActionState> {
+  try {
+    const session = await requireSession();
+    await deleteAllImports(session.username);
+    revalidatePath("/import");
+    revalidatePath("/orders");
+    revalidatePath("/customers");
+    revalidatePath("/");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "전체 삭제 중 오류가 발생했습니다.") };
   }
 }

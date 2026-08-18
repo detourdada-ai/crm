@@ -88,6 +88,38 @@ export async function createDriverAction(
   }
 }
 
+/**
+ * P5: 기사 정보(이름/연락처/주소/차량번호) 수정 — 로그인 아이디는 최초 생성 후
+ * 변경 불가(폼에 필드 자체를 두지 않음, updateDriver는 그 필드를 받지도 않음).
+ */
+export async function updateDriverInfoAction(
+  driverId: string,
+  _prevState: DriverActionState,
+  formData: FormData
+): Promise<DriverActionState> {
+  try {
+    const session = await requireSession();
+    await assertOwnsDriver(driverId, session);
+
+    const name = String(formData.get("name") || "").trim();
+    if (!name) return { ok: false, error: "기사 이름을 입력해주세요." };
+    const phone = String(formData.get("phone") || "").trim() || null;
+    const address = String(formData.get("address") || "").trim() || null;
+    const vehicleNumber = String(formData.get("vehicleNumber") || "").trim() || null;
+
+    await updateDriver(
+      driverId,
+      { name, phone, address, vehicle_number: vehicleNumber },
+      session.role === "admin" ? undefined : session.username
+    );
+    revalidatePath("/settings");
+    revalidatePath("/delivery");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "기사 정보 수정 중 오류가 발생했습니다.") };
+  }
+}
+
 export async function updateDriverStatusAction(driverId: string, status: "active" | "inactive"): Promise<DriverActionState> {
   try {
     const session = await requireSession();

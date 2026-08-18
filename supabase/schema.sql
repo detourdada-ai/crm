@@ -168,6 +168,8 @@ create table if not exists imports (
   new_customers integer not null default 0,
   existing_customers integer not null default 0,
   duplicate_candidates integer not null default 0,
+  -- P5: success_rows 중 "이번 실행에서 이미 등록되어 건너뛴" 행 수(하위 집합).
+  already_imported_rows integer not null default 0,
   column_mapping jsonb,
   error_log jsonb,
   owner_username text not null default 'admin',
@@ -330,6 +332,8 @@ create table if not exists orders (
   order_source text not null default '기타' check (order_source in ('전화', '문자', 'SNS', '엑셀', '기타')),
   -- 내부 배송 진행 상태(스마트스토어 원본 status와 별개). 기사 배정/배송완료/취소 처리에 따라 전이됨.
   delivery_status text not null default '배송대기' check (delivery_status in ('배송대기', '배송중', '완료', '취소')),
+  -- P5: "직접수령" — 가짜 기사 레코드를 만들지 않고 별도 컬럼으로 관리한다.
+  fulfillment_method text not null default 'delivery' check (fulfillment_method in ('delivery', 'direct_pickup')),
   driver_id uuid references drivers (id) on delete set null,
   completed_at timestamptz,
   cancelled_at timestamptz,
@@ -355,6 +359,7 @@ create index if not exists idx_orders_owner_username on orders (owner_username);
 create index if not exists idx_orders_tenant_id on orders (tenant_id);
 create index if not exists idx_orders_driver_id on orders (driver_id);
 create index if not exists idx_orders_delivery_status on orders (delivery_status);
+create index if not exists idx_orders_fulfillment_method on orders (fulfillment_method);
 create index if not exists idx_orders_delivery_area on orders (delivery_area);
 create index if not exists idx_orders_internal_order_number on orders (internal_order_number);
 create index if not exists idx_orders_region on orders (sido, sigungu, eupmyeondong);

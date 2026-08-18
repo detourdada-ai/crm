@@ -18,6 +18,7 @@ export interface ImportUpdate {
   new_customers?: number;
   existing_customers?: number;
   duplicate_candidates?: number;
+  already_imported_rows?: number;
   column_mapping?: Record<string, string> | null;
   error_log?: ImportRowError[] | null;
 }
@@ -52,5 +53,12 @@ export const importsRepository = {
   async delete(id: string): Promise<void> {
     const { error } = await getSupabaseAdmin().from("imports").delete().eq("id", id);
     if (error) throw error;
+  },
+
+  /** P5: "전체 삭제" — 지정한 계정 소속 이력의 id를 전부(20건 limit 없이) 가져온다. */
+  async listIdsByOwner(ownerUsername: string): Promise<string[]> {
+    const { data, error } = await getSupabaseAdmin().from("imports").select("id").eq("owner_username", ownerUsername);
+    if (error) throw error;
+    return (data ?? []).map((r) => r.id as string);
   },
 };

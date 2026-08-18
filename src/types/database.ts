@@ -8,6 +8,7 @@ import type {
   CustomerStatus,
   OrderSource,
   DeliveryStatus,
+  FulfillmentMethod,
   DriverStatus,
   GeocodeStatus,
   SettlementStatus,
@@ -252,6 +253,7 @@ export interface Database {
           bag_returned: boolean;
           order_source: OrderSource;
           delivery_status: DeliveryStatus;
+          fulfillment_method: FulfillmentMethod;
           driver_id: string | null;
           delivery_group_id: string | null;
           completed_at: string | null;
@@ -301,6 +303,7 @@ export interface Database {
           bag_returned?: boolean;
           order_source?: OrderSource;
           delivery_status?: DeliveryStatus;
+          fulfillment_method?: FulfillmentMethod;
           driver_id?: string | null;
           delivery_group_id?: string | null;
           completed_at?: string | null;
@@ -591,6 +594,7 @@ export interface Database {
           new_customers: number;
           existing_customers: number;
           duplicate_candidates: number;
+          already_imported_rows: number;
           column_mapping: Record<string, string> | null;
           error_log: unknown | null;
           owner_username: string;
@@ -607,6 +611,7 @@ export interface Database {
           new_customers?: number;
           existing_customers?: number;
           duplicate_candidates?: number;
+          already_imported_rows?: number;
           column_mapping?: Record<string, string> | null;
           error_log?: unknown | null;
           owner_username?: string;
@@ -646,6 +651,20 @@ export interface Database {
           resolved_at?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["duplicate_candidates"]["Insert"]>;
+        Relationships: [];
+      };
+      order_number_counters: {
+        Row: {
+          tenant_id: string;
+          day_str: string;
+          last_seq: number;
+        };
+        Insert: {
+          tenant_id: string;
+          day_str: string;
+          last_seq?: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["order_number_counters"]["Insert"]>;
         Relationships: [];
       };
       merge_history: {

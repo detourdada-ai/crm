@@ -220,22 +220,32 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   let newCustomers = 0;
   let existingCustomers = 0;
   let successRows = 0;
+  // P5: 261→157 같은 차이를 "임의로 정상 처리"라고 뭉개지 않기 위한 세분화
+  // 카운터 — rowsWithoutOrderNumber(그룹화 단계 탈락)/alreadyImported*(이미
+  // 존재해 건너뜀)/failedRowCount(고객 식별 불가·처리 예외)를 각각 추적한다.
+  let rowsWithoutOrderNumber = 0;
+  let alreadyImportedRows = 0;
+  let alreadyImportedOrders = 0;
+  let failedRowCount = 0;
 
-  const groups = new Map<string, Record<string, unknown>[]>();
+  // 그룹마다 "몇 번째 원본 행부터 시작하는지"를 같이 들고 있어야 오류 메시지의
+  // 행 번호(row:0 버그)를 실제 엑셀 행으로 채울 수 있다.
+  const groups = new Map<string, { row: Record<string, unknown>; index: number }[]>();
   parsed.rows.forEach((row, index) => {
     const orderNumber = cellToString(getMapped(row, mapping, "order_number"));
     if (!orderNumber) {
-      errors.push({ row: index + 2, reason: "주문번호가 비어 있습니다.", raw: row });
+      rowsWithoutOrderNumber += 1;
+      errors.push({ row: index + 2, code: "missing_order_number", reason: "주문번호가 비어 있습니다.", raw: row });
       return;
     }
     const list = groups.get(orderNumber) ?? [];
-    list.push(row);
+    list.push({ row, index });
     groups.set(orderNumber, list);
   });
 
   // ---------- Phase 1: batch-fetch everything the per-row logic used to query individually ----------
   const [existingOrderNumbers, ownerCustomers] = await Promise.all([
-    ordersRepository.findExistingOrderNumbers(Array.from(groups.keys())),
+    ordersRepository.findExistingOrderNumbers(Array.from(groups.keys()), tenant.id),
     customersRepository.findAllByOwner(ownerUsername),
   ]);
   const pool = new CustomerPoolIndex(ownerCustomers);
@@ -247,10 +257,14 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   const newDuplicateInserts: DuplicateCandidateInsert[] = [];
   const bagNoUpdates: { id: string; bagNo: string }[] = [];
 
-  for (const [orderNumber, rows] of groups) {
+  for (const [orderNumber, entries] of groups) {
+    const rows = entries.map((e) => e.row);
+    const firstIndex = entries[0].index;
     try {
       if (existingOrderNumbers.has(orderNumber)) {
         successRows += rows.length;
+        alreadyImportedRows += rows.length;
+        alreadyImportedOrders += 1;
         continue;
       }
 
@@ -278,7 +292,13 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       const name = rawRecipientName || buyerName || (buyerId ? `구매자(${buyerId})` : "") || "이름 미확인";
 
       if (!rawPhone && !rawAddress) {
-        errors.push({ row: 0, reason: `[${orderNumber}] 전화번호와 주소가 모두 비어 있어 고객을 식별할 수 없습니다.`, raw: first });
+        errors.push({
+          row: firstIndex + 2,
+          code: "missing_contact_info",
+          reason: `[${orderNumber}] 전화번호와 주소가 모두 비어 있어 고객을 식별할 수 없습니다.`,
+          raw: first,
+        });
+        failedRowCount += rows.length;
         continue;
       }
 
@@ -421,10 +441,12 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       successRows += rows.length;
     } catch (e) {
       errors.push({
-        row: 0,
+        row: firstIndex + 2,
+        code: "processing_error",
         reason: `[${orderNumber}] 처리 실패: ${e instanceof Error ? e.message : "알 수 없는 오류"}`,
         raw: rows[0],
       });
+      failedRowCount += rows.length;
     }
   }
 
@@ -457,7 +479,10 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     await customersRepository.update(u.id, { bag_no: u.bagNo });
   }
 
-  const failedRows = parsed.rows.length - successRows;
+  // P5: 더 이상 "총 행수 - 성공 행수"로 역산하지 않는다 — 그룹화 단계 탈락분과
+  // 처리 실패분을 각각 직접 센 값의 합이므로, totalRawRows = rowsWithoutOrderNumber
+  // + alreadyImportedRows + (신규 생성된 행 수) + failedRowCount가 항상 성립한다.
+  const failedRows = rowsWithoutOrderNumber + failedRowCount;
 
   await importsRepository.update(importRecord.id, {
     status: "completed",
@@ -466,6 +491,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     new_customers: newCustomers,
     existing_customers: existingCustomers,
     duplicate_candidates: duplicateCandidateCount,
+    already_imported_rows: alreadyImportedRows,
     column_mapping: mapping as Record<string, string>,
     error_log: errors,
   });
@@ -473,7 +499,10 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   return {
     importId: importRecord.id,
     summary: {
-      totalOrders: groups.size,
+      totalRawRows: parsed.rows.length,
+      totalOrderGroups: groups.size,
+      newOrdersCreated: newOrderInserts.length,
+      alreadyImportedOrders,
       newCustomers,
       existingCustomers,
       duplicateCandidates: duplicateCandidateCount,
@@ -515,4 +544,30 @@ export async function deleteImport(importId: string): Promise<DeleteImportResult
   await importsRepository.delete(importId);
 
   return { deletedOrders: orders.length, deletedCustomers };
+}
+
+export interface DeleteAllImportsResult {
+  deletedImports: number;
+  deletedOrders: number;
+  deletedCustomers: number;
+}
+
+/**
+ * P5: "엑셀 이력 전체 삭제" — 이 기능 자체가 기존 코드에 없어(행 단위 삭제만
+ * 존재) "전체 삭제해도 20건이 남는다"는 버그를 재현할 수 없었다. 신규 구현.
+ * ownerUsername 소속 이력만 지운다(admin이 눌러도 admin 자신의 소속 이력만
+ * — 다른 사장님 이력에 영향을 주면 안 된다는 원칙은 그대로 유지).
+ * deleteImport를 그대로 반복 호출해 기존 단건 삭제와 완전히 같은 정리 로직
+ * (주문/품목 cascade + import로 생성된 고객 중 잔여 주문 없는 것만 삭제)을 재사용한다.
+ */
+export async function deleteAllImports(ownerUsername: string): Promise<DeleteAllImportsResult> {
+  const ids = await importsRepository.listIdsByOwner(ownerUsername);
+  let deletedOrders = 0;
+  let deletedCustomers = 0;
+  for (const id of ids) {
+    const result = await deleteImport(id);
+    deletedOrders += result.deletedOrders;
+    deletedCustomers += result.deletedCustomers;
+  }
+  return { deletedImports: ids.length, deletedOrders, deletedCustomers };
 }

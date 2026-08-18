@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, X, MapPinPlus } from "lucide-react";
+import { Plus, Trash2, X, MapPinPlus, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,11 +18,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { createDriverAction, deleteDriverAction, updateDriverStatusAction } from "@/actions/drivers";
+import { createDriverAction, deleteDriverAction, updateDriverInfoAction, updateDriverStatusAction } from "@/actions/drivers";
 import type { DriverWithAccount } from "@/actions/drivers";
 import { addDriverRegionAction, deleteDriverRegionAction } from "@/actions/driver-regions";
 import { LegacyAddressInput } from "@/components/common/legacy-address-input";
 import { SIDO_LIST } from "@/lib/constants/region";
+import { formatPhoneNumber } from "@/lib/utils/phone";
 
 type KnownRegion = { sido: string; sigungu: string | null; eupmyeondong: string | null };
 
@@ -108,6 +109,75 @@ function CreateDriverDialog({ isAdmin, accountUsernames }: { isAdmin: boolean; a
           <DialogFooter className="sm:col-span-2">
             <Button type="submit" disabled={isPending}>
               {isPending ? "등록하는 중..." : "등록"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * P5 1-3/1-4: 기사 정보 수정 — 로그인 아이디는 필드 자체를 두지 않아 변경
+ * 불가능하게 한다. 1-4(담당지역 CRUD를 등록/수정 팝업 안에 포함)는 이미 있는
+ * DriverRegionsCell(추가 다이얼로그+배지 삭제)을 그대로 이 다이얼로그 안에
+ * 재사용해서 새 로직을 만들지 않는다.
+ */
+function EditDriverDialog({ driver, knownRegions }: { driver: DriverWithAccount; knownRegions: KnownRegion[] }) {
+  const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const result = await updateDriverInfoAction(driver.id, { ok: false, error: null }, formData);
+      if (!result.ok) {
+        toast.error(result.error ?? "기사 정보 수정 중 오류가 발생했습니다.");
+        return;
+      }
+      toast.success("기사 정보를 수정했습니다.");
+      setOpen(false);
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Pencil className="size-4" />
+          수정
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>기사 정보 수정</DialogTitle>
+          <DialogDescription>로그인 아이디는 최초 등록 후 변경할 수 없습니다.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor={`edit-name-${driver.id}`}>이름</Label>
+            <Input id={`edit-name-${driver.id}`} name="name" defaultValue={driver.name} required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`edit-phone-${driver.id}`}>연락처</Label>
+            <Input id={`edit-phone-${driver.id}`} name="phone" defaultValue={driver.phone ?? ""} placeholder="010-0000-0000" />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor={`edit-address-${driver.id}`}>주소</Label>
+            <LegacyAddressInput id={`edit-address-${driver.id}`} name="address" defaultValue={driver.address ?? ""} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor={`edit-vehicle-${driver.id}`}>차량번호</Label>
+            <Input id={`edit-vehicle-${driver.id}`} name="vehicleNumber" defaultValue={driver.vehicle_number ?? ""} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>담당지역</Label>
+            <DriverRegionsCell driver={driver} knownRegions={knownRegions} />
+          </div>
+          <DialogFooter className="sm:col-span-2">
+            <Button type="submit" disabled={isPending}>
+              {isPending ? "저장하는 중..." : "저장"}
             </Button>
           </DialogFooter>
         </form>
@@ -384,7 +454,7 @@ export function DriverManagementCard({
                 ) : null}
                 <TableCell className="font-medium">{driver.name}</TableCell>
                 <TableCell className="text-muted-foreground">{driver.username ?? "-"}</TableCell>
-                <TableCell>{driver.phone ?? "-"}</TableCell>
+                <TableCell>{formatPhoneNumber(driver.phone) ?? "-"}</TableCell>
                 <TableCell>{driver.vehicle_number ?? "-"}</TableCell>
                 <TableCell className="text-right">{driver.rate_per_delivery.toLocaleString("ko-KR")}원</TableCell>
                 <TableCell>
@@ -397,6 +467,7 @@ export function DriverManagementCard({
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-2">
+                    <EditDriverDialog driver={driver} knownRegions={knownRegions} />
                     <DriverStatusToggle driverId={driver.id} status={driver.status} />
                     {isAdmin ? <DriverDeleteButton driverId={driver.id} /> : null}
                   </div>

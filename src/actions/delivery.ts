@@ -6,7 +6,7 @@ import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { buildOrderItemSummaries, type OrderItemSummary } from "@/actions/orders";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession, requireDriverSession } from "@/lib/auth/current-session";
-import type { Order, Driver } from "@/types/domain";
+import type { Order, Driver, FulfillmentMethod } from "@/types/domain";
 
 export interface DeliveryBoardResult {
   orders: Order[];
@@ -159,6 +159,78 @@ export async function completeDeliveryAction(orderIds: string[]): Promise<Delive
     return { ok: true, error: null };
   } catch (e) {
     return { ok: false, error: toActionError(e, "배송완료 처리 중 오류가 발생했습니다.") };
+  }
+}
+
+/**
+ * P5 10/11번: 배송 상태 표시를 클릭하면 뜨는 변경 메뉴에서 호출 — 배송대기/
+ * 배송중/완료 사이를 양방향으로 전환한다. assignDriverAction과 동일한
+ * owner 검증 패턴(action layer + repository layer 이중 검증)을 재사용한다.
+ */
+export async function setDeliveryStatusAction(
+  orderIds: string[],
+  status: "배송대기" | "배송중" | "완료"
+): Promise<DeliveryActionState> {
+  try {
+    const session = await requireSession();
+    if (orderIds.length === 0) return { ok: false, error: "대상 주문을 선택해주세요." };
+
+    if (session.role !== "admin") {
+      const orders = await ordersRepository.findByIds(orderIds);
+      const allOwned = orders.length === orderIds.length && orders.every((o) => o.owner_username === session.username);
+      if (!allOwned) {
+        return { ok: false, error: "권한이 없는 주문이 포함되어 있습니다." };
+      }
+    }
+
+    const updated = await ordersRepository.setDeliveryStatus(orderIds, status, session.role === "admin" ? undefined : session.username);
+    if (updated === 0) {
+      return {
+        ok: false,
+        error:
+          status === "배송중"
+            ? "기사 배정 또는 직접수령 설정이 없으면 배송중으로 변경할 수 없습니다."
+            : "상태를 변경할 수 있는 주문이 없습니다.",
+      };
+    }
+    revalidatePath("/delivery");
+    revalidatePath("/driver");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "배송 상태 변경 중 오류가 발생했습니다.") };
+  }
+}
+
+/**
+ * P5 13번: "직접수령" 선택 — driver_id를 가짜로 채우지 않고 fulfillment_method
+ * 컬럼만 바꾼다. direct_pickup으로 바꾸면 기존 기사 배정은 함께 해제된다
+ * (기사배정/직접수령은 동시에 성립할 수 없는 배타적 상태).
+ */
+export async function setFulfillmentMethodAction(orderIds: string[], method: FulfillmentMethod): Promise<DeliveryActionState> {
+  try {
+    const session = await requireSession();
+    if (orderIds.length === 0) return { ok: false, error: "대상 주문을 선택해주세요." };
+
+    if (session.role !== "admin") {
+      const orders = await ordersRepository.findByIds(orderIds);
+      const allOwned = orders.length === orderIds.length && orders.every((o) => o.owner_username === session.username);
+      if (!allOwned) {
+        return { ok: false, error: "권한이 없는 주문이 포함되어 있습니다." };
+      }
+    }
+
+    const updated = await ordersRepository.setFulfillmentMethod(
+      orderIds,
+      method,
+      session.role === "admin" ? undefined : session.username
+    );
+    if (updated === 0) {
+      return { ok: false, error: "변경할 수 있는 주문이 없습니다. (이미 배송완료되었을 수 있습니다)" };
+    }
+    revalidatePath("/delivery");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "처리 중 오류가 발생했습니다.") };
   }
 }
 

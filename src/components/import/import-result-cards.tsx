@@ -24,14 +24,28 @@ export function ImportResultCards({ summary, errors }: { summary: ImportSummary;
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="text-sm text-muted-foreground">
-          총 {summary.totalOrders + summary.failedRows}건 중
+        {/* P5: "261건 → 157건, 104건은 어디 갔나"를 임의로 "정상 처리"라고
+            뭉개지 않고 원본 행 → 주문 그룹 → 신규/이미등록/실패로 단계별
+            분해해 보여준다. totalRawRows = totalOrderGroups로 그룹화되기
+            전의 엑셀 원본 행(상품 라인) 수 — 한 주문에 상품이 여러 개면
+            자연히 줄어드는 것이지 유실이 아니다. */}
+        <div className="space-y-1 text-sm text-muted-foreground">
+          <p>
+            엑셀 원본 {summary.totalRawRows.toLocaleString()}행 → 주문번호 기준 {summary.totalOrderGroups.toLocaleString()}건으로
+            그룹화 (한 주문에 상품이 여러 개면 여러 행이 하나로 합쳐집니다)
+          </p>
         </div>
         <ul className="space-y-1.5 text-sm">
           <li className="flex items-center gap-2">
             <CheckCircle2 className="size-4 text-success" />
-            주문 생성 {summary.totalOrders}건
+            신규 주문 생성 {summary.newOrdersCreated}건
           </li>
+          {summary.alreadyImportedOrders > 0 ? (
+            <li className="flex items-center gap-2 text-muted-foreground">
+              <CheckCircle2 className="size-4" />
+              이미 등록되어 건너뜀 {summary.alreadyImportedOrders}건 (재업로드 시 정상)
+            </li>
+          ) : null}
           <li className="flex items-center gap-2">
             <CheckCircle2 className="size-4 text-success" />
             신규 고객 {summary.newCustomers}명 · 기존 고객 매칭 {summary.existingCustomers}명

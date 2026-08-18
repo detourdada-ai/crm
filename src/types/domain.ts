@@ -124,6 +124,9 @@ export type OrderSource = "전화" | "문자" | "SNS" | "엑셀" | "기타";
 // Phase 2: "취소" added — a soft-cancel state, never a physical delete.
 export type DeliveryStatus = "배송대기" | "배송중" | "완료" | "취소";
 
+/** P5: 배송(기사 경유) / 직접수령(고객이 매장에서 직접 받음) — driver_id와 독립된 축. */
+export type FulfillmentMethod = "delivery" | "direct_pickup";
+
 export interface Order {
   id: UUID;
   customer_id: UUID;
@@ -166,6 +169,8 @@ export interface Order {
   bag_returned: boolean;
   order_source: OrderSource;
   delivery_status: DeliveryStatus;
+  /** P5: "직접수령" — driver_id를 가짜로 채우지 않고 별도 컬럼으로 관리한다. */
+  fulfillment_method: FulfillmentMethod;
   driver_id: UUID | null;
   delivery_group_id: UUID | null;
   completed_at: ISODateString | null;
@@ -277,8 +282,18 @@ export interface OrderItem {
 
 export type ImportStatus = "processing" | "completed" | "failed";
 
+/**
+ * P5: 261 → 157 같은 숫자 차이를 "임의로 정상 처리"라고 뭉개지 않도록 원본
+ * 행/주문그룹/신규생성/이미존재/실패를 각각 구분해 반환한다. totalRawRows는
+ * 엑셀 원본 행(상품 라인 단위) 수, totalOrderGroups는 그 행들을 주문번호로
+ * 묶은 그룹 수(주문번호별 여러 상품 라인이 하나로 합쳐짐) — 이 둘의 차이는
+ * 유실이 아니라 "한 주문에 여러 상품"인 경우가 대부분이다.
+ */
 export interface ImportSummary {
-  totalOrders: number;
+  totalRawRows: number;
+  totalOrderGroups: number;
+  newOrdersCreated: number;
+  alreadyImportedOrders: number;
   newCustomers: number;
   existingCustomers: number;
   duplicateCandidates: number;
@@ -295,6 +310,8 @@ export interface ImportRecord {
   new_customers: number;
   existing_customers: number;
   duplicate_candidates: number;
+  /** P5: success_rows 중 "이번 실행에서 이미 등록되어 건너뛴" 행 수(하위 집합). */
+  already_imported_rows: number;
   column_mapping: Record<string, string> | null;
   error_log: ImportRowError[] | null;
   owner_username: string;
@@ -302,8 +319,11 @@ export interface ImportRecord {
   created_at: ISODateString;
 }
 
+export type ImportErrorCode = "missing_order_number" | "missing_contact_info" | "processing_error";
+
 export interface ImportRowError {
   row: number;
+  code: ImportErrorCode;
   reason: string;
   raw: Record<string, unknown>;
 }

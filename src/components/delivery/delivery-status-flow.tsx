@@ -2,7 +2,13 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type DeliveryFilter = "all" | "unassigned" | "배송중" | "완료";
+/**
+ * P5 8번: 배송상태(배송대기/배송중/완료)와 기사배정여부(배정/미배정/직접수령)는
+ * 서로 다른 두 축이라 기존처럼 한 줄에 섞으면 중복 집계로 보인다(같은 주문이
+ * "배송중"이면서 "배정 필요"에도 잡히는 식). 필터 값 자체는 하나의 문자열
+ * 유니온으로 유지하되(쿼리스트링 하나로 충분), 화면에서는 두 줄로 나눠 보여준다.
+ */
+export type DeliveryFilter = "all" | "배송대기" | "배송중" | "완료" | "unassigned" | "assigned" | "direct_pickup";
 
 export interface DeliveryFlowCount {
   filter: DeliveryFilter;

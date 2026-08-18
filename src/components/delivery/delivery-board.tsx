@@ -3,19 +3,30 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Copy, Loader2, MapPin, MessageSquare, Phone } from "lucide-react";
+import { Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 import { formatCurrency, formatDate } from "@/lib/constants/order-status";
 import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
-import { assignDriverAction, completeDeliveryAction, startDeliveryAction, unassignDriverAction } from "@/actions/delivery";
+import {
+  assignDriverAction,
+  setDeliveryStatusAction,
+  setFulfillmentMethodAction,
+  unassignDriverAction,
+} from "@/actions/delivery";
 import type { OrderItemSummary } from "@/actions/orders";
 import { kstTodayIso } from "@/lib/utils/kst-date";
-import type { Order, Driver } from "@/types/domain";
+import { groupLabel } from "@/lib/utils/delivery-group";
+import type { Order, Driver, DeliveryGroup, DeliveryStatus, FulfillmentMethod } from "@/types/domain";
+
+const DIRECT_PICKUP_VALUE = "__direct_pickup__";
+const GROUP_FILTER_ALL = "__all__";
+const GROUP_FILTER_UNGROUPED = "__ungrouped__";
 
 /**
  * 배송 업무 리스트 — 주문번호/고객/배송일/배송지/담당기사/상태를 항상
@@ -34,7 +45,14 @@ import type { Order, Driver } from "@/types/domain";
  * 구조화해 보여주고, 배송메모는 breakpoint 숨김 없이 항상 강조 표시하며,
  * 주소복사/전화/지도(카카오맵 검색 링크, API 키 불필요) 퀵액션을 더했다.
  */
-type DeliverySortField = "delivery_date" | "order_number" | "recipient_name" | "driver_name" | "delivery_status" | "address";
+type DeliverySortField =
+  | "delivery_date"
+  | "order_number"
+  | "recipient_name"
+  | "driver_name"
+  | "delivery_status"
+  | "address"
+  | "delivery_group";
 
 const SORT_OPTIONS: { value: DeliverySortField; label: string }[] = [
   { value: "delivery_date", label: "배송일순" },
@@ -43,6 +61,7 @@ const SORT_OPTIONS: { value: DeliverySortField; label: string }[] = [
   { value: "driver_name", label: "담당기사순" },
   { value: "delivery_status", label: "상태순" },
   { value: "address", label: "배송지순" },
+  { value: "delivery_group", label: "배송그룹순" },
 ];
 
 function composeAddressCopyText(order: Order): string {
@@ -54,24 +73,39 @@ export function DeliveryBoard({
   orders,
   drivers,
   itemSummaries,
+  groups = [],
   bagManagementEnabled = false,
 }: {
   orders: Order[];
   drivers: Driver[];
   itemSummaries: Record<string, OrderItemSummary>;
+  /**
+   * P5: 배송그룹은 별도 카드/섹션이 아니라 이 리스트의 "그룹" 컬럼 +
+   * 필터/정렬로만 노출한다(작업지시서 14-21번). 단일 배송일 조회가 아니면
+   * 페이지에서 빈 배열을 넘겨 컬럼/칩을 자연히 숨긴다.
+   */
+  groups?: DeliveryGroup[];
   /** Phase 10: 가방 관리 미사용 사업장에서는 가방 상태 컬럼/표시를 숨긴다. */
   bagManagementEnabled?: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [driverId, setDriverId] = useState<string>("");
   const [sortField, setSortField] = useState<DeliverySortField>("delivery_date");
+  const [groupFilter, setGroupFilter] = useState<string>(GROUP_FILTER_ALL);
   const [isPending, startTransition] = useTransition();
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
+  const groupLabelById = useMemo(() => new Map(groups.map((g) => [g.id, groupLabel(g.group_no)])), [groups]);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
+  const groupFilteredOrders = useMemo(() => {
+    if (groupFilter === GROUP_FILTER_ALL) return orders;
+    if (groupFilter === GROUP_FILTER_UNGROUPED) return orders.filter((o) => !o.delivery_group_id);
+    return orders.filter((o) => o.delivery_group_id === groupFilter);
+  }, [orders, groupFilter]);
+
   const sortedOrders = useMemo(() => {
-    const list = [...orders];
+    const list = [...groupFilteredOrders];
     switch (sortField) {
       case "order_number":
         return list.sort((a, b) => a.internal_order_number.localeCompare(b.internal_order_number, "ko"));
@@ -85,11 +119,21 @@ export function DeliveryBoard({
         return list.sort((a, b) => a.delivery_status.localeCompare(b.delivery_status, "ko"));
       case "address":
         return list.sort((a, b) => (a.address_snapshot ?? "").localeCompare(b.address_snapshot ?? "", "ko"));
+      case "delivery_group":
+        // 미그룹(null)은 뒤로 — group_no가 없는 주문을 정렬 맨 뒤에 모은다.
+        return list.sort((a, b) => {
+          const ga = a.delivery_group_id ? (groupLabelById.get(a.delivery_group_id) ?? "") : null;
+          const gb = b.delivery_group_id ? (groupLabelById.get(b.delivery_group_id) ?? "") : null;
+          if (ga === null && gb === null) return 0;
+          if (ga === null) return 1;
+          if (gb === null) return -1;
+          return ga.localeCompare(gb, "ko");
+        });
       case "delivery_date":
       default:
         return list.sort((a, b) => (a.delivery_date ?? "").localeCompare(b.delivery_date ?? ""));
     }
-  }, [orders, sortField, driverNames]);
+  }, [groupFilteredOrders, sortField, driverNames, groupLabelById]);
 
   if (orders.length === 0) {
     return <p className="py-12 text-center text-sm text-muted-foreground">해당 날짜에 배송 예정인 주문이 없습니다.</p>;
@@ -115,13 +159,16 @@ export function DeliveryBoard({
 
   function handleAssign() {
     if (!driverId) {
-      toast.error("배정할 기사를 선택해주세요.");
+      toast.error("배정할 기사 또는 직접수령을 선택해주세요.");
       return;
     }
     startTransition(async () => {
-      const result = await assignDriverAction(Array.from(selected), driverId);
+      const result =
+        driverId === DIRECT_PICKUP_VALUE
+          ? await setFulfillmentMethodAction(Array.from(selected), "direct_pickup")
+          : await assignDriverAction(Array.from(selected), driverId);
       if (result.ok) {
-        toast.success(`${selected.size}건을 배정했습니다.`);
+        toast.success(driverId === DIRECT_PICKUP_VALUE ? `${selected.size}건을 직접수령으로 설정했습니다.` : `${selected.size}건을 배정했습니다.`);
         setSelected(new Set());
       } else {
         toast.error(result.error ?? "배정 중 오류가 발생했습니다.");
@@ -142,28 +189,30 @@ export function DeliveryBoard({
     });
   }
 
-  function handleStart(orderId: string) {
+  /**
+   * F-P5(11번): 상태 표시를 클릭하면 뜨는 메뉴에서 배송대기/배송중/완료
+   * 어디로든 바로 전환한다(되돌리기 포함). 배송중으로 가는데 기사도
+   * 없고 직접수령도 아니면 서버가 거부 — 에러 메시지를 그대로 보여준다.
+   */
+  function handleSetStatus(orderId: string, status: DeliveryStatus) {
     setPendingOrderId(orderId);
     startTransition(async () => {
-      const result = await startDeliveryAction([orderId]);
+      const result = await setDeliveryStatusAction([orderId], status as "배송대기" | "배송중" | "완료");
       if (result.ok) {
-        toast.success("배송을 시작했습니다.");
+        toast.success(`상태를 ${status}(으)로 변경했습니다.`);
       } else {
-        toast.error(result.error ?? "배송 시작 중 오류가 발생했습니다.");
+        toast.error(result.error ?? "상태 변경 중 오류가 발생했습니다.");
       }
       setPendingOrderId(null);
     });
   }
 
-  function handleComplete(orderId: string) {
+  /** 직접수령 해제 — fulfillment_method를 delivery로 되돌린다(다시 미배정 상태가 됨). */
+  function handleClearDirectPickup(orderId: string) {
     setPendingOrderId(orderId);
     startTransition(async () => {
-      const result = await completeDeliveryAction([orderId]);
-      if (result.ok) {
-        toast.success("배송을 완료했습니다.");
-      } else {
-        toast.error(result.error ?? "배송완료 처리 중 오류가 발생했습니다.");
-      }
+      const result = await setFulfillmentMethodAction([orderId], "delivery");
+      if (!result.ok) toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
       setPendingOrderId(null);
     });
   }
@@ -174,7 +223,7 @@ export function DeliveryBoard({
         <div className="flex flex-wrap items-center gap-2">
           <Select value={driverId} onValueChange={setDriverId}>
             <SelectTrigger className="w-48">
-              <SelectValue placeholder="담당 기사 선택" />
+              <SelectValue placeholder="담당 기사 또는 직접수령" />
             </SelectTrigger>
             <SelectContent>
               {drivers.map((d) => (
@@ -182,10 +231,11 @@ export function DeliveryBoard({
                   {d.name}
                 </SelectItem>
               ))}
+              <SelectItem value={DIRECT_PICKUP_VALUE}>직접수령</SelectItem>
             </SelectContent>
           </Select>
           <Button size="sm" disabled={selected.size === 0 || isPending} onClick={handleAssign}>
-            {isPending ? "배정하는 중..." : `선택한 ${selected.size}건 기사 배정`}
+            {isPending ? "처리하는 중..." : `선택한 ${selected.size}건 배정/직접수령`}
           </Button>
         </div>
         <Select value={sortField} onValueChange={(v) => setSortField(v as DeliverySortField)}>
@@ -201,6 +251,45 @@ export function DeliveryBoard({
           </SelectContent>
         </Select>
       </div>
+
+      {/* P5 20번: 배송그룹은 새 영역을 만들지 않고 기존 필터 영역 안에
+          칩으로만 넣는다 — "그룹을 관리하세요"가 아니라 "그룹으로 정렬해서
+          가까운 주문들을 보고, 필요한 대로 기사 배정하세요"가 목표다. */}
+      {groups.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">배송그룹</span>
+          <button
+            type="button"
+            onClick={() => setGroupFilter(GROUP_FILTER_ALL)}
+            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+              groupFilter === GROUP_FILTER_ALL ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            전체
+          </button>
+          {groups.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              onClick={() => setGroupFilter(g.id)}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                groupFilter === g.id ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {groupLabel(g.group_no)} ({g.order_count})
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setGroupFilter(GROUP_FILTER_UNGROUPED)}
+            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+              groupFilter === GROUP_FILTER_UNGROUPED ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            미그룹
+          </button>
+        </div>
+      ) : null}
 
       {/* Desktop/Tablet: 테이블 */}
       <div className="hidden overflow-x-auto md:block">
@@ -220,6 +309,7 @@ export function DeliveryBoard({
               <TableHead className="w-40">상품/주문 요약</TableHead>
               <TableHead>담당기사</TableHead>
               <TableHead>상태</TableHead>
+              {groups.length > 0 ? <TableHead>그룹</TableHead> : null}
               {bagManagementEnabled ? <TableHead>가방 상태</TableHead> : null}
               <TableHead className="hidden lg:table-cell">연락처</TableHead>
               <TableHead className="hidden lg:table-cell text-right">금액</TableHead>
@@ -255,25 +345,27 @@ export function DeliveryBoard({
                 <TableCell>
                   <DriverCell
                     name={order.driver_id ? driverNames[order.driver_id] : undefined}
+                    fulfillmentMethod={order.fulfillment_method}
                     locked={order.delivery_status === "완료"}
                     disabled={isPending}
                     onAssign={() => quickSelectForAssign(order.id)}
                     onUnassign={() => handleUnassign(order.id)}
+                    onClearDirectPickup={() => handleClearDirectPickup(order.id)}
                   />
                 </TableCell>
                 <TableCell>
-                  <div className="flex flex-col items-start gap-1.5">
-                    <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
-                    <DeliveryNextActionButton
-                      status={order.delivery_status}
-                      disabled={isPending}
-                      showSpinner={isPending && pendingOrderId === order.id}
-                      onStart={() => handleStart(order.id)}
-                      onComplete={() => handleComplete(order.id)}
-                      className="h-7 px-2.5"
-                    />
-                  </div>
+                  <DeliveryStatusControl
+                    status={order.delivery_status}
+                    disabled={isPending}
+                    showSpinner={isPending && pendingOrderId === order.id}
+                    onChange={(next) => handleSetStatus(order.id, next)}
+                  />
                 </TableCell>
+                {groups.length > 0 ? (
+                  <TableCell className="text-muted-foreground">
+                    {order.delivery_group_id ? (groupLabelById.get(order.delivery_group_id) ?? "-") : "-"}
+                  </TableCell>
+                ) : null}
                 {bagManagementEnabled ? (
                   <TableCell>
                     {order.bag_number ? (
@@ -316,11 +408,21 @@ export function DeliveryBoard({
                       {ORDER_SOURCE_LABELS[order.order_source]}
                     </Badge>
                   </Link>
-                  <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
+                  <DeliveryStatusControl
+                    status={order.delivery_status}
+                    disabled={isPending}
+                    showSpinner={isPending && pendingOrderId === order.id}
+                    onChange={(next) => handleSetStatus(order.id, next)}
+                  />
                 </div>
                 <p className="mt-1 font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</p>
-                <div className="mt-1">
+                <div className="mt-1 flex items-center gap-2">
                   <DeliveryDateLabel isoDate={order.delivery_date} />
+                  {groups.length > 0 && order.delivery_group_id ? (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      {groupLabelById.get(order.delivery_group_id) ?? "-"}
+                    </Badge>
+                  ) : null}
                 </div>
                 <div className="mt-2">
                   <DeliveryAddressBlock order={order} />
@@ -339,20 +441,14 @@ export function DeliveryBoard({
                 <div className="mt-3">
                   <DriverCell
                     name={order.driver_id ? driverNames[order.driver_id] : undefined}
+                    fulfillmentMethod={order.fulfillment_method}
                     locked={order.delivery_status === "완료"}
                     disabled={isPending}
                     onAssign={() => quickSelectForAssign(order.id)}
                     onUnassign={() => handleUnassign(order.id)}
+                    onClearDirectPickup={() => handleClearDirectPickup(order.id)}
                   />
                 </div>
-                <DeliveryNextActionButton
-                  status={order.delivery_status}
-                  disabled={isPending}
-                  showSpinner={isPending && pendingOrderId === order.id}
-                  onStart={() => handleStart(order.id)}
-                  onComplete={() => handleComplete(order.id)}
-                  className="mt-2 h-9 w-full"
-                />
               </div>
             </div>
           </div>
@@ -381,8 +477,15 @@ function ItemSummaryBlock({ summary }: { summary: OrderItemSummary | undefined }
   );
 }
 
+/**
+ * P5 7번: 리스트에서는 요약만 보여준다 — 행정구역(시/도 시/군/구 읍/면/동)
+ * 한 줄 + 도로명 주소 한 줄(1줄 말줄임, "..." 처리). 전체 주소는 hover
+ * title과 주문 상세 페이지에서 확인한다. 전화 버튼은 배송관리 리스트에서
+ * 제공하지 않는다(작업지시서 7번) — 필요하면 주문 상세에서 확인.
+ */
 function DeliveryAddressBlock({ order }: { order: Order }) {
   const road = order.road_address_snapshot ?? order.address_snapshot;
+  const regionSummary = [order.sido, order.sigungu, order.eupmyeondong].filter(Boolean).join(" ");
   const fullText = composeAddressCopyText(order);
 
   function copyAddress() {
@@ -395,16 +498,9 @@ function DeliveryAddressBlock({ order }: { order: Order }) {
 
   return (
     <div className="w-52 max-w-52 space-y-1.5 text-sm">
-      {/* F-P4UX: TableCell 기본 클래스(whitespace-nowrap)가 아래로 상속되면 주소가
-          줄바꿈 없이 한 줄로 넘쳐 옆 컬럼(상품/주문 요약)과 겹쳐 보이는 게 실제
-          원인이었다 — whitespace-normal로 상속을 끊고 line-clamp로 최대 줄 수를
-          제한한다. 전체 주소는 title(hover) + 주문 상세 페이지에서 그대로 확인 가능. */}
       <div className="space-y-0.5 whitespace-normal" title={fullText || undefined}>
-        {order.zipcode ? <p className="text-xs text-muted-foreground">[{order.zipcode}]</p> : null}
-        <p className="line-clamp-2 break-words text-text-strong">{road ?? "-"}</p>
-        {order.detail_address_snapshot ? (
-          <p className="line-clamp-1 break-words text-muted-foreground">{order.detail_address_snapshot}</p>
-        ) : null}
+        {regionSummary ? <p className="text-xs font-medium text-muted-foreground">{regionSummary}</p> : null}
+        <p className="truncate text-text-strong">{road ?? "-"}</p>
       </div>
       {order.delivery_memo ? (
         <p className="flex items-start gap-1 whitespace-normal rounded-md bg-warning-soft px-1.5 py-1 text-xs text-warning">
@@ -416,13 +512,6 @@ function DeliveryAddressBlock({ order }: { order: Order }) {
         <Button type="button" size="icon" variant="ghost" className="size-6" onClick={copyAddress} aria-label="주소 복사">
           <Copy className="size-3.5" />
         </Button>
-        {order.phone_snapshot ? (
-          <Button asChild type="button" size="icon" variant="ghost" className="size-6" aria-label="전화 걸기">
-            <a href={`tel:${order.phone_snapshot}`}>
-              <Phone className="size-3.5" />
-            </a>
-          </Button>
-        ) : null}
         {fullText ? (
           <Button asChild type="button" size="icon" variant="ghost" className="size-6" aria-label="지도에서 보기">
             <a href={`https://map.kakao.com/link/search/${encodeURIComponent(fullText)}`} target="_blank" rel="noopener noreferrer">
@@ -435,51 +524,87 @@ function DeliveryAddressBlock({ order }: { order: Order }) {
   );
 }
 
-function DeliveryNextActionButton({
+const STATUS_MENU_OPTIONS: { value: "배송대기" | "배송중" | "완료"; label: string }[] = [
+  { value: "배송대기", label: "배송대기" },
+  { value: "배송중", label: "배송중" },
+  { value: "완료", label: "완료" },
+];
+
+/**
+ * P5 10/11번: 상태를 "현재 상태 하나"로 통합해 보여주고, 클릭하면(우클릭 아님,
+ * 모바일 고려) 배송대기/배송중/완료 사이를 바로 전환하는 메뉴를 연다 — 되돌리기
+ * (완료→배송중 등)도 같은 메뉴에서 그대로 가능하다. 취소된 주문은 이 보드
+ * 쿼리 자체에서 제외되지만, 방어적으로 취소 상태는 배지만(변경 불가) 보여준다.
+ */
+function DeliveryStatusControl({
   status,
   disabled,
   showSpinner,
-  onStart,
-  onComplete,
-  className,
+  onChange,
 }: {
-  status: Order["delivery_status"];
+  status: DeliveryStatus;
   disabled: boolean;
   showSpinner: boolean;
-  onStart: () => void;
-  onComplete: () => void;
-  className?: string;
+  onChange: (next: "배송대기" | "배송중" | "완료") => void;
 }) {
-  if (status === "배송대기") {
-    return (
-      <Button type="button" size="sm" className={className} disabled={disabled} onClick={onStart}>
-        {showSpinner ? <Loader2 className="size-3.5 animate-spin" /> : "배송 시작"}
-      </Button>
-    );
+  if (status === "취소") {
+    return <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[status]}>{status}</Badge>;
   }
-  if (status === "배송중") {
-    return (
-      <Button type="button" size="sm" className={className} disabled={disabled} onClick={onComplete}>
-        {showSpinner ? <Loader2 className="size-3.5 animate-spin" /> : "배송 완료"}
-      </Button>
-    );
-  }
-  return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={disabled}>
+        <button type="button" className="inline-flex items-center gap-1 disabled:opacity-60" disabled={disabled}>
+          <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[status]} className="cursor-pointer">
+            {showSpinner ? <Loader2 className="size-3 animate-spin" /> : status}
+          </Badge>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {STATUS_MENU_OPTIONS.map((opt) => (
+          <DropdownMenuItem key={opt.value} disabled={opt.value === status} onSelect={() => onChange(opt.value)} className="gap-2">
+            {opt.value === status ? <Check className="size-3.5" /> : <span className="size-3.5" />}
+            {opt.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
+/**
+ * P5 13번: 기사배정/미배정/직접수령은 서로 배타적인 세 상태다(driver_id와
+ * fulfillment_method가 독립 컬럼이지만, direct_pickup으로 바꿀 때 driver_id를
+ * 같이 비우는 repository 규칙 덕에 실제로는 겹치지 않는다). direct_pickup을
+ * 최우선으로 체크해 항상 딱 하나의 상태만 보여준다.
+ */
 function DriverCell({
   name,
+  fulfillmentMethod,
   locked,
   disabled,
   onAssign,
   onUnassign,
+  onClearDirectPickup,
 }: {
   name: string | undefined;
+  fulfillmentMethod: FulfillmentMethod;
   locked: boolean;
   disabled: boolean;
   onAssign: () => void;
   onUnassign: () => void;
+  onClearDirectPickup: () => void;
 }) {
+  if (fulfillmentMethod === "direct_pickup") {
+    if (locked) return <span className="text-info">직접수령</span>;
+    return (
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-info">직접수령</span>
+        <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" disabled={disabled} onClick={onClearDirectPickup}>
+          해제
+        </Button>
+      </div>
+    );
+  }
   if (name) {
     if (locked) return <span className="text-text-strong">{name}</span>;
     return (

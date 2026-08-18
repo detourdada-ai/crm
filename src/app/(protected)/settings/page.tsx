@@ -13,6 +13,7 @@ import { TenantProfileCard } from "@/components/settings/tenant-profile-card";
 import { GoogleEmailCell } from "@/components/settings/google-email-cell";
 import { IssueBetaKeyButton } from "@/components/settings/issue-beta-key-button";
 import { TenantAccessControls } from "@/components/settings/tenant-access-controls";
+import { TenantResetButton } from "@/components/settings/tenant-reset-button";
 import { RecruitApplicationsTable } from "@/components/settings/recruit-applications-table";
 import { InquiryAdminList } from "@/components/settings/inquiry-admin-list";
 import { PageHeader } from "@/components/common/page-header";
@@ -310,6 +311,7 @@ export default async function SettingsPage() {
                     <TableHead>Beta 종료일</TableHead>
                     <TableHead>상태</TableHead>
                     <TableHead>승인/제한</TableHead>
+                    <TableHead>테스트 데이터</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -333,6 +335,9 @@ export default async function SettingsPage() {
                             tenantStatus={tenant?.status ?? "active"}
                             accessStatus={status}
                           />
+                        </TableCell>
+                        <TableCell>
+                          {tenant ? <TenantResetButton username={account.username} tenantName={tenant.name} /> : null}
                         </TableCell>
                       </TableRow>
                     );
