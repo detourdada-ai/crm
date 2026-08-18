@@ -21,14 +21,7 @@ import { digitsOnly } from "@/lib/utils/phone";
 import type { Order } from "@/types/domain";
 
 function isDeliveryFilter(value: string | undefined): value is DeliveryFilter {
-  return (
-    value === "unassigned" ||
-    value === "assigned" ||
-    value === "direct_pickup" ||
-    value === "배송대기" ||
-    value === "배송중" ||
-    value === "완료"
-  );
+  return value === "unassigned" || value === "배송중" || value === "완료";
 }
 
 export default async function DeliveryPage({
@@ -107,40 +100,31 @@ export default async function DeliveryPage({
     );
   }
 
-  // P5 8번: 배송상태(배송대기/배송중/완료)와 기사배정여부(배정/미배정/직접수령)는
-  // 서로 독립된 두 축이다 — 이전에는 "배정 필요"를 !driver_id만으로 계산해
-  // "배송중이면서 배정 필요"인 주문이 두 버킷에 동시에 잡히는 중복 집계가
-  // 있었다(예: 자가배송으로 배송중이 됐지만 driver_id는 비어있는 경우).
-  // 이제 세 버킷(기사배정/미배정/직접수령)이 서로 배타적이도록 direct_pickup을
-  // 먼저 걸러낸다.
-  const waitingCount = orders.filter((o) => o.delivery_status === "배송대기").length;
+  // P6 3번: 한 줄(전체/배정필요/배송중/완료)로 되돌리되, 세 하위 버킷이
+  // 겹치지 않도록 "배정필요"를 명확히 정의한다 — 배송중/완료로 이미 넘어간
+  // 주문은 기사가 없어도(예: 배송중 상태로 되돌리기 전에 배정 해제한 경우는
+  // 없지만 방어적으로) 배정필요에 넣지 않고, 직접수령(애초에 기사가 필요
+  // 없음)도 배정필요에서 제외한다. "배송대기 상태인데 기사가 이미 배정된"
+  // 주문(상태만 되돌린 경우)은 배정필요도 아니고 배송중/완료도 아니므로 세
+  // 버킷 합이 전체보다 작을 수 있다 — CPO가 명시적으로 허용한 예외.
   const inProgressCount = orders.filter((o) => o.delivery_status === "배송중").length;
   const doneCount = orders.filter((o) => o.delivery_status === "완료").length;
+  const needsDriverCount = orders.filter(
+    (o) => o.delivery_status === "배송대기" && !o.driver_id && o.fulfillment_method !== "direct_pickup"
+  ).length;
 
-  const directPickupCount = orders.filter((o) => o.fulfillment_method === "direct_pickup").length;
-  const assignedCount = orders.filter((o) => o.driver_id !== null).length;
-  const needsDriverCount = orders.filter((o) => !o.driver_id && o.fulfillment_method !== "direct_pickup").length;
-
-  const statusFlowCounts: DeliveryFlowCount[] = [
+  const flowCounts: DeliveryFlowCount[] = [
     { filter: "all", label: "전체", count: orders.length, tone: "neutral" },
-    { filter: "배송대기", label: "배송대기", count: waitingCount, tone: "warning" },
+    { filter: "unassigned", label: "배정 필요", count: needsDriverCount, tone: "warning", emphasize: true },
     { filter: "배송중", label: "배송중", count: inProgressCount, tone: "info" },
     { filter: "완료", label: "완료", count: doneCount, tone: "success" },
   ];
 
-  const assignmentFlowCounts: DeliveryFlowCount[] = [
-    { filter: "assigned", label: "기사배정", count: assignedCount, tone: "info" },
-    { filter: "unassigned", label: "미배정", count: needsDriverCount, tone: "warning", emphasize: true },
-    { filter: "direct_pickup", label: "직접수령", count: directPickupCount, tone: "neutral" },
-  ];
-
   function filterOrders(list: Order[]): Order[] {
-    if (activeFilter === "배송대기" || activeFilter === "배송중" || activeFilter === "완료") {
-      return list.filter((o) => o.delivery_status === activeFilter);
+    if (activeFilter === "배송중" || activeFilter === "완료") return list.filter((o) => o.delivery_status === activeFilter);
+    if (activeFilter === "unassigned") {
+      return list.filter((o) => o.delivery_status === "배송대기" && !o.driver_id && o.fulfillment_method !== "direct_pickup");
     }
-    if (activeFilter === "unassigned") return list.filter((o) => !o.driver_id && o.fulfillment_method !== "direct_pickup");
-    if (activeFilter === "assigned") return list.filter((o) => o.driver_id !== null);
-    if (activeFilter === "direct_pickup") return list.filter((o) => o.fulfillment_method === "direct_pickup");
     return list;
   }
 
@@ -173,16 +157,7 @@ export default async function DeliveryPage({
         }
       />
 
-      <div className="space-y-2">
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">배송상태</p>
-          <DeliveryStatusFlow counts={statusFlowCounts} active={activeFilter} buildHref={buildFilterHref} />
-        </div>
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">기사배정</p>
-          <DeliveryStatusFlow counts={assignmentFlowCounts} active={activeFilter} buildHref={buildFilterHref} />
-        </div>
-      </div>
+      <DeliveryStatusFlow counts={flowCounts} active={activeFilter} buildHref={buildFilterHref} />
 
       <DeliveryFilterBar
         dateFilter={dateFilter}

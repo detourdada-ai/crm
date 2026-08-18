@@ -26,10 +26,24 @@ import { SIDO_LIST } from "@/lib/constants/region";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 
 type KnownRegion = { sido: string; sigungu: string | null; eupmyeondong: string | null };
+type PendingRegion = { sido: string; sigungu: string | null; eupmyeondong: string | null };
 
-function CreateDriverDialog({ isAdmin, accountUsernames }: { isAdmin: boolean; accountUsernames: string[] }) {
+function pendingRegionLabel(r: PendingRegion): string {
+  return [r.sido, r.sigungu, r.eupmyeondong].filter(Boolean).join(" ");
+}
+
+function CreateDriverDialog({
+  isAdmin,
+  accountUsernames,
+  knownRegions,
+}: {
+  isAdmin: boolean;
+  accountUsernames: string[];
+  knownRegions: KnownRegion[];
+}) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [pendingRegions, setPendingRegions] = useState<PendingRegion[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -37,18 +51,38 @@ function CreateDriverDialog({ isAdmin, accountUsernames }: { isAdmin: boolean; a
     const formData = new FormData(e.currentTarget);
     startTransition(async () => {
       const result = await createDriverAction({ ok: false, error: null }, formData);
-      if (!result.ok) {
+      if (!result.ok || !result.driverId) {
         toast.error(result.error ?? "기사 등록 중 오류가 발생했습니다.");
         return;
       }
+      // P6 10번: 등록과 동시에 담당지역을 설정할 수 있게 한다 — 폼 안에서는
+      // 로컬 상태로만 모아뒀다가, 기사(및 driver_id)가 실제로 생긴 뒤에
+      // 기존 addDriverRegionAction을 그대로 반복 호출한다(새 API 없음).
+      for (const region of pendingRegions) {
+        const regionForm = new FormData();
+        regionForm.set("sido", region.sido);
+        if (region.sigungu) regionForm.set("sigungu", region.sigungu);
+        if (region.eupmyeondong) regionForm.set("eupmyeondong", region.eupmyeondong);
+        const regionResult = await addDriverRegionAction(result.driverId, { ok: false, error: null }, regionForm);
+        if (!regionResult.ok) {
+          toast.error(`담당지역(${pendingRegionLabel(region)}) 추가 실패: ${regionResult.error ?? ""}`);
+        }
+      }
       toast.success("기사를 등록했습니다.");
       formRef.current?.reset();
+      setPendingRegions([]);
       setOpen(false);
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setPendingRegions([]);
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm" className="gap-1.5">
           <Plus className="size-4" />
@@ -105,6 +139,28 @@ function CreateDriverDialog({ isAdmin, accountUsernames }: { isAdmin: boolean; a
           <div className="space-y-2">
             <Label htmlFor="password">초기 비밀번호</Label>
             <Input id="password" name="password" type="password" required minLength={4} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>담당지역</Label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {pendingRegions.map((r, i) => (
+                <Badge key={`${pendingRegionLabel(r)}-${i}`} variant="secondary" className="gap-1 pr-1">
+                  {pendingRegionLabel(r)}
+                  <button
+                    type="button"
+                    onClick={() => setPendingRegions((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label={`${pendingRegionLabel(r)} 담당지역 제거`}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              ))}
+              <PendingRegionAddDialog
+                knownRegions={knownRegions}
+                onAdd={(region) => setPendingRegions((prev) => [...prev, region])}
+              />
+            </div>
           </div>
           <DialogFooter className="sm:col-span-2">
             <Button type="submit" disabled={isPending}>
@@ -373,6 +429,119 @@ function AddDriverRegionDialog({ driverId, knownRegions }: { driverId: string; k
   );
 }
 
+/**
+ * P6 10번: 기사 등록 팝업 전용 — driver_id가 아직 없으므로 서버 액션을 바로
+ * 호출하지 못하고, 선택한 지역을 로컬 목록에 담아뒀다가 등록이 끝난 뒤
+ * CreateDriverDialog가 addDriverRegionAction을 반복 호출한다. 필드 구성/자동완성
+ * 로직은 AddDriverRegionDialog와 동일 — 로직을 새로 만들지 않고 저장 시점만 다르다.
+ */
+function PendingRegionAddDialog({ knownRegions, onAdd }: { knownRegions: KnownRegion[]; onAdd: (region: PendingRegion) => void }) {
+  const [open, setOpen] = useState(false);
+  const [sido, setSido] = useState("");
+  const [sigungu, setSigungu] = useState("");
+  const [eupmyeondong, setEupmyeondong] = useState("");
+
+  const sigunguOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of knownRegions) if (r.sido === sido && r.sigungu) set.add(r.sigungu);
+    return Array.from(set).sort();
+  }, [knownRegions, sido]);
+
+  const eupmyeondongOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of knownRegions) if (r.sido === sido && r.sigungu === sigungu && r.eupmyeondong) set.add(r.eupmyeondong);
+    return Array.from(set).sort();
+  }, [knownRegions, sido, sigungu]);
+
+  function handleAdd() {
+    if (!sido) return;
+    onAdd({ sido, sigungu: sigungu || null, eupmyeondong: eupmyeondong || null });
+    setSido("");
+    setSigungu("");
+    setEupmyeondong("");
+    setOpen(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="gap-1.5">
+          <MapPinPlus className="size-4" />
+          지역 추가
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>담당지역 추가</DialogTitle>
+          <DialogDescription>
+            시/군/구·읍/면/동을 비워두면 그 상위 단계 전체를 담당하는 것으로 등록됩니다.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="pending-sido">시/도</Label>
+            <Select
+              value={sido}
+              onValueChange={(v) => {
+                setSido(v);
+                setSigungu("");
+              }}
+            >
+              <SelectTrigger id="pending-sido" className="w-full">
+                <SelectValue placeholder="시/도 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                {SIDO_LIST.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pending-sigungu">시/군/구 (선택)</Label>
+            <Input
+              id="pending-sigungu"
+              list="pending-sigungu-options"
+              value={sigungu}
+              onChange={(e) => setSigungu(e.target.value)}
+              placeholder="비워두면 시/도 전체 담당"
+              autoComplete="off"
+            />
+            <datalist id="pending-sigungu-options">
+              {sigunguOptions.map((v) => (
+                <option key={v} value={v} />
+              ))}
+            </datalist>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pending-eupmyeondong">읍/면/동 (선택)</Label>
+            <Input
+              id="pending-eupmyeondong"
+              list="pending-eupmyeondong-options"
+              value={eupmyeondong}
+              onChange={(e) => setEupmyeondong(e.target.value)}
+              placeholder="비워두면 시/군/구 전체 담당"
+              autoComplete="off"
+            />
+            <datalist id="pending-eupmyeondong-options">
+              {eupmyeondongOptions.map((v) => (
+                <option key={v} value={v} />
+              ))}
+            </datalist>
+          </div>
+          <DialogFooter>
+            <Button type="button" onClick={handleAdd} disabled={!sido}>
+              추가
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function DriverRegionBadge({ region }: { region: DriverWithAccount["regions"][number] }) {
   const [isPending, startTransition] = useTransition();
   const label = [region.sido, region.sigungu, region.eupmyeondong].filter(Boolean).join(" ");
@@ -425,7 +594,7 @@ export function DriverManagementCard({
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <CreateDriverDialog isAdmin={isAdmin} accountUsernames={accountUsernames} />
+        <CreateDriverDialog isAdmin={isAdmin} accountUsernames={accountUsernames} knownRegions={knownRegions} />
       </div>
       {drivers.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">등록된 배송 기사가 없습니다.</p>

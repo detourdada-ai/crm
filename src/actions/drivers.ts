@@ -44,6 +44,10 @@ export interface DriverActionState {
   error: string | null;
 }
 
+export interface CreateDriverActionState extends DriverActionState {
+  driverId?: string;
+}
+
 /** 이 기사를 다루는 세션이 소유자(admin 또는 본인 계정)인지 확인. */
 export async function assertOwnsDriver(driverId: string, session: SessionPayload) {
   const driver = await driversRepository.findById(driverId);
@@ -57,7 +61,7 @@ export async function assertOwnsDriver(driverId: string, session: SessionPayload
 export async function createDriverAction(
   _prevState: DriverActionState,
   formData: FormData
-): Promise<DriverActionState> {
+): Promise<CreateDriverActionState> {
   try {
     const session = await requireSession();
     const name = String(formData.get("name") || "").trim();
@@ -80,9 +84,13 @@ export async function createDriverAction(
       ownerUsername = selected;
     }
 
-    await createDriverWithAccount({ name, phone, address, vehicleNumber, ratePerDelivery, username, password, ownerUsername });
+    // P6 10번: 등록 팝업에서 담당지역을 함께 입력할 수 있도록 driverId를
+    // 돌려준다 — 계정 생성까지 끝난 뒤에야 driver_regions가 참조할 실제
+    // driver.id가 생기므로, 지역 저장은 이 id를 받은 클라이언트가 이어서
+    // addDriverRegionAction을 호출하는 후속 단계로 처리한다.
+    const driver = await createDriverWithAccount({ name, phone, address, vehicleNumber, ratePerDelivery, username, password, ownerUsername });
     revalidatePath("/settings");
-    return { ok: true, error: null };
+    return { ok: true, error: null, driverId: driver.id };
   } catch (e) {
     return { ok: false, error: toActionError(e, "기사 등록 중 오류가 발생했습니다.") };
   }

@@ -24,8 +24,8 @@ import { kstTodayIso } from "@/lib/utils/kst-date";
 import { groupLabel } from "@/lib/utils/delivery-group";
 import type { Order, Driver, DeliveryGroup, DeliveryStatus, FulfillmentMethod } from "@/types/domain";
 
-const DIRECT_PICKUP_VALUE = "__direct_pickup__";
 const GROUP_FILTER_ALL = "__all__";
+const GROUP_FILTER_HAS_GROUP = "__has_group__";
 const GROUP_FILTER_UNGROUPED = "__ungrouped__";
 
 /**
@@ -90,6 +90,7 @@ export function DeliveryBoard({
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [driverId, setDriverId] = useState<string>("");
+  const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
   const [sortField, setSortField] = useState<DeliverySortField>("delivery_date");
   const [groupFilter, setGroupFilter] = useState<string>(GROUP_FILTER_ALL);
   const [isPending, startTransition] = useTransition();
@@ -100,6 +101,7 @@ export function DeliveryBoard({
 
   const groupFilteredOrders = useMemo(() => {
     if (groupFilter === GROUP_FILTER_ALL) return orders;
+    if (groupFilter === GROUP_FILTER_HAS_GROUP) return orders.filter((o) => !!o.delivery_group_id);
     if (groupFilter === GROUP_FILTER_UNGROUPED) return orders.filter((o) => !o.delivery_group_id);
     return orders.filter((o) => o.delivery_group_id === groupFilter);
   }, [orders, groupFilter]);
@@ -158,17 +160,26 @@ export function DeliveryBoard({
   }
 
   function handleAssign() {
+    if (fulfillmentChoice === "direct_pickup") {
+      startTransition(async () => {
+        const result = await setFulfillmentMethodAction(Array.from(selected), "direct_pickup");
+        if (result.ok) {
+          toast.success(`${selected.size}건을 직접수령으로 설정했습니다.`);
+          setSelected(new Set());
+        } else {
+          toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
+        }
+      });
+      return;
+    }
     if (!driverId) {
-      toast.error("배정할 기사 또는 직접수령을 선택해주세요.");
+      toast.error("배정할 기사를 선택해주세요.");
       return;
     }
     startTransition(async () => {
-      const result =
-        driverId === DIRECT_PICKUP_VALUE
-          ? await setFulfillmentMethodAction(Array.from(selected), "direct_pickup")
-          : await assignDriverAction(Array.from(selected), driverId);
+      const result = await assignDriverAction(Array.from(selected), driverId);
       if (result.ok) {
-        toast.success(driverId === DIRECT_PICKUP_VALUE ? `${selected.size}건을 직접수령으로 설정했습니다.` : `${selected.size}건을 배정했습니다.`);
+        toast.success(`${selected.size}건을 배정했습니다.`);
         setSelected(new Set());
       } else {
         toast.error(result.error ?? "배정 중 오류가 발생했습니다.");
@@ -221,9 +232,32 @@ export function DeliveryBoard({
     <div className="space-y-4">
       <div ref={toolbarRef} className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={driverId} onValueChange={setDriverId}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="담당 기사 또는 직접수령" />
+          {/* P6 5번: 기사 선택 목록에 "직접수령"을 항목으로 끼워넣지 않고,
+              배송방식(배송기사/직접수령)을 먼저 고르게 분리한다 — 직접수령을
+              고르면 기사 선택 자체가 필요 없다는 걸 구조로 드러낸다. */}
+          <div className="inline-flex items-center rounded-md border border-border p-0.5">
+            <button
+              type="button"
+              onClick={() => setFulfillmentChoice("delivery")}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                fulfillmentChoice === "delivery" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              배송기사
+            </button>
+            <button
+              type="button"
+              onClick={() => setFulfillmentChoice("direct_pickup")}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                fulfillmentChoice === "direct_pickup" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              직접수령
+            </button>
+          </div>
+          <Select value={driverId} onValueChange={setDriverId} disabled={fulfillmentChoice === "direct_pickup"}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="담당 기사 선택" />
             </SelectTrigger>
             <SelectContent>
               {drivers.map((d) => (
@@ -231,11 +265,10 @@ export function DeliveryBoard({
                   {d.name}
                 </SelectItem>
               ))}
-              <SelectItem value={DIRECT_PICKUP_VALUE}>직접수령</SelectItem>
             </SelectContent>
           </Select>
           <Button size="sm" disabled={selected.size === 0 || isPending} onClick={handleAssign}>
-            {isPending ? "처리하는 중..." : `선택한 ${selected.size}건 배정/직접수령`}
+            {isPending ? "처리하는 중..." : `선택한 ${selected.size}건 적용`}
           </Button>
         </div>
         <Select value={sortField} onValueChange={(v) => setSortField(v as DeliverySortField)}>
@@ -266,6 +299,15 @@ export function DeliveryBoard({
             }`}
           >
             전체
+          </button>
+          <button
+            type="button"
+            onClick={() => setGroupFilter(GROUP_FILTER_HAS_GROUP)}
+            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+              groupFilter === GROUP_FILTER_HAS_GROUP ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            그룹 있음
           </button>
           {groups.map((g) => (
             <button
@@ -302,6 +344,7 @@ export function DeliveryBoard({
                   onCheckedChange={(checked) => toggleAll(checked === true)}
                 />
               </TableHead>
+              {groups.length > 0 ? <TableHead>그룹</TableHead> : null}
               <TableHead>주문번호</TableHead>
               <TableHead>고객</TableHead>
               <TableHead>배송일</TableHead>
@@ -309,7 +352,6 @@ export function DeliveryBoard({
               <TableHead className="w-40">상품/주문 요약</TableHead>
               <TableHead>담당기사</TableHead>
               <TableHead>상태</TableHead>
-              {groups.length > 0 ? <TableHead>그룹</TableHead> : null}
               {bagManagementEnabled ? <TableHead>가방 상태</TableHead> : null}
               <TableHead className="hidden lg:table-cell">연락처</TableHead>
               <TableHead className="hidden lg:table-cell text-right">금액</TableHead>
@@ -324,6 +366,15 @@ export function DeliveryBoard({
                     onCheckedChange={(checked) => toggle(order.id, checked === true)}
                   />
                 </TableCell>
+                {groups.length > 0 ? (
+                  <TableCell>
+                    {order.delivery_group_id ? (
+                      <Badge variant="secondary">{groupLabelById.get(order.delivery_group_id) ?? "-"}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                ) : null}
                 <TableCell className="font-medium">
                   <Link href={`/orders/${order.id}`} className="mr-1.5 hover:underline">
                     {order.internal_order_number}
@@ -361,11 +412,6 @@ export function DeliveryBoard({
                     onChange={(next) => handleSetStatus(order.id, next)}
                   />
                 </TableCell>
-                {groups.length > 0 ? (
-                  <TableCell className="text-muted-foreground">
-                    {order.delivery_group_id ? (groupLabelById.get(order.delivery_group_id) ?? "-") : "-"}
-                  </TableCell>
-                ) : null}
                 {bagManagementEnabled ? (
                   <TableCell>
                     {order.bag_number ? (
@@ -419,9 +465,7 @@ export function DeliveryBoard({
                 <div className="mt-1 flex items-center gap-2">
                   <DeliveryDateLabel isoDate={order.delivery_date} />
                   {groups.length > 0 && order.delivery_group_id ? (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      {groupLabelById.get(order.delivery_group_id) ?? "-"}
-                    </Badge>
+                    <Badge variant="secondary">{groupLabelById.get(order.delivery_group_id) ?? "-"}</Badge>
                   ) : null}
                 </div>
                 <div className="mt-2">

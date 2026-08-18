@@ -119,30 +119,36 @@ export const customersRepository = {
     return result;
   },
 
-  async findByPhone(phone: string, ownerUsername?: string): Promise<Customer[]> {
-    let q = getSupabaseAdmin().from("customers").select("*").eq("phone", phone);
-    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
-    const { data, error } = await q;
+  /**
+   * P6 13번: 동일인 매칭은 "절대 다른 사장님 고객과 병합하지 않는다"는
+   * 원칙이 걸린 조회다 — ownerUsername을 선택 인자로 두면 언젠가 실수로
+   * 빠뜨린 호출이 테넌트 전체를 뒤지게 된다. 실제 호출부(customer.service.ts,
+   * duplicate-detection.service.ts)는 이미 항상 넘기고 있었으므로 동작
+   * 변화는 없고, 타입으로 강제해 향후 실수를 막는 하드닝이다.
+   */
+  async findByPhone(phone: string, ownerUsername: string): Promise<Customer[]> {
+    const { data, error } = await getSupabaseAdmin().from("customers").select("*").eq("phone", phone).eq("owner_username", ownerUsername);
     if (error) throw error;
     return data ?? [];
   },
 
-  async findByNameAndAddress(name: string, addressNormalized: string, ownerUsername?: string): Promise<Customer[]> {
-    let q = getSupabaseAdmin()
+  async findByNameAndAddress(name: string, addressNormalized: string, ownerUsername: string): Promise<Customer[]> {
+    const { data, error } = await getSupabaseAdmin()
       .from("customers")
       .select("*")
       .eq("name", name)
-      .eq("address_normalized", addressNormalized);
-    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
-    const { data, error } = await q;
+      .eq("address_normalized", addressNormalized)
+      .eq("owner_username", ownerUsername);
     if (error) throw error;
     return data ?? [];
   },
 
-  async findByAddress(addressNormalized: string, ownerUsername?: string): Promise<Customer[]> {
-    let q = getSupabaseAdmin().from("customers").select("*").eq("address_normalized", addressNormalized);
-    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
-    const { data, error } = await q;
+  async findByAddress(addressNormalized: string, ownerUsername: string): Promise<Customer[]> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("customers")
+      .select("*")
+      .eq("address_normalized", addressNormalized)
+      .eq("owner_username", ownerUsername);
     if (error) throw error;
     return data ?? [];
   },
