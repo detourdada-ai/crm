@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileSpreadsheet, PenLine, Plus, Minus, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
@@ -19,14 +20,18 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { createManualOrderAction } from "@/actions/orders";
+import { listActiveProductsAction } from "@/actions/products";
 import { AddressSearchInput } from "@/components/common/address-search-input";
 import { OrderCustomerPicker } from "@/components/orders/order-customer-picker";
 import { ORDER_SOURCE_OPTIONS } from "@/lib/constants/order-source";
 import { kstTodayIso, resolveKstQuickRange } from "@/lib/utils/kst-date";
 import { cn } from "@/lib/utils";
-import type { Customer } from "@/types/domain";
+import type { Customer, Product } from "@/types/domain";
 
 type Step = "choose" | "manual";
+
+/** F-P3C: "직접 입력"을 선택했을 때 쓰는 sentinel — 실제 product.id와 절대 겹치지 않는다. */
+const CUSTOM_PRODUCT_VALUE = "__custom__";
 
 interface AddressSeed {
   postalCode: string | null;
@@ -47,11 +52,17 @@ export function ManualOrderButton() {
   // 지우지 못해 이전 주문의 고객/주소가 남는 버그가 생길 수 있었다).
   const [formGeneration, setFormGeneration] = useState(0);
 
-  // F6: 수령인은 고객 선택 시 자동으로 채워지되, 사용자가 이미 직접 손댔다면
-  // 그 값을 덮어쓰지 않는다(이 주문만의 독립적인 배송 snapshot이므로).
+  // F-P3A: "고객명과 동일" 체크(기본 켜짐) 상태에서는 고객명이 바뀔 때마다
+  // 수령인 이름도 함께 갱신되고, 필드 자체는 잠긴다. 체크를 해제하면 그
+  // 순간부터는 고객명이 바뀌어도 수령인은 더 이상 따라가지 않고 직접 수정할
+  // 수 있다 — 이 주문만의 독립적인 배송 snapshot이라는 기존 원칙과 동일하다.
+  const [customerName, setCustomerName] = useState("");
   const [recipientName, setRecipientName] = useState("");
+  const [syncRecipientName, setSyncRecipientName] = useState(true);
+  // 연락처는 기존과 동일하게 "고객 선택 시 채우되, 직접 손대면 더 이상
+  // 덮어쓰지 않는" 방식을 유지한다(이번 작업 범위 밖).
   const [recipientPhone, setRecipientPhone] = useState("");
-  const [recipientTouched, setRecipientTouched] = useState(false);
+  const [phoneTouched, setPhoneTouched] = useState(false);
 
   // F12: 고객을 선택하면 주소도 함께 채운다 — customerAddressKey를 바꿔
   // AddressSearchInput을 새 기본값으로 remount시킨다(내부 state라 prop만
@@ -59,15 +70,42 @@ export function ManualOrderButton() {
   const [addressSeed, setAddressSeed] = useState<AddressSeed | null>(null);
   const [customerAddressKey, setCustomerAddressKey] = useState(0);
 
+  // F-P3C: 상품 카탈로그 SelectBox — "직접 입력"(sentinel)이 기본값이라
+  // 카탈로그가 비어있는 계정도 기존과 동일하게 자유 입력으로 주문을 등록할
+  // 수 있다. 실제 상품을 선택하면 상품명/단가가 자동 입력되고 잠기지만,
+  // 저장은 이 필드들의 "현재 값"을 그대로 스냅샷으로 남기므로 이후 상품
+  // 카탈로그의 가격이 바뀌어도 이미 등록된 주문에는 영향이 없다.
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState(CUSTOM_PRODUCT_VALUE);
+  const [productName, setProductName] = useState("");
+  const [unitPrice, setUnitPrice] = useState(0);
+  const isCustomProduct = selectedProductId === CUSTOM_PRODUCT_VALUE;
+
   const [quantity, setQuantity] = useState(1);
   const [deliveryDate, setDeliveryDate] = useState("");
   const [memoExpanded, setMemoExpanded] = useState(false);
 
-  function handleCustomerChange(customer: Customer | null) {
-    if (!recipientTouched) {
-      setRecipientName(customer?.name ?? "");
-      setRecipientPhone(customer?.phone ?? "");
+  useEffect(() => {
+    if (step === "manual") {
+      listActiveProductsAction().then(setProducts);
     }
+  }, [step]);
+
+  function handleProductSelect(value: string) {
+    setSelectedProductId(value);
+    if (value === CUSTOM_PRODUCT_VALUE) return;
+    const product = products.find((p) => p.id === value);
+    if (product) {
+      setProductName(product.name);
+      setUnitPrice(product.unit_price);
+    }
+  }
+
+  function handleCustomerChange(customer: Customer | null) {
+    const name = customer?.name ?? "";
+    setCustomerName(name);
+    if (syncRecipientName) setRecipientName(name);
+    if (!phoneTouched) setRecipientPhone(customer?.phone ?? "");
     setAddressSeed(
       customer
         ? {
@@ -82,13 +120,29 @@ export function ManualOrderButton() {
     setCustomerAddressKey((k) => k + 1);
   }
 
+  /** F-P3A: "신규 고객 등록" 탭에서 고객명을 타이핑할 때마다 실시간으로 반영. */
+  function handleCustomerNameChange(name: string) {
+    setCustomerName(name);
+    if (syncRecipientName) setRecipientName(name);
+  }
+
+  function handleSyncToggle(checked: boolean) {
+    setSyncRecipientName(checked);
+    if (checked) setRecipientName(customerName);
+  }
+
   function resetForNextEntry() {
     setFormGeneration((g) => g + 1);
+    setCustomerName("");
     setRecipientName("");
+    setSyncRecipientName(true);
     setRecipientPhone("");
-    setRecipientTouched(false);
+    setPhoneTouched(false);
     setAddressSeed(null);
     setCustomerAddressKey((k) => k + 1);
+    setSelectedProductId(CUSTOM_PRODUCT_VALUE);
+    setProductName("");
+    setUnitPrice(0);
     setQuantity(1);
     setDeliveryDate("");
     setMemoExpanded(false);
@@ -167,24 +221,32 @@ export function ManualOrderButton() {
           <form key={formGeneration} onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label className="mb-2 block text-sm font-medium">고객</Label>
-              <OrderCustomerPicker onCustomerChange={handleCustomerChange} />
+              <OrderCustomerPicker onCustomerChange={handleCustomerChange} onNameChange={handleCustomerNameChange} />
             </div>
 
             <div className="space-y-2 sm:col-span-2 border-t pt-4">
               <Label className="text-sm font-medium">배송 정보</Label>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="recipientName">
-                수령인 <span className="text-destructive">*</span>
-              </Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="recipientName">
+                  수령인 <span className="text-destructive">*</span>
+                </Label>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Checkbox
+                    checked={syncRecipientName}
+                    onCheckedChange={(checked) => handleSyncToggle(checked === true)}
+                  />
+                  고객명과 동일
+                </label>
+              </div>
               <Input
                 id="recipientName"
                 name="recipientName"
                 value={recipientName}
-                onChange={(e) => {
-                  setRecipientTouched(true);
-                  setRecipientName(e.target.value);
-                }}
+                onChange={(e) => setRecipientName(e.target.value)}
+                readOnly={syncRecipientName}
+                className={syncRecipientName ? "bg-muted text-muted-foreground" : undefined}
                 required
               />
             </div>
@@ -197,7 +259,7 @@ export function ManualOrderButton() {
                 name="recipientPhone"
                 value={recipientPhone}
                 onChange={(e) => {
-                  setRecipientTouched(true);
+                  setPhoneTouched(true);
                   setRecipientPhone(e.target.value);
                 }}
                 placeholder="010-0000-0000"
@@ -273,17 +335,57 @@ export function ManualOrderButton() {
               <Label htmlFor="orderDate">주문일</Label>
               <Input id="orderDate" name="orderDate" type="date" defaultValue={kstTodayIso()} />
             </div>
+            {products.length > 0 ? (
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="productSelect">상품</Label>
+                <Select value={selectedProductId} onValueChange={handleProductSelect}>
+                  <SelectTrigger id="productSelect" className="w-full">
+                    <SelectValue placeholder="상품을 선택하세요" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={CUSTOM_PRODUCT_VALUE}>직접 입력</SelectItem>
+                    {products.map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.name} ({product.unit_price.toLocaleString("ko-KR")}원)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <input type="hidden" name="productId" value={isCustomProduct ? "" : selectedProductId} />
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="productName">
                 상품명 <span className="text-destructive">*</span>
               </Label>
-              <Input id="productName" name="productName" required />
+              <Input
+                id="productName"
+                name="productName"
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                readOnly={!isCustomProduct}
+                className={!isCustomProduct ? "bg-muted text-muted-foreground" : undefined}
+                required
+              />
             </div>
-            <div className="space-y-2 sm:col-span-2">
+            <div className="space-y-2">
+              <Label htmlFor="unitPrice">단가</Label>
+              <Input
+                id="unitPrice"
+                name="unitPrice"
+                type="number"
+                min={0}
+                value={unitPrice}
+                onChange={(e) => setUnitPrice(Math.max(0, Number(e.target.value) || 0))}
+                readOnly={!isCustomProduct}
+                className={!isCustomProduct ? "bg-muted text-muted-foreground" : undefined}
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="optionName">옵션</Label>
               <Input id="optionName" name="optionName" placeholder="예: 대/2인분" />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="quantity">
                 수량 <span className="text-destructive">*</span>
               </Label>
@@ -319,10 +421,6 @@ export function ManualOrderButton() {
                   <Plus className="size-4" />
                 </Button>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="unitPrice">단가</Label>
-              <Input id="unitPrice" name="unitPrice" type="number" min={0} defaultValue={0} />
             </div>
 
             <Collapsible

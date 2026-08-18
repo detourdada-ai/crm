@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CheckCircle2, AlertTriangle, CircleDashed, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -27,6 +28,32 @@ function Field({ label, value }: { label: string; value: string | null | undefin
       <span className="text-muted-foreground">{label}</span>
       <span className="text-right font-medium break-all">{value}</span>
     </div>
+  );
+}
+
+/** F-P3E: 색상만으로 상태를 구분하지 않도록 아이콘 + 텍스트를 항상 함께 표시한다. */
+function GeocodeStatusBadge({ status }: { status: "pending" | "success" | "failed" }) {
+  if (status === "success") {
+    return (
+      <Badge variant="success">
+        <CheckCircle2 className="size-3" />
+        좌표 확인됨
+      </Badge>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <Badge variant="warning">
+        <AlertTriangle className="size-3" />
+        좌표 확인 실패
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="secondary">
+      <CircleDashed className="size-3" />
+      좌표 확인 대기
+    </Badge>
   );
 }
 
@@ -88,14 +115,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <div className="flex items-center justify-between gap-3 border-b py-1.5 text-sm last:border-0">
               <span className="text-muted-foreground">행정구역</span>
               <span className="flex items-center gap-1.5 text-right">
-                {regionLabel ? <span className="font-medium">{regionLabel}</span> : null}
-                <Badge variant={order.geocode_status === "success" ? "outline" : "secondary"}>
-                  {order.geocode_status === "success"
-                    ? "좌표 확인됨"
-                    : order.geocode_status === "failed"
-                      ? "좌표 확인 실패"
-                      : "좌표 확인 대기"}
-                </Badge>
+                {regionLabel ? (
+                  <span className="flex items-center gap-1 font-medium">
+                    <MapPin className="size-3.5 text-muted-foreground" />
+                    {regionLabel}
+                  </span>
+                ) : null}
+                <GeocodeStatusBadge status={order.geocode_status} />
               </span>
             </div>
             <Field label="배송 요청사항" value={order.delivery_memo} />

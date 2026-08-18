@@ -205,6 +205,20 @@ export interface DriverRegion {
   created_at: ISODateString;
 }
 
+// Phase 3-B: 상품 카탈로그 — tenant별 완전 격리. name/unit_price는 "현재"
+// 값이며, 이미 생성된 order_items의 product_name/unit_price(주문 당시
+// 스냅샷)에는 영향을 주지 않는다.
+export interface Product {
+  id: UUID;
+  name: string;
+  unit_price: number;
+  is_active: boolean;
+  owner_username: string;
+  tenant_id: UUID;
+  created_at: ISODateString;
+  updated_at: ISODateString;
+}
+
 export type SettlementStatus = "unpaid" | "paid";
 
 export interface Settlement {
@@ -225,6 +239,9 @@ export interface OrderItem {
   order_id: UUID;
   product_order_number: string | null;
   product_code: string | null;
+  // Phase 3-B: 상품 카탈로그에서 선택해 생성된 경우에만 채워지는 참조(nullable)
+  // — product_name/unit_price는 이 필드와 무관하게 항상 주문 당시 스냅샷이다.
+  product_id: UUID | null;
   product_name: string;
   option_name: string | null;
   quantity: number;

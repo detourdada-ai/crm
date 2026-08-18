@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ordersRepository, type OrderSortField } from "@/lib/repositories/orders.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { customersRepository } from "@/lib/repositories/customers.repository";
+import { productsRepository } from "@/lib/repositories/products.repository";
 import { createCustomerDirect } from "@/lib/services/customer.service";
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { geocodeAddress } from "@/lib/services/geocoding.service";
@@ -241,6 +242,7 @@ export async function createManualOrderAction(
   const productName = String(formData.get("productName") || "").trim();
   if (!productName) return { ok: false, error: "상품명을 입력해주세요." };
   const optionName = String(formData.get("optionName") || "").trim() || null;
+  const productIdRaw = String(formData.get("productId") || "").trim() || null;
 
   const deliveryMemo = String(formData.get("deliveryMemo") || "").trim() || null;
   const orderMemo = String(formData.get("orderMemo") || "").trim() || null;
@@ -289,6 +291,17 @@ export async function createManualOrderAction(
     // 프로필의 좌표와는 별개의 스냅샷이며, 실패해도 주문 저장은 계속된다.
     const geo = await geocodeAddress(roadAddress);
 
+    // F-P3C: productId는 참조용 FK일 뿐이고 실제 저장되는 productName/unitPrice는
+    // 이 폼의 값을 그대로 스냅샷으로 남긴다 — 그래도 다른 계정 상품을 가리키는
+    // productId가 조작되어 들어오는 것은 막는다(소유권 불일치 시 조용히 무시).
+    let productId: string | null = null;
+    if (productIdRaw) {
+      const product = await productsRepository.findById(productIdRaw);
+      if (product && (session.role === "admin" || product.owner_username === session.username)) {
+        productId = product.id;
+      }
+    }
+
     // 스마트스토어 주문만 order_number가 필수 — 수동 주문은 없어도 된다 (null).
     const [order] = await ordersRepository.createMany([
       {
@@ -319,6 +332,7 @@ export async function createManualOrderAction(
     await ordersRepository.createItems([
       {
         order_id: order.id,
+        product_id: productId,
         product_name: productName,
         option_name: optionName,
         quantity,

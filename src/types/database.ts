@@ -490,6 +490,7 @@ export interface Database {
           order_id: string;
           product_order_number: string | null;
           product_code: string | null;
+          product_id: string | null;
           product_name: string;
           option_name: string | null;
           quantity: number;
@@ -503,6 +504,7 @@ export interface Database {
           order_id: string;
           product_order_number?: string | null;
           product_code?: string | null;
+          product_id?: string | null;
           product_name: string;
           option_name?: string | null;
           quantity?: number;
@@ -512,6 +514,30 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["order_items"]["Insert"]>;
+        Relationships: [];
+      };
+      products: {
+        Row: {
+          id: string;
+          name: string;
+          unit_price: number;
+          is_active: boolean;
+          owner_username: string;
+          tenant_id: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          unit_price?: number;
+          is_active?: boolean;
+          owner_username: string;
+          tenant_id: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["products"]["Insert"]>;
         Relationships: [];
       };
       imports: {

@@ -90,11 +90,15 @@
   --secondary: #f1f5f9;
   --secondary-foreground: #0f172a;
   --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  /* F-P3E: CEO 피드백("화면이 연하고 밋밋하다") 대응 — 라벨/보조 텍스트 대비를
+     slate-500(#64748b, ~4.6:1)에서 slate-600(#475569, ~7.5:1)으로 높인다.
+     배경색을 더 넣는 대신 텍스트 대비만 올리는 방향(작업지시서 8번 원칙). */
+  --muted-foreground: #475569;
   --accent: #ecfdf5;
   --accent-foreground: #047857;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #e2e8f0;
+  /* F-P3E: 카드/테이블 경계를 조금 더 뚜렷하게(slate-200 → slate-300). */
+  --border: #cbd5e1;
   --input: #e2e8f0;
   --ring: #059669;
   --chart-1: oklch(0.58 0.12 155);

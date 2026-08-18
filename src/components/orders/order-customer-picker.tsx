@@ -14,11 +14,19 @@ import type { Customer } from "@/types/domain";
  * 명시적으로 고르게 한다 — 반복 주문마다 매번 신규 고객이 생기는 것을
  * 막는 장치이면서도, 이름/전화 일치로 뒤에서 자동 매칭·병합하지 않는다.
  */
-export function OrderCustomerPicker({ onCustomerChange }: { onCustomerChange?: (customer: Customer | null) => void }) {
+export function OrderCustomerPicker({
+  onCustomerChange,
+  onNameChange,
+}: {
+  onCustomerChange?: (customer: Customer | null) => void;
+  /** F-P3A: "신규 고객 등록" 탭에서 고객명을 직접 타이핑할 때마다 실시간으로 호출 — 수령인 자동동기화용. */
+  onNameChange?: (name: string) => void;
+}) {
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Customer[]>([]);
   const [selected, setSelected] = useState<Customer | null>(null);
+  const [newCustomerName, setNewCustomerName] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function handleSearch(value: string) {
@@ -45,6 +53,11 @@ export function OrderCustomerPicker({ onCustomerChange }: { onCustomerChange?: (
     onCustomerChange?.(null);
   }
 
+  function handleNewCustomerNameChange(value: string) {
+    setNewCustomerName(value);
+    onNameChange?.(value);
+  }
+
   return (
     <div className="space-y-3 sm:col-span-2">
       <Tabs
@@ -53,6 +66,8 @@ export function OrderCustomerPicker({ onCustomerChange }: { onCustomerChange?: (
           const next = v as "existing" | "new";
           setMode(next);
           clearSelection();
+          setNewCustomerName("");
+          onNameChange?.("");
         }}
       >
         <TabsList>
@@ -115,7 +130,13 @@ export function OrderCustomerPicker({ onCustomerChange }: { onCustomerChange?: (
         <TabsContent value="new" className="grid gap-3 pt-2 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="newCustomerName">고객명</Label>
-            <Input id="newCustomerName" name="newCustomerName" required={mode === "new"} />
+            <Input
+              id="newCustomerName"
+              name="newCustomerName"
+              value={newCustomerName}
+              onChange={(e) => handleNewCustomerNameChange(e.target.value)}
+              required={mode === "new"}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="newCustomerPhone">연락처</Label>

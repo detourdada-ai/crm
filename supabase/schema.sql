@@ -379,6 +379,35 @@ create table if not exists order_items (
 create index if not exists idx_order_items_order_id on order_items (order_id);
 
 -- ----------------------------------------------------------------------------
+-- products (Phase 3-B: 상품 카탈로그 — tenant별 완전 격리)
+-- ----------------------------------------------------------------------------
+-- order_items.product_name/unit_price는 이미 F6부터 "주문 당시 스냅샷"으로
+-- 동작한다(생성 시점 값을 복사해 저장, 이후 다시 읽지 않음) — 이 카탈로그는
+-- "지금 이 상품의 현재 가격"을 보여주는 참조용일 뿐이고, order_items.product_id는
+-- 이 주문이 카탈로그의 어떤 상품에서 시작됐는지 추적하는 nullable FK다.
+create table if not exists products (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  unit_price numeric(12, 2) not null default 0,
+  is_active boolean not null default true,
+  owner_username text not null,
+  tenant_id uuid not null references tenants (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_products_owner_username on products (owner_username);
+create index if not exists idx_products_tenant_id on products (tenant_id);
+create index if not exists idx_products_active on products (owner_username, is_active);
+
+create trigger trg_products_updated_at
+  before update on products
+  for each row execute function set_updated_at();
+
+alter table order_items add column if not exists product_id uuid references products (id) on delete set null;
+create index if not exists idx_order_items_product_id on order_items (product_id);
+
+-- ----------------------------------------------------------------------------
 -- duplicate_candidates (same-person detection queue; never auto-merged)
 -- ----------------------------------------------------------------------------
 create table if not exists duplicate_candidates (
@@ -830,6 +859,9 @@ alter table customer_change_logs enable row level security;
 alter table app_accounts enable row level security;
 alter table drivers enable row level security;
 alter table settlements enable row level security;
+alter table products enable row level security;
+-- Phase 1에서 driver_regions에 RLS 활성화가 누락됐던 것을 함께 바로잡는다.
+alter table driver_regions enable row level security;
 
 -- ----------------------------------------------------------------------------
 -- Sprint 8: tenant_isolation policies — FUTURE-READY ONLY, not the current

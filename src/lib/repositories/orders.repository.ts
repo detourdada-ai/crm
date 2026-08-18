@@ -119,6 +119,7 @@ export interface OrderItemInsert {
   order_id: string;
   product_order_number?: string | null;
   product_code?: string | null;
+  product_id?: string | null;
   product_name: string;
   option_name?: string | null;
   quantity: number;
@@ -524,7 +525,14 @@ export const ordersRepository = {
 
   async updateItem(
     itemId: string,
-    input: { product_name: string; option_name?: string | null; quantity: number; unit_price: number; amount: number }
+    input: {
+      product_id?: string | null;
+      product_name: string;
+      option_name?: string | null;
+      quantity: number;
+      unit_price: number;
+      amount: number;
+    }
   ): Promise<OrderItem> {
     const { data, error } = await getSupabaseAdmin().from("order_items").update(input).eq("id", itemId).select("*").single();
     if (error) throw error;
