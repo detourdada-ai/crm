@@ -17,16 +17,20 @@ import type { Customer } from "@/types/domain";
 export function OrderCustomerPicker({
   onCustomerChange,
   onNameChange,
+  onPhoneChange,
 }: {
   onCustomerChange?: (customer: Customer | null) => void;
   /** F-P3A: "신규 고객 등록" 탭에서 고객명을 직접 타이핑할 때마다 실시간으로 호출 — 수령인 자동동기화용. */
   onNameChange?: (name: string) => void;
+  /** F-P3보완: "신규 고객 등록" 탭에서 연락처를 직접 타이핑할 때마다 실시간으로 호출 — 수령인 연락처 자동동기화용. */
+  onPhoneChange?: (phone: string) => void;
 }) {
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Customer[]>([]);
   const [selected, setSelected] = useState<Customer | null>(null);
   const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function handleSearch(value: string) {
@@ -58,6 +62,11 @@ export function OrderCustomerPicker({
     onNameChange?.(value);
   }
 
+  function handleNewCustomerPhoneChange(value: string) {
+    setNewCustomerPhone(value);
+    onPhoneChange?.(value);
+  }
+
   return (
     <div className="space-y-3 sm:col-span-2">
       <Tabs
@@ -68,6 +77,8 @@ export function OrderCustomerPicker({
           clearSelection();
           setNewCustomerName("");
           onNameChange?.("");
+          setNewCustomerPhone("");
+          onPhoneChange?.("");
         }}
       >
         <TabsList>
@@ -140,7 +151,13 @@ export function OrderCustomerPicker({
           </div>
           <div className="space-y-2">
             <Label htmlFor="newCustomerPhone">연락처</Label>
-            <Input id="newCustomerPhone" name="newCustomerPhone" placeholder="010-0000-0000" />
+            <Input
+              id="newCustomerPhone"
+              name="newCustomerPhone"
+              value={newCustomerPhone}
+              onChange={(e) => handleNewCustomerPhoneChange(e.target.value)}
+              placeholder="010-0000-0000"
+            />
           </div>
         </TabsContent>
       </Tabs>

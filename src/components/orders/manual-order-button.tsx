@@ -52,17 +52,18 @@ export function ManualOrderButton() {
   // 지우지 못해 이전 주문의 고객/주소가 남는 버그가 생길 수 있었다).
   const [formGeneration, setFormGeneration] = useState(0);
 
-  // F-P3A: "고객명과 동일" 체크(기본 켜짐) 상태에서는 고객명이 바뀔 때마다
-  // 수령인 이름도 함께 갱신되고, 필드 자체는 잠긴다. 체크를 해제하면 그
-  // 순간부터는 고객명이 바뀌어도 수령인은 더 이상 따라가지 않고 직접 수정할
-  // 수 있다 — 이 주문만의 독립적인 배송 snapshot이라는 기존 원칙과 동일하다.
+  // F-P3보완(CEO 피드백): "고객 정보와 동일" 체크(기본 꺼짐 — 명시적으로 켜야
+  // 동기화된다) 상태에서는 고객명/연락처가 바뀔 때마다 수령인 이름·연락처가
+  // 함께 갱신되고, 두 필드 모두 잠긴다. 체크를 해제하면 그 순간부터는 고객
+  // 정보가 바뀌어도 수령인 정보는 더 이상 따라가지 않고 각각 직접 수정할 수
+  // 있다 — 이 주문만의 독립적인 배송 snapshot이라는 기존 원칙과 동일하다.
+  // 이름과 연락처는 하나의 체크 상태로 함께 관리한다(P3에서는 연락처만 별도
+  // touched 플래그였는데, CEO가 "한 세트로 움직여야 한다"고 명확히 지적).
   const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [recipientName, setRecipientName] = useState("");
-  const [syncRecipientName, setSyncRecipientName] = useState(true);
-  // 연락처는 기존과 동일하게 "고객 선택 시 채우되, 직접 손대면 더 이상
-  // 덮어쓰지 않는" 방식을 유지한다(이번 작업 범위 밖).
   const [recipientPhone, setRecipientPhone] = useState("");
-  const [phoneTouched, setPhoneTouched] = useState(false);
+  const [syncWithCustomer, setSyncWithCustomer] = useState(false);
 
   // F12: 고객을 선택하면 주소도 함께 채운다 — customerAddressKey를 바꿔
   // AddressSearchInput을 새 기본값으로 remount시킨다(내부 state라 prop만
@@ -103,9 +104,13 @@ export function ManualOrderButton() {
 
   function handleCustomerChange(customer: Customer | null) {
     const name = customer?.name ?? "";
+    const phone = customer?.phone ?? "";
     setCustomerName(name);
-    if (syncRecipientName) setRecipientName(name);
-    if (!phoneTouched) setRecipientPhone(customer?.phone ?? "");
+    setCustomerPhone(phone);
+    if (syncWithCustomer) {
+      setRecipientName(name);
+      setRecipientPhone(phone);
+    }
     setAddressSeed(
       customer
         ? {
@@ -120,24 +125,33 @@ export function ManualOrderButton() {
     setCustomerAddressKey((k) => k + 1);
   }
 
-  /** F-P3A: "신규 고객 등록" 탭에서 고객명을 타이핑할 때마다 실시간으로 반영. */
+  /** F-P3A/보완: "신규 고객 등록" 탭에서 고객명을 타이핑할 때마다 실시간으로 반영. */
   function handleCustomerNameChange(name: string) {
     setCustomerName(name);
-    if (syncRecipientName) setRecipientName(name);
+    if (syncWithCustomer) setRecipientName(name);
+  }
+
+  /** F-P3보완: "신규 고객 등록" 탭에서 연락처를 타이핑할 때마다 실시간으로 반영. */
+  function handleCustomerPhoneChange(phone: string) {
+    setCustomerPhone(phone);
+    if (syncWithCustomer) setRecipientPhone(phone);
   }
 
   function handleSyncToggle(checked: boolean) {
-    setSyncRecipientName(checked);
-    if (checked) setRecipientName(customerName);
+    setSyncWithCustomer(checked);
+    if (checked) {
+      setRecipientName(customerName);
+      setRecipientPhone(customerPhone);
+    }
   }
 
   function resetForNextEntry() {
     setFormGeneration((g) => g + 1);
     setCustomerName("");
+    setCustomerPhone("");
     setRecipientName("");
-    setSyncRecipientName(true);
     setRecipientPhone("");
-    setPhoneTouched(false);
+    setSyncWithCustomer(false);
     setAddressSeed(null);
     setCustomerAddressKey((k) => k + 1);
     setSelectedProductId(CUSTOM_PRODUCT_VALUE);
@@ -221,32 +235,37 @@ export function ManualOrderButton() {
           <form key={formGeneration} onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label className="mb-2 block text-sm font-medium">고객</Label>
-              <OrderCustomerPicker onCustomerChange={handleCustomerChange} onNameChange={handleCustomerNameChange} />
+              <OrderCustomerPicker
+                onCustomerChange={handleCustomerChange}
+                onNameChange={handleCustomerNameChange}
+                onPhoneChange={handleCustomerPhoneChange}
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={syncWithCustomer}
+                  onCheckedChange={(checked) => handleSyncToggle(checked === true)}
+                />
+                고객 정보와 동일
+              </label>
             </div>
 
             <div className="space-y-2 sm:col-span-2 border-t pt-4">
               <Label className="text-sm font-medium">배송 정보</Label>
             </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="recipientName">
-                  수령인 <span className="text-destructive">*</span>
-                </Label>
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Checkbox
-                    checked={syncRecipientName}
-                    onCheckedChange={(checked) => handleSyncToggle(checked === true)}
-                  />
-                  고객명과 동일
-                </label>
-              </div>
+              <Label htmlFor="recipientName">
+                수령인 <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="recipientName"
                 name="recipientName"
                 value={recipientName}
                 onChange={(e) => setRecipientName(e.target.value)}
-                readOnly={syncRecipientName}
-                className={syncRecipientName ? "bg-muted text-muted-foreground" : undefined}
+                readOnly={syncWithCustomer}
+                className={syncWithCustomer ? "bg-muted text-muted-foreground" : undefined}
                 required
               />
             </div>
@@ -258,10 +277,9 @@ export function ManualOrderButton() {
                 id="recipientPhone"
                 name="recipientPhone"
                 value={recipientPhone}
-                onChange={(e) => {
-                  setPhoneTouched(true);
-                  setRecipientPhone(e.target.value);
-                }}
+                onChange={(e) => setRecipientPhone(e.target.value)}
+                readOnly={syncWithCustomer}
+                className={syncWithCustomer ? "bg-muted text-muted-foreground" : undefined}
                 placeholder="010-0000-0000"
                 required
               />
@@ -454,6 +472,9 @@ export function ManualOrderButton() {
             </Collapsible>
 
             <DialogFooter className="sm:col-span-2">
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+                닫기
+              </Button>
               <Button type="submit" disabled={isPending}>
                 {isPending ? "등록하는 중..." : "등록하고 계속 입력"}
               </Button>

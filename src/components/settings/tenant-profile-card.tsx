@@ -6,6 +6,7 @@ import { updateTenantIndustryAction, updateBagManagementAction, type UpdateTenan
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { INDUSTRY_OPTIONS, INDUSTRY_BAG_MANAGEMENT_RECOMMENDATION, type Industry } from "@/lib/constants/industry";
 
 const initialState: UpdateTenantProfileActionState = { ok: false, error: null };
@@ -43,7 +44,7 @@ export function TenantProfileCard({
 
   return (
     <div className="space-y-6">
-      <form action={formAction} className="flex flex-wrap items-end gap-4">
+      <form action={formAction} className="space-y-3">
         <div className="space-y-2">
           <Label htmlFor="industry">업종</Label>
           <Select name="industry" defaultValue={industry ?? undefined}>
@@ -59,9 +60,15 @@ export function TenantProfileCard({
             </SelectContent>
           </Select>
         </div>
-        <Button type="submit" disabled={isPending}>
-          {isPending ? "저장 중..." : "저장"}
-        </Button>
+        {/* F-P3보완: 조회/필터 등 다른 화면에서 이미 쓰는 "입력 그룹 → 구분선 →
+            액션 버튼" 배치와 사이즈(size="sm")를 그대로 맞춘다(delivery-filter-bar.tsx
+            참고) — CEO가 지적한 "SelectBox와 저장 버튼이 안 어울림"이 색상보다는
+            이 둘이 한 줄에 붙어 있던 레이아웃 자체의 문제였다고 판단했다. */}
+        <div className="flex items-center gap-2 border-t pt-3">
+          <Button type="submit" size="sm" disabled={isPending}>
+            {isPending ? "저장 중..." : "저장"}
+          </Button>
+        </div>
       </form>
 
       <div className="space-y-2 border-t pt-4">
@@ -72,15 +79,17 @@ export function TenantProfileCard({
               주문/배송 화면에서 가방번호·회수 여부를 관리합니다. 끄면 관련 항목이 화면에서 숨겨집니다.
             </p>
           </div>
-          <Button
-            type="button"
-            variant={bagManagement ? "default" : "outline"}
-            size="sm"
-            disabled={isBagPending}
-            onClick={() => toggleBagManagement(!bagManagement)}
-          >
-            {bagManagement ? "사용 중" : "사용 안 함"}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className={bagManagement ? "text-sm font-medium text-text-strong" : "text-sm text-muted-foreground"}>
+              {bagManagement ? "ON" : "OFF"}
+            </span>
+            <Switch
+              checked={bagManagement}
+              disabled={isBagPending}
+              onCheckedChange={(next) => toggleBagManagement(next)}
+              aria-label="가방 관리 기능 사용 여부"
+            />
+          </div>
         </div>
         {showMismatchHint ? (
           <p className="text-sm text-muted-foreground">
