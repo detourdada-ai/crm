@@ -56,10 +56,37 @@ interface KakaoAddressSearchResponse {
 const KAKAO_ADDRESS_SEARCH_URL = "https://dapi.kakao.com/v2/local/search/address.json";
 const REQUEST_TIMEOUT_MS = 5000;
 
+// Phase 2: 실패 사유를 구분해 관측 가능하게 하되(작업지시서 17번), 주소
+// 원문이나 API 키 값은 절대 로그에 남기지 않는다(18번) — 사유 카테고리만 남긴다.
+type GeocodeFailureReason =
+  | "no_api_key"
+  | "unauthorized"
+  | "rate_limited"
+  | "no_results"
+  | "kakao_server_error"
+  | "timeout"
+  | "unexpected_error";
+
+let warnedMissingApiKey = false;
+
+function logFailure(reason: GeocodeFailureReason, detail?: string) {
+  if (reason === "no_api_key") {
+    // 키 미설정은 설정 문제이지 매 호출마다의 일시적 오류가 아니므로,
+    // 프로세스당 한 번만 경고해 로그 스팸을 피한다.
+    if (warnedMissingApiKey) return;
+    warnedMissingApiKey = true;
+  }
+  console.warn(`[geocoding] failed: ${reason}${detail ? ` (${detail})` : ""}`);
+}
+
 export async function geocodeAddress(roadAddress: string): Promise<GeocodeFields> {
   const apiKey = process.env.KAKAO_REST_API_KEY;
   const query = roadAddress.trim();
-  if (!apiKey || !query) return { ...FAILED_RESULT };
+  if (!apiKey) {
+    logFailure("no_api_key");
+    return { ...FAILED_RESULT };
+  }
+  if (!query) return { ...FAILED_RESULT };
 
   try {
     const url = `${KAKAO_ADDRESS_SEARCH_URL}?query=${encodeURIComponent(query)}`;
@@ -67,15 +94,27 @@ export async function geocodeAddress(roadAddress: string): Promise<GeocodeFields
       headers: { Authorization: `KakaoAK ${apiKey}` },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    if (!res.ok) return { ...FAILED_RESULT };
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) logFailure("unauthorized", String(res.status));
+      else if (res.status === 429) logFailure("rate_limited");
+      else if (res.status >= 500) logFailure("kakao_server_error", String(res.status));
+      else logFailure("unexpected_error", `http_${res.status}`);
+      return { ...FAILED_RESULT };
+    }
 
     const data = (await res.json()) as KakaoAddressSearchResponse;
     const doc = data.documents?.[0];
-    if (!doc) return { ...FAILED_RESULT };
+    if (!doc) {
+      logFailure("no_results");
+      return { ...FAILED_RESULT };
+    }
 
     const latitude = Number(doc.y);
     const longitude = Number(doc.x);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return { ...FAILED_RESULT };
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      logFailure("unexpected_error", "non_numeric_coordinates");
+      return { ...FAILED_RESULT };
+    }
 
     // 지번(address)에만 법정동코드(b_code)가 실리므로 지역명/코드 모두
     // 우선 여기서 취하고, 없으면 도로명(road_address) 지역명으로 대체한다.
@@ -93,7 +132,8 @@ export async function geocodeAddress(roadAddress: string): Promise<GeocodeFields
       eupmyeondong_code: bCode,
       geocode_status: "success",
     };
-  } catch {
+  } catch (e) {
+    logFailure(e instanceof Error && e.name === "TimeoutError" ? "timeout" : "unexpected_error");
     return { ...FAILED_RESULT };
   }
 }
