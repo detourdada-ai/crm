@@ -1,7 +1,7 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { digitsOnly, formatPhoneNumber } from "@/lib/utils/phone";
-import type { Customer, CustomerStatus } from "@/types/domain";
+import type { Customer, CustomerStatus, GeocodeStatus } from "@/types/domain";
 
 export type CustomerSortField =
   | "customer_code"
@@ -30,6 +30,16 @@ export interface CustomerInsert {
   postal_code?: string | null;
   road_address?: string | null;
   detail_address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  sido?: string | null;
+  sigungu?: string | null;
+  eupmyeondong?: string | null;
+  sido_code?: string | null;
+  sigungu_code?: string | null;
+  eupmyeondong_code?: string | null;
+  geocode_status?: GeocodeStatus;
+  geocoded_at?: string | null;
   memo?: string | null;
   tags?: string[];
   owner_username: string;
@@ -46,6 +56,16 @@ export interface CustomerUpdate {
   postal_code?: string | null;
   road_address?: string | null;
   detail_address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  sido?: string | null;
+  sigungu?: string | null;
+  eupmyeondong?: string | null;
+  sido_code?: string | null;
+  sigungu_code?: string | null;
+  eupmyeondong_code?: string | null;
+  geocode_status?: GeocodeStatus;
+  geocoded_at?: string | null;
   memo?: string | null;
   tags?: string[];
   is_favorite?: boolean;
@@ -67,6 +87,36 @@ export const customersRepository = {
     const { data, error } = await getSupabaseAdmin().from("customers").select("*").in("id", ids);
     if (error) throw error;
     return data ?? [];
+  },
+
+  /**
+   * Phase 1: 기사 담당지역 등록 UI의 시군구/읍면동 자동완성용 — 지역
+   * 마스터 테이블 없이, 이미 지오코딩에 성공한 고객 주소에서 뽑은
+   * distinct 조합을 그대로 후보로 쓴다(작업지시서 8번).
+   */
+  async listDistinctRegions(
+    ownerUsername?: string
+  ): Promise<Array<{ sido: string; sigungu: string | null; eupmyeondong: string | null }>> {
+    let q = getSupabaseAdmin()
+      .from("customers")
+      .select("sido, sigungu, eupmyeondong")
+      .eq("geocode_status", "success")
+      .not("sido", "is", null)
+      .limit(2000);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const seen = new Set<string>();
+    const result: Array<{ sido: string; sigungu: string | null; eupmyeondong: string | null }> = [];
+    for (const row of data ?? []) {
+      if (!row.sido) continue;
+      const key = `${row.sido}|${row.sigungu ?? ""}|${row.eupmyeondong ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({ sido: row.sido, sigungu: row.sigungu, eupmyeondong: row.eupmyeondong });
+    }
+    return result;
   },
 
   async findByPhone(phone: string, ownerUsername?: string): Promise<Customer[]> {

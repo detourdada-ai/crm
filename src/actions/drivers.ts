@@ -2,23 +2,41 @@
 
 import { revalidatePath } from "next/cache";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
+import { driverRegionsRepository } from "@/lib/repositories/driver-regions.repository";
 import { createDriverWithAccount, updateDriver, DriverServiceError } from "@/lib/services/driver.service";
 import { listAccounts } from "@/lib/auth/credentials";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
-import type { Driver } from "@/types/domain";
+import type { Driver, DriverRegion } from "@/types/domain";
 import type { SessionPayload } from "@/lib/auth/session";
 
 export interface DriverWithAccount extends Driver {
   username: string | null;
+  /** Phase 1: 이 기사가 담당하는 지역 목록(계층형, 다중 가능). */
+  regions: DriverRegion[];
 }
 
 /** admin은 전체 계정의 기사를 owner_username별로 모아 보고, 일반 계정은 자신이 등록한 기사만 본다. */
 export async function listDriversAction(): Promise<DriverWithAccount[]> {
   const session = await requireSession();
-  const [drivers, accounts] = await Promise.all([driversRepository.listAll(ownerScopeFor(session)), listAccounts()]);
+  const scope = ownerScopeFor(session);
+  const [drivers, accounts, regions] = await Promise.all([
+    driversRepository.listAll(scope),
+    listAccounts(),
+    driverRegionsRepository.listByOwnerUsername(scope),
+  ]);
   const usernameByDriverId = new Map(accounts.filter((a) => a.driverId).map((a) => [a.driverId, a.username]));
-  return drivers.map((d) => ({ ...d, username: usernameByDriverId.get(d.id) ?? null }));
+  const regionsByDriverId = new Map<string, DriverRegion[]>();
+  for (const r of regions) {
+    const list = regionsByDriverId.get(r.driver_id) ?? [];
+    list.push(r);
+    regionsByDriverId.set(r.driver_id, list);
+  }
+  return drivers.map((d) => ({
+    ...d,
+    username: usernameByDriverId.get(d.id) ?? null,
+    regions: regionsByDriverId.get(d.id) ?? [],
+  }));
 }
 
 export interface DriverActionState {
@@ -27,7 +45,7 @@ export interface DriverActionState {
 }
 
 /** 이 기사를 다루는 세션이 소유자(admin 또는 본인 계정)인지 확인. */
-async function assertOwnsDriver(driverId: string, session: SessionPayload) {
+export async function assertOwnsDriver(driverId: string, session: SessionPayload) {
   const driver = await driversRepository.findById(driverId);
   if (!driver) throw new DriverServiceError("기사를 찾을 수 없습니다.");
   if (session.role !== "admin" && driver.owner_username !== session.username) {

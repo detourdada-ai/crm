@@ -2,7 +2,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { kstDayStartIso, kstDayEndIso } from "@/lib/utils/kst-date";
 import { digitsOnly, formatPhoneNumber } from "@/lib/utils/phone";
-import type { Order, OrderItem, OrderSource, DeliveryStatus } from "@/types/domain";
+import type { Order, OrderItem, OrderSource, DeliveryStatus, GeocodeStatus } from "@/types/domain";
 
 export interface OrderInsert {
   id?: string; // client-generated (crypto.randomUUID()) for batch import — lets order_items reference the order before the actual insert round-trip
@@ -18,6 +18,16 @@ export interface OrderInsert {
   road_address_snapshot?: string | null;
   detail_address_snapshot?: string | null;
   zipcode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  sido?: string | null;
+  sigungu?: string | null;
+  eupmyeondong?: string | null;
+  sido_code?: string | null;
+  sigungu_code?: string | null;
+  eupmyeondong_code?: string | null;
+  geocode_status?: GeocodeStatus;
+  geocoded_at?: string | null;
   delivery_memo?: string | null;
   order_memo?: string | null;
   internal_memo?: string | null;
@@ -54,6 +64,16 @@ export interface OrderUpdate {
   road_address_snapshot?: string | null;
   detail_address_snapshot?: string | null;
   zipcode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  sido?: string | null;
+  sigungu?: string | null;
+  eupmyeondong?: string | null;
+  sido_code?: string | null;
+  sigungu_code?: string | null;
+  eupmyeondong_code?: string | null;
+  geocode_status?: GeocodeStatus;
+  geocoded_at?: string | null;
   delivery_memo?: string | null;
   order_memo?: string | null;
   internal_memo?: string | null;

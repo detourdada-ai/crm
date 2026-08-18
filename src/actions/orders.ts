@@ -6,6 +6,7 @@ import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { customersRepository } from "@/lib/repositories/customers.repository";
 import { createCustomerDirect } from "@/lib/services/customer.service";
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
+import { geocodeAddress } from "@/lib/services/geocoding.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { toActionError } from "@/lib/utils/action-error";
 import { isUuid } from "@/lib/utils/id";
@@ -284,6 +285,10 @@ export async function createManualOrderAction(
 
     const [internalOrderNumber] = await allocateOrderNumbers(tenantId, [orderDate]);
 
+    // Phase 1: 이 주문 생성 시점의 배송지를 독립적으로 지오코딩한다 — 고객
+    // 프로필의 좌표와는 별개의 스냅샷이며, 실패해도 주문 저장은 계속된다.
+    const geo = await geocodeAddress(roadAddress);
+
     // 스마트스토어 주문만 order_number가 필수 — 수동 주문은 없어도 된다 (null).
     const [order] = await ordersRepository.createMany([
       {
@@ -299,6 +304,8 @@ export async function createManualOrderAction(
         road_address_snapshot: roadAddress,
         detail_address_snapshot: detailAddress,
         zipcode: postalCode,
+        ...geo,
+        geocoded_at: new Date().toISOString(),
         delivery_memo: deliveryMemo,
         order_memo: orderMemo,
         internal_memo: internalMemo,
@@ -392,6 +399,25 @@ export async function updateManualOrderAction(
   const deliveryDate = deliveryDateRaw ? new Date(deliveryDateRaw).toISOString() : null;
   const amount = quantity * unitPrice;
 
+  // Phase 1: 배송지 주소 텍스트가 실제로 바뀐 경우에만 재지오코딩한다 — 그
+  // 외 필드만 고치는 흔한 수정에서 불필요한 API 호출/지연을 피하기 위해서다.
+  const addressChanged =
+    roadAddress !== order.road_address_snapshot || detailAddress !== order.detail_address_snapshot;
+  const geo = addressChanged
+    ? { ...(await geocodeAddress(roadAddress)), geocoded_at: new Date().toISOString() }
+    : {
+        latitude: order.latitude,
+        longitude: order.longitude,
+        sido: order.sido,
+        sigungu: order.sigungu,
+        eupmyeondong: order.eupmyeondong,
+        sido_code: order.sido_code,
+        sigungu_code: order.sigungu_code,
+        eupmyeondong_code: order.eupmyeondong_code,
+        geocode_status: order.geocode_status,
+        geocoded_at: order.geocoded_at,
+      };
+
   try {
     await ordersRepository.update(orderId, {
       recipient_name: recipientName,
@@ -400,6 +426,7 @@ export async function updateManualOrderAction(
       road_address_snapshot: roadAddress,
       detail_address_snapshot: detailAddress,
       zipcode: postalCode,
+      ...geo,
       delivery_memo: deliveryMemo,
       order_memo: orderMemo,
       internal_memo: internalMemo,

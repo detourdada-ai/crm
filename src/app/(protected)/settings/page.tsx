@@ -15,6 +15,7 @@ import { RecruitApplicationsTable } from "@/components/settings/recruit-applicat
 import { InquiryAdminList } from "@/components/settings/inquiry-admin-list";
 import { PageHeader } from "@/components/common/page-header";
 import { listDriversAction } from "@/actions/drivers";
+import { listKnownRegionsAction } from "@/actions/driver-regions";
 import { listBetaRecruitApplicationsAction } from "@/actions/beta-recruit";
 import { listInquiriesAction } from "@/actions/inquiries";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
@@ -34,7 +35,11 @@ const ACCESS_LABELS: Record<EffectiveAccessStatus, string> = {
 export default async function SettingsPage() {
   const session = await requireSession();
   const isAdmin = session.role === "admin";
-  const [accounts, drivers] = await Promise.all([listAccounts(), listDriversAction()]);
+  const [accounts, drivers, knownRegions] = await Promise.all([
+    listAccounts(),
+    listDriversAction(),
+    listKnownRegionsAction(),
+  ]);
   const [recruitApplications, inquiries] = isAdmin
     ? await Promise.all([listBetaRecruitApplicationsAction(), listInquiriesAction()])
     : [[], []];
@@ -77,7 +82,7 @@ export default async function SettingsPage() {
             <CardDescription>내가 등록한 배송 기사와 로그인 계정을 관리합니다. 건당 배송비는 정산관리에 사용됩니다.</CardDescription>
           </CardHeader>
           <CardContent>
-            <DriverManagementCard drivers={drivers} isAdmin={false} accountUsernames={[]} />
+            <DriverManagementCard drivers={drivers} isAdmin={false} accountUsernames={[]} knownRegions={knownRegions} />
           </CardContent>
         </Card>
 
@@ -266,7 +271,7 @@ export default async function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <DriverManagementCard drivers={drivers} isAdmin accountUsernames={accountUsernames} />
+          <DriverManagementCard drivers={drivers} isAdmin accountUsernames={accountUsernames} knownRegions={knownRegions} />
         </CardContent>
       </Card>
 

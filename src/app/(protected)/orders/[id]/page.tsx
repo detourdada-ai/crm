@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getOrderDetailAction } from "@/actions/orders";
 import { listDriversAction } from "@/actions/drivers";
+import { listCandidateDriversAction } from "@/actions/driver-regions";
 import { OrderItemRawData } from "@/components/orders/order-item-raw-data";
 import { OrderBagManagement } from "@/components/orders/order-bag-management";
 import { requireSession } from "@/lib/auth/current-session";
@@ -32,14 +33,16 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireSession();
-  const [detail, drivers, features] = await Promise.all([
+  const [detail, drivers, features, candidateDrivers] = await Promise.all([
     getOrderDetailAction(id),
     listDriversAction(),
     getTenantFeaturesForSession(session),
+    listCandidateDriversAction(id),
   ]);
   if (!detail) notFound();
 
   const { order, items, driverName } = detail;
+  const regionLabel = [order.sido, order.sigungu, order.eupmyeondong].filter(Boolean).join(" ");
 
   return (
     <div className="space-y-6">
@@ -82,6 +85,19 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <Field label="수령인 연락처" value={order.phone_snapshot} />
             <Field label="배송지" value={order.address_snapshot} />
             <Field label="우편번호" value={order.zipcode} />
+            <div className="flex items-center justify-between gap-3 border-b py-1.5 text-sm last:border-0">
+              <span className="text-muted-foreground">행정구역</span>
+              <span className="flex items-center gap-1.5 text-right">
+                {regionLabel ? <span className="font-medium">{regionLabel}</span> : null}
+                <Badge variant={order.geocode_status === "success" ? "outline" : "secondary"}>
+                  {order.geocode_status === "success"
+                    ? "좌표 확인됨"
+                    : order.geocode_status === "failed"
+                      ? "좌표 확인 실패"
+                      : "좌표 확인 대기"}
+                </Badge>
+              </span>
+            </div>
             <Field label="배송 요청사항" value={order.delivery_memo} />
             <Field label="주문 메모" value={order.order_memo} />
             <Field label="내부 메모" value={order.internal_memo} />
@@ -120,6 +136,19 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 drivers={drivers}
               />
             </div>
+            {candidateDrivers.length > 0 ? (
+              <div className="flex items-start justify-between gap-3 border-b py-1.5 text-sm last:border-0">
+                <span className="shrink-0 text-muted-foreground">담당 기사 후보</span>
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  {candidateDrivers.map((c) => (
+                    <Badge key={c.driverId} variant="outline" title={`담당지역: ${c.regionLabel}`}>
+                      {c.driverName}
+                      {c.driverStatus === "inactive" ? " (비활성)" : ""}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <Field label="판매채널" value={order.sales_channel} />
             <Field label="택배사" value={order.courier} />
             <Field label="송장번호" value={order.tracking_number} />

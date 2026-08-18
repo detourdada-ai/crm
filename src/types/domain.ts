@@ -74,6 +74,9 @@ export type DuplicateStatus = "pending" | "merged" | "rejected" | "held";
 
 export type CustomerStatus = "active" | "dormant" | "watchlist" | "blocked" | "merged";
 
+// Phase 1: 지오코딩 결과 상태. "failed"여도 원본 주소 저장/주문 생성은 항상 성공한다 — 이 값은 관리자가 미처리 건을 확인하기 위한 플래그일 뿐이다.
+export type GeocodeStatus = "pending" | "success" | "failed";
+
 export interface Customer {
   id: UUID;
   customer_code: string; // e.g. C000001, immutable, the true identity key
@@ -84,6 +87,17 @@ export interface Customer {
   postal_code: string | null;
   road_address: string | null;
   detail_address: string | null;
+  // Phase 1: 좌표/행정구역 — 지역 코드는 카카오 로컬 API 법정동코드(b_code)에서 파생.
+  latitude: number | null;
+  longitude: number | null;
+  sido: string | null;
+  sigungu: string | null;
+  eupmyeondong: string | null;
+  sido_code: string | null;
+  sigungu_code: string | null;
+  eupmyeondong_code: string | null;
+  geocode_status: GeocodeStatus;
+  geocoded_at: ISODateString | null;
   memo: string | null;
   tags: string[];
   owner_username: string; // account that owns/manages this customer; "admin" sees all
@@ -125,6 +139,18 @@ export interface Order {
   road_address_snapshot: string | null;
   detail_address_snapshot: string | null;
   zipcode: string | null; // = postal_code
+  // Phase 1: 이 주문 생성 시점 배송지의 좌표/행정구역 — customers의 값과
+  // 독립적이며, 고객 프로필이 바뀌어도 절대 갱신되지 않는다(snapshot).
+  latitude: number | null;
+  longitude: number | null;
+  sido: string | null;
+  sigungu: string | null;
+  eupmyeondong: string | null;
+  sido_code: string | null;
+  sigungu_code: string | null;
+  eupmyeondong_code: string | null;
+  geocode_status: GeocodeStatus;
+  geocoded_at: ISODateString | null;
   delivery_memo: string | null;
   order_memo: string | null;
   internal_memo: string | null;
@@ -164,6 +190,19 @@ export interface Driver {
   tenant_id: UUID;
   created_at: ISODateString;
   updated_at: ISODateString;
+}
+
+// Phase 1: 기사 담당지역 — sigungu/eupmyeondong이 null이면 그 상위 단계
+// 전체를 담당한다는 뜻이다(예: sigungu=null → 시/도 전체).
+export interface DriverRegion {
+  id: UUID;
+  driver_id: UUID;
+  sido: string;
+  sigungu: string | null;
+  eupmyeondong: string | null;
+  owner_username: string;
+  tenant_id: UUID;
+  created_at: ISODateString;
 }
 
 export type SettlementStatus = "unpaid" | "paid";

@@ -9,6 +9,7 @@ import type {
   OrderSource,
   DeliveryStatus,
   DriverStatus,
+  GeocodeStatus,
   SettlementStatus,
   PlanCode,
   TenantStatus,
@@ -68,6 +69,16 @@ export interface Database {
           postal_code: string | null;
           road_address: string | null;
           detail_address: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          sido: string | null;
+          sigungu: string | null;
+          eupmyeondong: string | null;
+          sido_code: string | null;
+          sigungu_code: string | null;
+          eupmyeondong_code: string | null;
+          geocode_status: GeocodeStatus;
+          geocoded_at: string | null;
           memo: string | null;
           tags: string[];
           owner_username: string;
@@ -144,6 +155,16 @@ export interface Database {
           postal_code: string | null;
           road_address: string | null;
           detail_address: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          sido: string | null;
+          sigungu: string | null;
+          eupmyeondong: string | null;
+          sido_code: string | null;
+          sigungu_code: string | null;
+          eupmyeondong_code: string | null;
+          geocode_status: GeocodeStatus;
+          geocoded_at: string | null;
           memo: string | null;
           tags: string[];
           owner_username: string;
@@ -166,6 +187,16 @@ export interface Database {
           postal_code?: string | null;
           road_address?: string | null;
           detail_address?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          sido?: string | null;
+          sigungu?: string | null;
+          eupmyeondong?: string | null;
+          sido_code?: string | null;
+          sigungu_code?: string | null;
+          eupmyeondong_code?: string | null;
+          geocode_status?: GeocodeStatus;
+          geocoded_at?: string | null;
           memo?: string | null;
           tags?: string[];
           owner_username?: string;
@@ -196,6 +227,16 @@ export interface Database {
           road_address_snapshot: string | null;
           detail_address_snapshot: string | null;
           zipcode: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          sido: string | null;
+          sigungu: string | null;
+          eupmyeondong: string | null;
+          sido_code: string | null;
+          sigungu_code: string | null;
+          eupmyeondong_code: string | null;
+          geocode_status: GeocodeStatus;
+          geocoded_at: string | null;
           delivery_memo: string | null;
           order_memo: string | null;
           internal_memo: string | null;
@@ -234,6 +275,16 @@ export interface Database {
           road_address_snapshot?: string | null;
           detail_address_snapshot?: string | null;
           zipcode?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          sido?: string | null;
+          sigungu?: string | null;
+          eupmyeondong?: string | null;
+          sido_code?: string | null;
+          sigungu_code?: string | null;
+          eupmyeondong_code?: string | null;
+          geocode_status?: GeocodeStatus;
+          geocoded_at?: string | null;
           delivery_memo?: string | null;
           order_memo?: string | null;
           internal_memo?: string | null;
@@ -289,6 +340,30 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["drivers"]["Insert"]>;
+        Relationships: [];
+      };
+      driver_regions: {
+        Row: {
+          id: string;
+          driver_id: string;
+          sido: string;
+          sigungu: string | null;
+          eupmyeondong: string | null;
+          owner_username: string;
+          tenant_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          driver_id: string;
+          sido: string;
+          sigungu?: string | null;
+          eupmyeondong?: string | null;
+          owner_username: string;
+          tenant_id: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["driver_regions"]["Insert"]>;
         Relationships: [];
       };
       settlements: {

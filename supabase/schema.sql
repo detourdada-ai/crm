@@ -99,6 +99,18 @@ create table if not exists customers (
   postal_code text,
   road_address text,
   detail_address text,
+  -- Phase 1: 주소 좌표화/행정구역. 지역 코드는 카카오 로컬 API의 법정동코드
+  -- (b_code)에서 파생 — 앞 2자리=시도, 앞 5자리=시군구, 10자리 전체=읍면동.
+  latitude double precision,
+  longitude double precision,
+  sido text,
+  sigungu text,
+  eupmyeondong text,
+  sido_code text,
+  sigungu_code text,
+  eupmyeondong_code text,
+  geocode_status text not null default 'pending' check (geocode_status in ('pending', 'success', 'failed')),
+  geocoded_at timestamptz,
   memo text,
   tags text[] not null default '{}',
   owner_username text not null default 'admin',
@@ -120,6 +132,8 @@ create index if not exists idx_customers_customer_code on customers (customer_co
 create index if not exists idx_customers_owner_username on customers (owner_username);
 create index if not exists idx_customers_tenant_id on customers (tenant_id);
 create index if not exists customers_is_favorite_idx on customers (is_favorite) where is_favorite = true;
+create index if not exists idx_customers_region on customers (sido, sigungu, eupmyeondong);
+create index if not exists idx_customers_geocode_status on customers (geocode_status) where geocode_status <> 'success';
 
 create or replace function assign_customer_code()
 returns trigger as $$
@@ -199,6 +213,28 @@ create trigger trg_drivers_updated_at
   for each row execute function set_updated_at();
 
 -- ----------------------------------------------------------------------------
+-- driver_regions (Phase 1: 기사 담당지역 — 계층형, 기사 1명당 다중 지역 가능)
+-- ----------------------------------------------------------------------------
+-- sigungu/eupmyeondong이 null이면 그 상위 단계 전체를 담당한다는 뜻이다.
+create table if not exists driver_regions (
+  id uuid primary key default gen_random_uuid(),
+  driver_id uuid not null references drivers (id) on delete cascade,
+  sido text not null,
+  sigungu text,
+  eupmyeondong text,
+  owner_username text not null,
+  tenant_id uuid not null references tenants (id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_driver_regions_driver_id on driver_regions (driver_id);
+create index if not exists idx_driver_regions_lookup on driver_regions (sido, sigungu, eupmyeondong);
+create index if not exists idx_driver_regions_owner_username on driver_regions (owner_username);
+create index if not exists idx_driver_regions_tenant_id on driver_regions (tenant_id);
+create unique index if not exists idx_driver_regions_unique
+  on driver_regions (driver_id, sido, coalesce(sigungu, ''), coalesce(eupmyeondong, ''));
+
+-- ----------------------------------------------------------------------------
 -- orders
 -- ----------------------------------------------------------------------------
 create table if not exists orders (
@@ -224,6 +260,19 @@ create table if not exists orders (
   road_address_snapshot text,
   detail_address_snapshot text,
   zipcode text,
+  -- Phase 1: 이 주문이 생성될 당시 배송지의 좌표/행정구역. 고객 프로필의
+  -- customers.latitude 등과는 완전히 독립적 — 고객 주소를 나중에 바꿔도
+  -- 이 값은 절대 갱신되지 않는다(road_address_snapshot과 동일한 원칙).
+  latitude double precision,
+  longitude double precision,
+  sido text,
+  sigungu text,
+  eupmyeondong text,
+  sido_code text,
+  sigungu_code text,
+  eupmyeondong_code text,
+  geocode_status text not null default 'pending' check (geocode_status in ('pending', 'success', 'failed')),
+  geocoded_at timestamptz,
   delivery_memo text,
   -- F6: 배송 요청사항(delivery_memo)과는 별개로 주문 자체에 대한 메모(고객
   -- 응대용)와 내부 전용 메모(직원만 보는 메모)를 분리해서 둔다.
@@ -276,6 +325,8 @@ create index if not exists idx_orders_driver_id on orders (driver_id);
 create index if not exists idx_orders_delivery_status on orders (delivery_status);
 create index if not exists idx_orders_delivery_area on orders (delivery_area);
 create index if not exists idx_orders_internal_order_number on orders (internal_order_number);
+create index if not exists idx_orders_region on orders (sido, sigungu, eupmyeondong);
+create index if not exists idx_orders_geocode_status on orders (geocode_status) where geocode_status <> 'success';
 
 -- ----------------------------------------------------------------------------
 -- order_number_counters + next_order_seq_batch: Phase 5 원자적 채번 —

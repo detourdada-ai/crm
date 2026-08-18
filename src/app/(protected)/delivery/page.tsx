@@ -10,6 +10,7 @@ import { Truck } from "lucide-react";
 import Link from "next/link";
 import { getDeliveryBoardAction } from "@/actions/delivery";
 import { listDriversAction } from "@/actions/drivers";
+import { listKnownRegionsAction } from "@/actions/driver-regions";
 import { requireSession } from "@/lib/auth/current-session";
 import { getTenantFeaturesForSession } from "@/lib/tenant/features";
 import { listAccounts } from "@/lib/auth/credentials";
@@ -54,11 +55,12 @@ export default async function DeliveryPage({
   const activeFilter: DeliveryFilter = isDeliveryFilter(params.filter) ? params.filter : "all";
 
   const session = await requireSession();
-  const [features, boardResult, allDrivers, accounts] = await Promise.all([
+  const [features, boardResult, allDrivers, accounts, knownRegions] = await Promise.all([
     getTenantFeaturesForSession(session),
     getDeliveryBoardAction(range?.start ?? null, range?.end),
     listDriversAction(),
     listAccounts(),
+    listKnownRegionsAction(),
   ]);
   const { orders: fetchedOrders, drivers, itemSummaries } = boardResult;
   const isAdmin = session.role === "admin";
@@ -118,7 +120,14 @@ export default async function DeliveryPage({
       <PageHeader
         title="배송관리"
         description="오늘 배송할 주문을 확인하고 배정 및 배송 상태를 관리하세요."
-        action={<DriverManagementDialog drivers={allDrivers} isAdmin={isAdmin} accountUsernames={accountUsernames} />}
+        action={
+          <DriverManagementDialog
+            drivers={allDrivers}
+            isAdmin={isAdmin}
+            accountUsernames={accountUsernames}
+            knownRegions={knownRegions}
+          />
+        }
       />
 
       <DeliveryStatusFlow counts={flowCounts} active={activeFilter} buildHref={buildFilterHref} />

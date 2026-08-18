@@ -4,6 +4,7 @@ import { changeLogRepository, type ChangeLogInsert } from "@/lib/repositories/ch
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress, normalizeAddressForCompare } from "@/lib/utils/address";
+import { geocodeAddress } from "@/lib/services/geocoding.service";
 import type { Customer, CustomerStatus } from "@/types/domain";
 import { CUSTOMER_STATUS_LABELS } from "@/lib/constants/customer-status";
 
@@ -96,6 +97,9 @@ export async function createCustomerDirect(input: CreateCustomerDirectInput): Pr
   const tenant = await tenantsRepository.findByUsername(input.ownerUsername);
   if (!tenant) throw new Error(`No tenant membership found for account "${input.ownerUsername}".`);
 
+  // Phase 1: 이 고객의 "현재 프로필" 좌표 — 주문 스냅샷과는 독립적으로 계산.
+  const geo = roadAddress ? await geocodeAddress(roadAddress) : null;
+
   return customersRepository.create({
     name,
     phone,
@@ -104,6 +108,7 @@ export async function createCustomerDirect(input: CreateCustomerDirectInput): Pr
     postal_code: input.postalCode?.trim() || null,
     road_address: roadAddress,
     detail_address: detailAddress,
+    ...(geo ? { ...geo, geocoded_at: new Date().toISOString() } : {}),
     owner_username: input.ownerUsername,
     tenant_id: tenant.id,
   });
@@ -221,6 +226,11 @@ export async function updateCustomerProfile(
     });
   }
 
+  // Phase 1: 도로명 주소가 실제로 바뀐 경우에만 재지오코딩한다 — 이 프로필의
+  // 좌표만 갱신되며, 이미 생성된 주문들의 스냅샷 좌표는 절대 건드리지 않는다.
+  const addressChanged = existing.road_address !== roadAddress;
+  const geo = addressChanged && roadAddress ? await geocodeAddress(roadAddress) : null;
+
   const updated = await customersRepository.update(
     id,
     {
@@ -231,6 +241,7 @@ export async function updateCustomerProfile(
       postal_code: postalCode,
       road_address: roadAddress,
       detail_address: detailAddress,
+      ...(geo ? { ...geo, geocoded_at: new Date().toISOString() } : {}),
       bag_no: input.bagNo,
       memo,
       tags,
