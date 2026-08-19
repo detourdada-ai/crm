@@ -1,5 +1,6 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { normalizeSido } from "@/lib/constants/region";
 import type { DriverRegion } from "@/types/domain";
 
 export interface DriverRegionInsert {
@@ -63,8 +64,9 @@ export const driverRegionsRepository = {
     sigungu: string | null;
     eupmyeondong: string | null;
   }): Promise<DriverRegionCandidate[]> {
-    if (!params.sido) return [];
-    let q = getSupabaseAdmin().from("driver_regions").select("*").eq("sido", params.sido);
+    const sido = normalizeSido(params.sido);
+    if (!sido) return [];
+    let q = getSupabaseAdmin().from("driver_regions").select("*").eq("sido", sido);
     if (params.ownerUsername) q = q.eq("owner_username", params.ownerUsername);
     const { data, error } = await q;
     if (error) throw error;
@@ -93,7 +95,8 @@ export const driverRegionsRepository = {
   async findCandidateDriverIdsForRegions(
     regions: { ownerUsername: string; sido: string | null; sigungu: string | null; eupmyeondong: string | null }[]
   ): Promise<string[]> {
-    const sidoList = Array.from(new Set(regions.map((r) => r.sido).filter((s): s is string => !!s)));
+    const normalizedRegions = regions.map((r) => ({ ...r, sido: normalizeSido(r.sido) }));
+    const sidoList = Array.from(new Set(normalizedRegions.map((r) => r.sido).filter((s): s is string => !!s)));
     if (sidoList.length === 0) return [];
 
     const { data, error } = await getSupabaseAdmin().from("driver_regions").select("*").in("sido", sidoList);
@@ -101,7 +104,7 @@ export const driverRegionsRepository = {
     const rows = (data ?? []) as DriverRegion[];
 
     const matches = new Set<string>();
-    for (const region of regions) {
+    for (const region of normalizedRegions) {
       if (!region.sido) continue;
       for (const r of rows) {
         if (r.owner_username !== region.ownerUsername) continue;

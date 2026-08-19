@@ -580,7 +580,7 @@ export function DeliveryBoard({
 function ItemSummaryBlock({ summary }: { summary: OrderItemSummary | undefined }) {
   if (!summary) return <span className="text-sm text-muted-foreground">-</span>;
   return (
-    <div className="w-56 max-w-56 space-y-0.5 text-sm">
+    <div className="w-full space-y-0.5 text-sm md:w-56 md:max-w-56">
       <p className="line-clamp-1 break-words text-text-strong" title={summary.productSummary}>
         {summary.productSummary}
       </p>
@@ -609,7 +609,7 @@ function DeliveryAddressBlock({ order }: { order: Order }) {
   }
 
   return (
-    <div className="w-80 max-w-80 space-y-1.5 text-sm">
+    <div className="w-full space-y-1.5 text-sm md:w-80 md:max-w-80">
       <div className="space-y-0.5 whitespace-normal" title={fullText || undefined}>
         {regionSummary ? <p className="text-xs font-medium text-muted-foreground">{regionSummary}</p> : null}
         <p className="line-clamp-2 break-words text-text-strong">{road ?? "-"}</p>

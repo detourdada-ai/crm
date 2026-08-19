@@ -1,9 +1,6 @@
 import Link from "next/link";
-import { Menu } from "lucide-react";
 import { getSession } from "@/lib/auth/current-session";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { NavLinks } from "./nav-links";
+import { MobileHeaderSheet } from "./mobile-header-sheet";
 import { OrdifyLogo } from "@/components/brand/ordify-logo";
 import { HeaderClock } from "./header-clock";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
@@ -16,29 +13,12 @@ export async function Header() {
 
   return (
     <header className="flex h-16 items-center gap-3 border-b bg-background px-4 md:px-6">
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="md:hidden">
-            <Menu className="size-5" />
-            <span className="sr-only">메뉴 열기</span>
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="flex w-60 flex-col p-0">
-          <SheetTitle className="flex h-16 items-center border-b px-4">
-            <Link href="/">
-              <OrdifyLogo variant="full" />
-            </Link>
-          </SheetTitle>
-          <div className="flex flex-1 flex-col overflow-y-auto p-3">
-            <NavLinks
-              isDriver={isDriver}
-              isAdmin={isAdmin}
-              username={session?.username}
-              roleLabel={session ? ROLE_LABELS[session.role] : undefined}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
+      <MobileHeaderSheet
+        isDriver={isDriver}
+        isAdmin={isAdmin}
+        username={session?.username}
+        roleLabel={session ? ROLE_LABELS[session.role] : undefined}
+      />
 
       <Link href="/" className="md:hidden">
         <OrdifyLogo variant="mark" />

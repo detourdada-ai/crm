@@ -1,4 +1,5 @@
 import "server-only";
+import { normalizeSido } from "@/lib/constants/region";
 
 /**
  * Phase 1: 서버 전용 카카오 로컬 API(주소 검색) 클라이언트. 이 함수는 절대
@@ -124,7 +125,7 @@ export async function geocodeAddress(roadAddress: string): Promise<GeocodeFields
     return {
       latitude,
       longitude,
-      sido: region?.region_1depth_name ?? null,
+      sido: normalizeSido(region?.region_1depth_name ?? null),
       sigungu: region?.region_2depth_name || null,
       eupmyeondong: region?.region_3depth_name || null,
       sido_code: bCode ? bCode.slice(0, 2) : null,

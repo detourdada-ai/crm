@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { Menu, ArrowRight } from "lucide-react";
+import { Menu, ArrowRight, LogOut } from "lucide-react";
 import { OrdifyLogo } from "@/components/brand/ordify-logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { logoutAction } from "@/actions/auth";
 import type { SessionPayload } from "@/lib/auth/session";
 
 const NAV_LINKS = [
@@ -27,9 +28,13 @@ export function SiteHeader({ session }: { session: SessionPayload | null }) {
         <div className="ml-auto hidden items-center gap-3 md:flex">
           {session ? (
             <>
-              <span className="text-sm text-muted-foreground">
-                {session.username} <span className="text-muted-foreground/60">· 로그인됨</span>
-              </span>
+              <span className="text-sm font-medium text-foreground">{session.username}</span>
+              <form action={logoutAction}>
+                <Button type="submit" variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+                  <LogOut className="size-4" />
+                  로그아웃
+                </Button>
+              </form>
               <Button asChild size="sm" className="gap-1.5">
                 <Link href="/dashboard">
                   서비스 가기
@@ -72,15 +77,19 @@ export function SiteHeader({ session }: { session: SessionPayload | null }) {
             <div className="mt-auto flex flex-col gap-2 border-t border-border p-3">
               {session ? (
                 <>
-                  <p className="px-1 text-sm text-muted-foreground">
-                    {session.username} <span className="text-muted-foreground/60">· 로그인됨</span>
-                  </p>
+                  <p className="px-1 text-sm font-medium text-foreground">{session.username}</p>
                   <Button asChild className="gap-1.5">
                     <Link href="/dashboard">
                       서비스 가기
                       <ArrowRight className="size-4" />
                     </Link>
                   </Button>
+                  <form action={logoutAction}>
+                    <Button type="submit" variant="outline" className="w-full gap-1.5">
+                      <LogOut className="size-4" />
+                      로그아웃
+                    </Button>
+                  </form>
                 </>
               ) : (
                 <>
