@@ -606,7 +606,7 @@ export interface DeleteImportResult {
  * were matched/reused from an existing pool are always left untouched since
  * created_by_import_id is only set on brand-new customers.
  */
-export async function deleteImport(importId: string): Promise<DeleteImportResult> {
+export async function deleteImport(importId: string, ownerUsername?: string): Promise<DeleteImportResult> {
   const orders = await ordersRepository.findByImportId(importId);
   await ordersRepository.deleteMany(orders.map((o) => o.id));
 
@@ -616,14 +616,14 @@ export async function deleteImport(importId: string): Promise<DeleteImportResult
     const stats = await ordersRepository.aggregateStatsByCustomer(customer.id);
     if (stats.totalOrders > 0) continue;
     try {
-      await customersRepository.delete(customer.id);
+      await customersRepository.delete(customer.id, ownerUsername);
       deletedCustomers += 1;
     } catch {
       // Referenced elsewhere (e.g. kept side of a merge) — leave it in place.
     }
   }
 
-  await importsRepository.delete(importId);
+  await importsRepository.delete(importId, ownerUsername);
 
   return { deletedOrders: orders.length, deletedCustomers };
 }
@@ -647,7 +647,7 @@ export async function deleteAllImports(ownerUsername: string): Promise<DeleteAll
   let deletedOrders = 0;
   let deletedCustomers = 0;
   for (const id of ids) {
-    const result = await deleteImport(id);
+    const result = await deleteImport(id, ownerUsername);
     deletedOrders += result.deletedOrders;
     deletedCustomers += result.deletedCustomers;
   }

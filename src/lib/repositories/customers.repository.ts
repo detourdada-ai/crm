@@ -232,9 +232,13 @@ export const customersRepository = {
     return data;
   },
 
-  async delete(id: string): Promise<void> {
-    const { error } = await getSupabaseAdmin().from("customers").delete().eq("id", id);
+  /** P10-3: F15-1 패턴과 동일하게 repository 레벨에도 소유권 필터를 건다 — action 레벨 사전 체크에만 의존하지 않는 이중 검증. */
+  async delete(id: string, ownerUsername?: string): Promise<void> {
+    let q = getSupabaseAdmin().from("customers").delete().eq("id", id);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("id");
     if (error) throw error;
+    if (!data || data.length === 0) throw new Error("고객을 찾을 수 없거나 권한이 없습니다.");
   },
 
   async findByCreatedByImportId(importId: string): Promise<Customer[]> {

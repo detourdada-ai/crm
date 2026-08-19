@@ -87,7 +87,7 @@ export async function deleteImportAction(importId: string): Promise<DeleteImport
   }
 
   try {
-    await deleteImport(importId);
+    await deleteImport(importId, session.role === "admin" ? undefined : session.username);
     revalidatePath("/import");
     revalidatePath("/orders");
     revalidatePath("/customers");

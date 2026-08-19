@@ -547,6 +547,10 @@ function DriverRegionBadge({ region }: { region: DriverWithAccount["regions"][nu
   const label = [region.sido, region.sigungu, region.eupmyeondong].filter(Boolean).join(" ");
 
   function handleRemove() {
+    // P10-3: 삭제 기능 전수조사에서 이 담당지역 배지만 확인 절차 없이 즉시
+    // 삭제되는 유일한 지점으로 확인됨 — 배지 UI 특성상 전체 ConfirmDialog
+    // 모달은 과하므로 가벼운 native confirm으로 최소한의 방지막을 둔다.
+    if (!window.confirm(`담당지역 "${label}"을(를) 삭제하시겠습니까?`)) return;
     startTransition(async () => {
       const result = await deleteDriverRegionAction(region.id);
       if (!result.ok) toast.error(result.error ?? "담당지역 삭제 중 오류가 발생했습니다.");
