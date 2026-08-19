@@ -449,9 +449,12 @@ export const ordersRepository = {
    * P5 11번: 클릭 한 번으로 배송대기/배송중/완료 사이를 양방향으로 전환한다
    * (되돌리기 포함 — 완료→배송중, 배송중→배송대기 등 운영상 실수/재조정을
    * 위해 허용). 취소된 주문은 대상에서 제외(취소/복구는 별도 흐름 유지).
-   * 배송중으로 "가는" 경우에만 startDelivery와 동일한 기사-또는-직접수령
-   * 규칙을 적용 — 배송대기/완료로 가는 데는 그 제약이 없다.
    * 완료를 벗어나면 completed_at을 지운다(되돌렸다는 사실을 반영).
+   * P9 2번: "기사 미배정 일반배송을 실수로 배송중/완료 처리할 수 없다"를
+   * 배송중뿐 아니라 완료에도 적용한다 — 배송대기에서 기사도 없이 바로
+   * 완료로 건너뛸 수 있었던 건 "누가 배송했는지" 기록 없이 완료 처리가
+   * 되는 허점이었다. 배송대기로 "가는" 데는 여전히 제약이 없다(되돌리기는
+   * 항상 허용).
    */
   async setDeliveryStatus(
     orderIds: string[],
@@ -468,7 +471,7 @@ export const ordersRepository = {
       })
       .in("id", orderIds)
       .neq("delivery_status", "취소");
-    if (status === "배송중") {
+    if (status === "배송중" || status === "완료") {
       q = q.or("driver_id.not.is.null,fulfillment_method.eq.direct_pickup");
     }
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);

@@ -389,6 +389,7 @@ export function DeliveryBoard({
                 <TableCell>
                   <DeliveryStatusControl
                     status={order.delivery_status}
+                    canProgress={!!order.driver_id || order.fulfillment_method === "direct_pickup"}
                     disabled={isPending}
                     showSpinner={isPending && pendingOrderId === order.id}
                     onChange={(next) => handleSetStatus(order.id, next)}
@@ -471,6 +472,7 @@ export function DeliveryBoard({
                   )}
                   <DeliveryStatusControl
                     status={order.delivery_status}
+                    canProgress={!!order.driver_id || order.fulfillment_method === "direct_pickup"}
                     disabled={isPending}
                     showSpinner={isPending && pendingOrderId === order.id}
                     onChange={(next) => handleSetStatus(order.id, next)}
@@ -597,14 +599,21 @@ const STATUS_MENU_OPTIONS: { value: "배송대기" | "배송중" | "완료"; lab
  * 모바일 고려) 배송대기/배송중/완료 사이를 바로 전환하는 메뉴를 연다 — 되돌리기
  * (완료→배송중 등)도 같은 메뉴에서 그대로 가능하다. 취소된 주문은 이 보드
  * 쿼리 자체에서 제외되지만, 방어적으로 취소 상태는 배지만(변경 불가) 보여준다.
+ * P9 2번: 클릭한 뒤 서버에서 거부당해 토스트로만 알게 하지 않고, 애초에
+ * 선택 불가능한 항목(기사 미배정 + 직접수령 아님 상태에서 배송중/완료)은
+ * 메뉴에서 바로 disabled로 보여준다 — 서버 쪽 검증(orders.repository의
+ * driver_id/direct_pickup 조건)과 동일한 규칙을 클라이언트에도 반영.
  */
 function DeliveryStatusControl({
   status,
+  canProgress,
   disabled,
   showSpinner,
   onChange,
 }: {
   status: DeliveryStatus;
+  /** 기사 배정됨 또는 직접수령 — false면 배송중/완료로 진행 불가(배송대기로 되돌리기는 항상 가능). */
+  canProgress: boolean;
   disabled: boolean;
   showSpinner: boolean;
   onChange: (next: "배송대기" | "배송중" | "완료") => void;
@@ -622,12 +631,21 @@ function DeliveryStatusControl({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        {STATUS_MENU_OPTIONS.map((opt) => (
-          <DropdownMenuItem key={opt.value} disabled={opt.value === status} onSelect={() => onChange(opt.value)} className="gap-2">
-            {opt.value === status ? <Check className="size-3.5" /> : <span className="size-3.5" />}
-            {opt.label}
-          </DropdownMenuItem>
-        ))}
+        {STATUS_MENU_OPTIONS.map((opt) => {
+          const blockedByAssignment = opt.value !== "배송대기" && !canProgress;
+          return (
+            <DropdownMenuItem
+              key={opt.value}
+              disabled={opt.value === status || blockedByAssignment}
+              onSelect={() => onChange(opt.value)}
+              className="gap-2"
+            >
+              {opt.value === status ? <Check className="size-3.5" /> : <span className="size-3.5" />}
+              {opt.label}
+              {blockedByAssignment ? <span className="ml-auto text-xs text-muted-foreground">기사 필요</span> : null}
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

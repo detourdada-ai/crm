@@ -205,8 +205,8 @@ export async function setDeliveryStatusAction(
       return {
         ok: false,
         error:
-          status === "배송중"
-            ? "기사 배정 또는 직접수령 설정이 없으면 배송중으로 변경할 수 없습니다."
+          status === "배송중" || status === "완료"
+            ? "기사 배정 또는 직접수령 설정이 없으면 배송중/배송완료로 변경할 수 없습니다."
             : "상태를 변경할 수 있는 주문이 없습니다.",
       };
     }
