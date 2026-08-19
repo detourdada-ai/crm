@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Check, ChevronDown, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
+import { Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -96,11 +96,15 @@ export function DeliveryBoard({
   const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
   const [sortField, setSortField] = useState<DeliverySortField>("delivery_group");
   const [groupFilter, setGroupFilter] = useState<string>(GROUP_FILTER_ALL);
-  const [groupFilterExpanded, setGroupFilterExpanded] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
   const groupLabelById = useMemo(() => new Map(groups.map((g) => [g.id, groupLabel(g.group_no)])), [groups]);
+  // P13: "배송그룹 있음" 1차 탭은 세부 그룹을 하나 골라도(그 그룹도 당연히
+  // "그룹 있음"이므로) 계속 선택된 상태로 보여야 한다 — HAS_GROUP sentinel과
+  // 특정 group.id 둘 다 이 탭의 활성 조건이다.
+  const isSpecificGroupSelected = groups.some((g) => g.id === groupFilter);
+  const isHasGroupTabActive = groupFilter === GROUP_FILTER_HAS_GROUP || isSpecificGroupSelected;
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   // 직접수령 등으로 처리한 주문이 revalidate 후 orders에서 사라져도(예: "배정
@@ -330,66 +334,62 @@ export function DeliveryBoard({
         </Select>
       </div>
 
-      {/* P5 20번: 배송그룹은 새 영역을 만들지 않고 기존 필터 영역 안에
-          칩으로만 넣는다 — "그룹을 관리하세요"가 아니라 "그룹으로 정렬해서
-          가까운 주문들을 보고, 필요한 대로 기사 배정하세요"가 목표다.
-          CEO 요청: 그룹이 많으면 칩이 너무 길어져 접었다 펼 수 있게 하고,
-          기본은 접힌 상태로 시작한다. */}
+      {/* P13: 그룹이 많을수록(A~T 등) 칩을 전부 나열하면 특히 모바일에서
+          필터 영역이 화면 대부분을 차지하는 문제가 있었다(P12 조사 확인).
+          1차 필터(전체/배송그룹 있음/미배송그룹)는 항상 3개 칩으로 고정해
+          기존처럼 빠르게 쓸 수 있게 하고, "배송그룹 있음"을 선택했을 때만
+          세부 그룹을 이미 쓰고 있던 Select 컴포넌트로 고르게 한다 — 그룹
+          알고리즘/필터링 조건은 그대로, 노출 방식만 바꿨다. */}
       {groups.length > 0 ? (
         <div className="space-y-1.5">
-          <button
-            type="button"
-            onClick={() => setGroupFilterExpanded((v) => !v)}
-            className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            배송그룹 필터
-            <ChevronDown className={`size-3.5 transition-transform ${groupFilterExpanded ? "rotate-180" : ""}`} />
-          </button>
-          {groupFilterExpanded ? (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setGroupFilter(GROUP_FILTER_ALL)}
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                  groupFilter === GROUP_FILTER_ALL ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                전체
-              </button>
-              <button
-                type="button"
-                onClick={() => setGroupFilter(GROUP_FILTER_HAS_GROUP)}
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                  groupFilter === GROUP_FILTER_HAS_GROUP
-                    ? "border-primary bg-primary-soft text-primary"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                배송그룹 있음
-              </button>
-              {groups.map((g) => (
-                <button
-                  key={g.id}
-                  type="button"
-                  onClick={() => setGroupFilter(g.id)}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                    groupFilter === g.id ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  {groupLabel(g.group_no)} ({g.order_count})
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setGroupFilter(GROUP_FILTER_UNGROUPED)}
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                  groupFilter === GROUP_FILTER_UNGROUPED
-                    ? "border-primary bg-primary-soft text-primary"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                미배송그룹
-              </button>
+          <p className="text-xs font-medium text-muted-foreground">배송그룹 필터</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setGroupFilter(GROUP_FILTER_ALL)}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                groupFilter === GROUP_FILTER_ALL ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              전체
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupFilter(GROUP_FILTER_HAS_GROUP)}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                isHasGroupTabActive ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              배송그룹 있음
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupFilter(GROUP_FILTER_UNGROUPED)}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                groupFilter === GROUP_FILTER_UNGROUPED
+                  ? "border-primary bg-primary-soft text-primary"
+                  : "border-border text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              미배송그룹
+            </button>
+          </div>
+          {isHasGroupTabActive ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">그룹 선택</span>
+              <Select value={isSpecificGroupSelected ? groupFilter : GROUP_FILTER_HAS_GROUP} onValueChange={setGroupFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={GROUP_FILTER_HAS_GROUP}>전체 그룹</SelectItem>
+                  {groups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {groupLabel(g.group_no)} · {g.order_count}건
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           ) : null}
         </div>
