@@ -79,4 +79,38 @@ export const driverRegionsRepository = {
       .map((r) => ({ ...r, priority: r.eupmyeondong ? 0 : r.sigungu ? 1 : 2 }))
       .sort((a, b) => a.priority - b.priority);
   },
+
+  /**
+   * P0(기사관리 3건) 3번: 배송관리 화면에서 여러 주문을 한 번에 선택했을 때
+   * 그 주문들의 배송지를 담당하는 기사 후보를 한 번의 쿼리로 조회한다.
+   * findCandidates(단일 지역용)를 재사용/수정하지 않고 별도로 구현 —
+   * 여러 지역을 한꺼번에 물어봐야 하는 N+1 방지 목적의 배치 메서드다.
+   * 자동배정에는 쓰지 않는다 — 호출부에서 정렬/라벨 힌트로만 사용해야 한다.
+   * 지역마다 ownerUsername을 함께 받아 매칭한다 — admin은 서로 다른
+   * 테넌트의 주문을 동시에 선택할 수 있어, 전역 필터 하나로는 다른
+   * 테넌트 기사가 후보에 섞여 나오는 tenant 격리 누락이 생길 수 있다.
+   */
+  async findCandidateDriverIdsForRegions(
+    regions: { ownerUsername: string; sido: string | null; sigungu: string | null; eupmyeondong: string | null }[]
+  ): Promise<string[]> {
+    const sidoList = Array.from(new Set(regions.map((r) => r.sido).filter((s): s is string => !!s)));
+    if (sidoList.length === 0) return [];
+
+    const { data, error } = await getSupabaseAdmin().from("driver_regions").select("*").in("sido", sidoList);
+    if (error) throw error;
+    const rows = (data ?? []) as DriverRegion[];
+
+    const matches = new Set<string>();
+    for (const region of regions) {
+      if (!region.sido) continue;
+      for (const r of rows) {
+        if (r.owner_username !== region.ownerUsername) continue;
+        if (r.sido !== region.sido) continue;
+        if (r.sigungu && r.sigungu !== region.sigungu) continue;
+        if (r.eupmyeondong && r.eupmyeondong !== region.eupmyeondong) continue;
+        matches.add(r.driver_id);
+      }
+    }
+    return Array.from(matches);
+  },
 };

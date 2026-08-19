@@ -19,6 +19,7 @@ import {
   setFulfillmentMethodAction,
   unassignDriverAction,
 } from "@/actions/delivery";
+import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import { groupLabel } from "@/lib/utils/delivery-group";
@@ -116,6 +117,29 @@ export function DeliveryBoard({
     const currentIds = new Set(orders.map((o) => o.id));
     return new Set([...selected].filter((id) => currentIds.has(id)));
   }, [selected, orders]);
+
+  // P0(기사관리 3건) 3번: 선택된 주문들의 배송지를 담당하는 기사 후보를
+  // 담당 기사 선택 드롭다운을 열 때만 조회한다(선택이 바뀔 때마다 매번
+  // 서버를 부르지 않고, 실제로 드롭다운을 여는 시점에만 배치 조회).
+  // 자동배정에는 쓰지 않고, 정렬 + "추천" 라벨 힌트로만 사용한다.
+  const [candidateDriverIds, setCandidateDriverIds] = useState<Set<string>>(new Set());
+  const [, startCandidateLookup] = useTransition();
+
+  function handleDriverSelectOpenChange(nextOpen: boolean) {
+    if (!nextOpen || visibleSelected.size === 0) return;
+    const orderIds = Array.from(visibleSelected);
+    startCandidateLookup(async () => {
+      const ids = await listCandidateDriverIdsForOrdersAction(orderIds);
+      setCandidateDriverIds(new Set(ids));
+    });
+  }
+
+  const sortedDriversForAssign = useMemo(() => {
+    if (candidateDriverIds.size === 0) return drivers;
+    const candidates = drivers.filter((d) => candidateDriverIds.has(d.id));
+    const rest = drivers.filter((d) => !candidateDriverIds.has(d.id));
+    return [...candidates, ...rest];
+  }, [drivers, candidateDriverIds]);
 
   const groupFilteredOrders = useMemo(() => {
     if (groupFilter === GROUP_FILTER_ALL) return orders;
@@ -273,14 +297,24 @@ export function DeliveryBoard({
               직접수령
             </button>
           </div>
-          <Select value={driverId} onValueChange={setDriverId} disabled={fulfillmentChoice === "direct_pickup"}>
+          <Select
+            value={driverId}
+            onValueChange={setDriverId}
+            onOpenChange={handleDriverSelectOpenChange}
+            disabled={fulfillmentChoice === "direct_pickup"}
+          >
             <SelectTrigger className="w-40">
               <SelectValue placeholder="담당 기사 선택" />
             </SelectTrigger>
             <SelectContent>
-              {drivers.map((d) => (
+              {sortedDriversForAssign.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.name}
+                  {candidateDriverIds.has(d.id) ? (
+                    <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px]">
+                      추천
+                    </Badge>
+                  ) : null}
                 </SelectItem>
               ))}
             </SelectContent>

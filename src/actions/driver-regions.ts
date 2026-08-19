@@ -15,6 +15,28 @@ export interface DriverRegionActionState {
   error: string | null;
 }
 
+/**
+ * P0(기사관리 3건) 3번: 배송관리 화면에서 여러 주문을 동시에 선택했을 때,
+ * 그 주문들의 배송지를 담당하는 기사 id 목록을 한 번에 조회한다.
+ * listCandidateDriversAction(단일 주문용)을 그대로 다시 부르는 대신
+ * driverRegionsRepository.findCandidateDriverIdsForRegions 배치 메서드를
+ * 직접 호출해 주문 수만큼 쿼리가 늘어나지 않게 한다. 정렬/라벨링 힌트로만
+ * 쓰여야 하며, 이 결과로 자동 배정을 하지 않는다.
+ */
+export async function listCandidateDriverIdsForOrdersAction(orderIds: string[]): Promise<string[]> {
+  const session = await requireSession();
+  const validIds = orderIds.filter(isUuid);
+  if (validIds.length === 0) return [];
+
+  const orders = await ordersRepository.findByIds(validIds);
+  const regions = orders
+    .filter((o) => session.role === "admin" || o.owner_username === session.username)
+    .filter((o) => !!o.sido)
+    .map((o) => ({ ownerUsername: o.owner_username, sido: o.sido, sigungu: o.sigungu, eupmyeondong: o.eupmyeondong }));
+
+  return driverRegionsRepository.findCandidateDriverIdsForRegions(regions);
+}
+
 export async function addDriverRegionAction(
   driverId: string,
   _prevState: DriverRegionActionState,

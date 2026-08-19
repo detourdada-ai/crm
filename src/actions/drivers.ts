@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { driverRegionsRepository } from "@/lib/repositories/driver-regions.repository";
+import { accountsRepository } from "@/lib/repositories/accounts.repository";
 import { createDriverWithAccount, updateDriver, DriverServiceError } from "@/lib/services/driver.service";
 import { listAccounts } from "@/lib/auth/credentials";
 import { toActionError } from "@/lib/utils/action-error";
@@ -56,6 +57,19 @@ export async function assertOwnsDriver(driverId: string, session: SessionPayload
     throw new DriverServiceError("이 기사를 관리할 권한이 없습니다.");
   }
   return driver;
+}
+
+/**
+ * P0(기사관리 3건) 2번: 등록 폼에서 onBlur 시 아이디 사용 가능 여부를
+ * 미리 보여주기 위한 조회 전용 액션. createDriverWithAccount의 최종 제출
+ * 시점 재검증(findByUsername) 로직은 그대로 두고, 같은 조회를 UX 힌트용으로
+ * 한 번 더 호출할 뿐이다 — 중복 검증 로직 자체를 바꾸지 않는다.
+ */
+export async function checkDriverUsernameAvailableAction(username: string): Promise<{ available: boolean }> {
+  const trimmed = username.trim();
+  if (!trimmed) return { available: false };
+  const existing = await accountsRepository.findByUsername(trimmed);
+  return { available: !existing };
 }
 
 export async function createDriverAction(

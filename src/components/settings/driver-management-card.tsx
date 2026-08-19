@@ -18,7 +18,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { createDriverAction, deleteDriverAction, updateDriverInfoAction, updateDriverStatusAction } from "@/actions/drivers";
+import {
+  checkDriverUsernameAvailableAction,
+  createDriverAction,
+  deleteDriverAction,
+  updateDriverInfoAction,
+  updateDriverStatusAction,
+} from "@/actions/drivers";
 import type { DriverWithAccount } from "@/actions/drivers";
 import { addDriverRegionAction, deleteDriverRegionAction } from "@/actions/driver-regions";
 import { LegacyAddressInput } from "@/components/common/legacy-address-input";
@@ -45,6 +51,21 @@ function CreateDriverDialog({
   const [isPending, startTransition] = useTransition();
   const [pendingRegions, setPendingRegions] = useState<PendingRegion[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
+  const [usernameCheck, setUsernameCheck] = useState<"idle" | "checking" | "available" | "taken">("idle");
+  const [isCheckingUsername, startUsernameCheck] = useTransition();
+
+  function handleUsernameBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const value = e.currentTarget.value.trim();
+    if (!value) {
+      setUsernameCheck("idle");
+      return;
+    }
+    setUsernameCheck("checking");
+    startUsernameCheck(async () => {
+      const result = await checkDriverUsernameAvailableAction(value);
+      setUsernameCheck(result.available ? "available" : "taken");
+    });
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -71,6 +92,7 @@ function CreateDriverDialog({
       toast.success("기사를 등록했습니다.");
       formRef.current?.reset();
       setPendingRegions([]);
+      setUsernameCheck("idle");
       setOpen(false);
     });
   }
@@ -80,7 +102,10 @@ function CreateDriverDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setPendingRegions([]);
+        if (!next) {
+          setPendingRegions([]);
+          setUsernameCheck("idle");
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -134,7 +159,20 @@ function CreateDriverDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="username">로그인 아이디</Label>
-            <Input id="username" name="username" required />
+            <Input
+              id="username"
+              name="username"
+              required
+              onBlur={handleUsernameBlur}
+              onChange={() => setUsernameCheck("idle")}
+            />
+            {usernameCheck === "checking" || isCheckingUsername ? (
+              <p className="text-xs text-muted-foreground">확인하는 중...</p>
+            ) : usernameCheck === "available" ? (
+              <p className="text-xs text-emerald-600">사용 가능한 아이디입니다</p>
+            ) : usernameCheck === "taken" ? (
+              <p className="text-xs text-destructive">이미 사용 중인 아이디입니다</p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">초기 비밀번호</Label>
@@ -217,7 +255,7 @@ function EditDriverDialog({ driver, knownRegions }: { driver: DriverWithAccount;
           </div>
           <div className="space-y-2">
             <Label htmlFor={`edit-phone-${driver.id}`}>연락처</Label>
-            <Input id={`edit-phone-${driver.id}`} name="phone" defaultValue={driver.phone ?? ""} placeholder="010-0000-0000" />
+            <Input id={`edit-phone-${driver.id}`} name="phone" defaultValue={formatPhoneNumber(driver.phone) ?? ""} placeholder="010-0000-0000" />
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor={`edit-address-${driver.id}`}>주소</Label>
