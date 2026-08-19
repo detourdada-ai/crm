@@ -44,5 +44,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# safe-scratch.ts disk snapshots of DB rows (may contain real customer data)
+/scratch-snapshots/
+
 .vercel
 .env*
