@@ -10,6 +10,7 @@ import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress, normalizeAddressForCompare } from "@/lib/utils/address";
 import { parseDeliveryDateFromOption, parseDeliveryAreaFromOption } from "@/lib/utils/delivery-date";
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
+import { geocodeBatch, type GeocodeFields } from "@/lib/services/geocoding.service";
 import type { ParsedSheet, ColumnMapping } from "@/types/excel";
 import type { Customer, ImportRowError, ImportSummary } from "@/types/domain";
 
@@ -266,6 +267,15 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   const newItemInserts: OrderItemInsert[] = [];
   const newDuplicateInserts: DuplicateCandidateInsert[] = [];
   const bagNoUpdates: { id: string; bagNo: string }[] = [];
+  // P10-1.5: Excel 주문은 geocoding이 아예 빠져 있어 기사후보 추천/배송그룹
+  // 클러스터링의 입력(order.sido, latitude/longitude)이 영구히 비어있던
+  // 문제를 고친다. 루프 안에서 매 행 await하면 대량 파일에서 느려지므로
+  // (DB 왕복을 없앤 이 루프의 원칙과 같은 이유) 주소만 모아뒀다가 루프
+  // 종료 후 한 번에 처리한다. 같은 정규화 주소는 파일 안에서 한 번만
+  // geocode(query)하도록 addressQueries에 최초 1건만 등록한다.
+  const addressQueries = new Map<string, string>(); // normalizedAddress -> cleanAddress(query)
+  const pendingOrderGeocode: { insert: OrderInsert; addressKey: string }[] = [];
+  const pendingCustomerGeocode: { insert: CustomerInsert; addressKey: string }[] = [];
 
   for (const [orderNumber, entries] of groups) {
     const rows = entries.map((e) => e.row);
@@ -318,6 +328,12 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
 
       let customerId: string;
       let isNew: boolean;
+      // P10-1.5: 기존 고객이 이미 성공한 geocode를 갖고 있으면 그대로 재사용
+      // — Excel 경로에선 고객의 집 주소와 이 주문의 배송지가 같은 rawAddress
+      // 이므로(수동 주문처럼 둘이 다를 수 있는 별도 입력이 없음) 재호출 없이
+      // 그대로 써도 정확하다. 없으면 아래에서 이 주문만 새로 geocode 큐에 넣는다
+      // (기존 고객 프로필 자체는 "독립적 스냅샷" 원칙에 따라 건드리지 않는다).
+      let reusableGeo: GeocodeFields | null = null;
       const exactMatch = pool.findExactMatch(name, phone, addressNormalized);
       if (exactMatch) {
         customerId = exactMatch.id;
@@ -325,6 +341,19 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         if (bagNo && !exactMatch.bag_no) {
           bagNoUpdates.push({ id: exactMatch.id, bagNo });
           exactMatch.bag_no = bagNo; // reflect immediately so later rows in this file see it as already set
+        }
+        if (exactMatch.geocode_status === "success" && exactMatch.latitude != null && exactMatch.longitude != null) {
+          reusableGeo = {
+            latitude: exactMatch.latitude,
+            longitude: exactMatch.longitude,
+            sido: exactMatch.sido,
+            sigungu: exactMatch.sigungu,
+            eupmyeondong: exactMatch.eupmyeondong,
+            sido_code: exactMatch.sido_code,
+            sigungu_code: exactMatch.sigungu_code,
+            eupmyeondong_code: exactMatch.eupmyeondong_code,
+            geocode_status: "success",
+          };
         }
       } else {
         customerId = randomUUID();
@@ -361,7 +390,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
-        newCustomerInserts.push({
+        const customerInsert: CustomerInsert = {
           id: customerId,
           name,
           phone,
@@ -371,8 +400,13 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
           tenant_id: tenant.id,
           created_by_import_id: importRecord.id,
           bag_no: bagNo,
-        });
+        };
+        newCustomerInserts.push(customerInsert);
         pool.add(newCustomer);
+        if (address && addressNormalized) {
+          if (!addressQueries.has(addressNormalized)) addressQueries.set(addressNormalized, address);
+          pendingCustomerGeocode.push({ insert: customerInsert, addressKey: addressNormalized });
+        }
       }
 
       // P8 3번: 이 주문이 customerId의 진짜 첫 주문인지 — 신규 고객이면
@@ -409,7 +443,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         .find((a) => a !== null) ?? null;
 
       const orderId = randomUUID();
-      newOrderInserts.push({
+      const orderInsert: OrderInsert = {
         id: orderId,
         customer_id: customerId,
         order_number: orderNumber,
@@ -419,7 +453,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         total_amount: totalAmount,
         recipient_name: name,
         phone_snapshot: formatPhoneNumber(rawPhone),
-        address_snapshot: cleanAddress(rawAddress),
+        address_snapshot: address,
         zipcode,
         delivery_memo: deliveryMemo,
         courier,
@@ -434,7 +468,14 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         import_id: importRecord.id,
         owner_username: ownerUsername,
         tenant_id: tenant.id,
-      });
+      };
+      if (reusableGeo) {
+        Object.assign(orderInsert, reusableGeo, { geocoded_at: new Date().toISOString() });
+      } else if (address && addressNormalized) {
+        if (!addressQueries.has(addressNormalized)) addressQueries.set(addressNormalized, address);
+        pendingOrderGeocode.push({ insert: orderInsert, addressKey: addressNormalized });
+      }
+      newOrderInserts.push(orderInsert);
       for (const item of items) {
         newItemInserts.push({ ...item, order_id: orderId });
       }
@@ -465,6 +506,28 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       });
       failedRowCount += rows.length;
     }
+  }
+
+  // Phase 4 (P10-1.5): 큐에 쌓인 서로 다른 주소만 제한된 동시성으로
+  // geocode하고, 신규 고객/주문 insert 객체에 결과를 채워 넣는다.
+  // geocodeBatch는 절대 throw하지 않으므로 이 단계가 실패해도 import
+  // 자체는 계속 진행된다(실패한 주소는 geocode_status="failed"로 남을 뿐).
+  let geocodeSuccess = 0;
+  let geocodeFailed = 0;
+  if (addressQueries.size > 0) {
+    const geocodeResults = await geocodeBatch(addressQueries);
+    for (const { insert, addressKey } of pendingCustomerGeocode) {
+      const geo = geocodeResults.get(addressKey);
+      if (geo) Object.assign(insert, geo, { geocoded_at: new Date().toISOString() });
+    }
+    for (const { insert, addressKey } of pendingOrderGeocode) {
+      const geo = geocodeResults.get(addressKey);
+      if (geo) Object.assign(insert, geo, { geocoded_at: new Date().toISOString() });
+    }
+  }
+  for (const o of newOrderInserts) {
+    if (o.geocode_status === "success") geocodeSuccess += 1;
+    else if (o.geocode_status === "failed") geocodeFailed += 1;
   }
 
   // Phase 5: 내부 주문번호를 이 시점에 한 번에 배정한다 — 위 루프(zero DB calls)를
@@ -524,6 +587,8 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       repeatOrders: repeatOrderCount,
       duplicateCandidates: duplicateCandidateCount,
       failedRows,
+      geocodeSuccess,
+      geocodeFailed,
     },
     errors,
   };

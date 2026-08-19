@@ -301,6 +301,9 @@ export interface ImportSummary {
   repeatOrders: number;
   duplicateCandidates: number;
   failedRows: number;
+  /** P10-1.5: 생성된 주문 중 배송지 좌표가 확보된/실패한 건수 (기사후보 추천·배송그룹 클러스터링의 입력 데이터). */
+  geocodeSuccess: number;
+  geocodeFailed: number;
 }
 
 export interface ImportRecord {

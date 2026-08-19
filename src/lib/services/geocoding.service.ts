@@ -137,3 +137,26 @@ export async function geocodeAddress(roadAddress: string): Promise<GeocodeFields
     return { ...FAILED_RESULT };
   }
 }
+
+/**
+ * P10-1.5: Excel import에서 수백 건의 서로 다른 주소를 한 번에 지오코딩할 때
+ * 쓴다. 루프 안에서 매 행마다 순차 await하면 대량 파일에서 매우 느려지므로
+ * (runImport()의 "루프 안에서는 DB 왕복 없음" 원칙과 같은 이유로, 여기서는
+ * 외부 API 왕복이 문제가 된다) 제한된 동시성으로 병렬 처리한다. 키는 호출
+ * 측이 정하는 dedup 키(보통 정규화된 주소)이고, geocodeAddress처럼 이 함수도
+ * 절대 throw하지 않는다.
+ */
+export async function geocodeBatch(addresses: Map<string, string>, concurrency = 8): Promise<Map<string, GeocodeFields>> {
+  const results = new Map<string, GeocodeFields>();
+  const entries = Array.from(addresses.entries());
+  let cursor = 0;
+  async function worker() {
+    while (cursor < entries.length) {
+      const i = cursor++;
+      const [key, query] = entries[i];
+      results.set(key, await geocodeAddress(query));
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, entries.length) }, () => worker()));
+  return results;
+}

@@ -59,12 +59,29 @@ export function ImportResultCards({ summary, errors }: { summary: ImportSummary;
               {summary.failedRows.toLocaleString()}건
             </dd>
           </div>
+          {summary.geocodeSuccess + summary.geocodeFailed > 0 ? (
+            <>
+              <div className="flex items-baseline justify-between pt-1">
+                <dt className="text-muted-foreground">배송지 좌표 확보</dt>
+                <dd className="text-text-strong">{summary.geocodeSuccess.toLocaleString()}건</dd>
+              </div>
+              {summary.geocodeFailed > 0 ? (
+                <div className="flex items-baseline justify-between">
+                  <dt className="text-warning">좌표 확보 실패</dt>
+                  <dd className="font-medium text-warning">{summary.geocodeFailed.toLocaleString()}건</dd>
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </dl>
         <p className="text-xs text-muted-foreground">
           엑셀은 상품 단위 행이라 여러 행이 하나의 주문으로 합쳐질 수 있어, 원본 행과 생성된 주문 수는 서로 다른
           기준입니다.
           {summary.alreadyImportedOrders > 0
             ? ` 이미 등록된 주문번호 ${summary.alreadyImportedOrders.toLocaleString()}건은 건너뛰었습니다(재업로드 시 정상).`
+            : ""}
+          {summary.geocodeFailed > 0
+            ? ` 좌표 확보에 실패한 주문도 정상 등록되며, 주문 상세에서 주소를 다시 저장하면 재시도됩니다.`
             : ""}
         </p>
 
