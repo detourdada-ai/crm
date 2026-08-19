@@ -217,8 +217,14 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   });
 
   const errors: ImportRowError[] = [];
-  let newCustomers = 0;
-  let existingCustomers = 0;
+  // P8 3번: "신규 주문"/"반복 주문" — 고객 레코드가 새로 생겼는지가 아니라
+  // "이 주문이 그 고객의 진짜 첫 주문인지"로 정의한다(신규 고객이면 항상
+  // 첫 주문이지만, 기존 고객이어도 이전 주문이 0건이면 여전히 신규 주문).
+  // 변수명은 P5/P7 시절 "신규/기존 고객" 카운터를 그대로 쓰지만, 실제로는
+  // 이제 이 정의로 센다 — imports 테이블 컬럼(new_customers/existing_
+  // customers)도 새 마이그레이션 없이 그대로 재사용한다.
+  let newOrderCount = 0;
+  let repeatOrderCount = 0;
   let successRows = 0;
   // P5: 261→157 같은 차이를 "임의로 정상 처리"라고 뭉개지 않기 위한 세분화
   // 카운터 — rowsWithoutOrderNumber(그룹화 단계 탈락)/alreadyImported*(이미
@@ -249,6 +255,10 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     customersRepository.findAllByOwner(ownerUsername),
   ]);
   const pool = new CustomerPoolIndex(ownerCustomers);
+  // Import 시작 시점의 "고객별 기존 주문 수"(취소 제외, customer_order_stats
+  // 뷰) — 이 파일 안에서 같은 고객이 여러 번 주문하면 첫 등장만 신규로
+  // 세고 그 다음부터는 즉시 반복으로 넘어가도록 처리 중에 카운트를 올린다.
+  const priorOrderCounts = await customersRepository.findOrderCounts(ownerCustomers.map((c) => c.id));
 
   // ---------- Phase 2: pure in-memory pass over every group — zero DB calls in this loop ----------
   const newCustomerInserts: CustomerInsert[] = [];
@@ -312,7 +322,6 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       if (exactMatch) {
         customerId = exactMatch.id;
         isNew = false;
-        existingCustomers += 1;
         if (bagNo && !exactMatch.bag_no) {
           bagNoUpdates.push({ id: exactMatch.id, bagNo });
           exactMatch.bag_no = bagNo; // reflect immediately so later rows in this file see it as already set
@@ -320,7 +329,6 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       } else {
         customerId = randomUUID();
         isNew = true;
-        newCustomers += 1;
         const newCustomer: Customer = {
           id: customerId,
           customer_code: "",
@@ -366,6 +374,15 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         });
         pool.add(newCustomer);
       }
+
+      // P8 3번: 이 주문이 customerId의 진짜 첫 주문인지 — 신규 고객이면
+      // priorOrderCounts에 항목이 없어 0으로 취급되어 항상 신규 주문이고,
+      // 기존 고객이면 Import 시작 시점 주문 수를 기준으로 판정한다. 판정
+      // 직후 카운트를 올려 같은 파일 안의 다음 주문부터는 반복으로 잡는다.
+      const priorOrders = priorOrderCounts.get(customerId) ?? 0;
+      if (priorOrders === 0) newOrderCount += 1;
+      else repeatOrderCount += 1;
+      priorOrderCounts.set(customerId, priorOrders + 1);
 
       const items = rows.map((row) => ({
         product_order_number: cellToString(getMapped(row, mapping, "product_order_number")) || null,
@@ -488,8 +505,8 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     status: "completed",
     success_rows: successRows,
     failed_rows: failedRows,
-    new_customers: newCustomers,
-    existing_customers: existingCustomers,
+    new_customers: newOrderCount,
+    existing_customers: repeatOrderCount,
     duplicate_candidates: duplicateCandidateCount,
     already_imported_rows: alreadyImportedRows,
     column_mapping: mapping as Record<string, string>,
@@ -503,8 +520,8 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       totalOrderGroups: groups.size,
       newOrdersCreated: newOrderInserts.length,
       alreadyImportedOrders,
-      newCustomers,
-      existingCustomers,
+      newOrders: newOrderCount,
+      repeatOrders: repeatOrderCount,
       duplicateCandidates: duplicateCandidateCount,
       failedRows,
     },

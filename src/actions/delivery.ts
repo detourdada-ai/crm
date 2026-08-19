@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
+import { settlementsRepository } from "@/lib/repositories/settlements.repository";
 import { buildOrderItemSummaries, type OrderItemSummary } from "@/actions/orders";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession, requireDriverSession } from "@/lib/auth/current-session";
+import { kstDayStrOf } from "@/lib/utils/kst-date";
 import type { Order, Driver, FulfillmentMethod } from "@/types/domain";
 
 export interface DeliveryBoardResult {
@@ -175,11 +177,26 @@ export async function setDeliveryStatusAction(
     const session = await requireSession();
     if (orderIds.length === 0) return { ok: false, error: "대상 주문을 선택해주세요." };
 
+    const orders = await ordersRepository.findByIds(orderIds);
     if (session.role !== "admin") {
-      const orders = await ordersRepository.findByIds(orderIds);
       const allOwned = orders.length === orderIds.length && orders.every((o) => o.owner_username === session.username);
       if (!allOwned) {
         return { ok: false, error: "권한이 없는 주문이 포함되어 있습니다." };
+      }
+    }
+
+    // P8 2번: 완료→배송대기는 "관리자 실수 복구"로 허용하되, 정산이 이미
+    // "지급완료"로 확정된 기간의 배송이면 막는다 — 정산은 completed_at을
+    // 매번 라이브 재계산하므로(settlements.ts), 여기서 막지 않으면 이미
+    // 지급된 정산의 금액이 status=paid인 채로 조용히 줄어든다.
+    if (status === "배송대기") {
+      for (const order of orders) {
+        if (order.delivery_status === "완료" && order.driver_id && order.completed_at) {
+          const paid = await settlementsRepository.findPaidCoveringDate(order.driver_id, kstDayStrOf(order.completed_at));
+          if (paid) {
+            return { ok: false, error: "이미 지급완료 처리된 정산 기간의 배송입니다. 정산관리에서 확인 후 처리해주세요." };
+          }
+        }
       }
     }
 

@@ -15,12 +15,16 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   const session = await requireSession();
   await requireActiveAccess(session);
 
+  // P8 17번: flex 자식은 기본 min-width:auto라 내부 콘텐츠(배송관리 테이블
+  // 등)가 넓으면 줄어들지 않고 전체 레이아웃(사이드바까지)을 옆으로 밀어
+  // 버린다 — min-w-0으로 이 체인이 실제 가용 폭까지 줄어들게 강제해야
+  // 테이블 자체의 overflow-x-auto가 제 역할(내부 스크롤)을 한다.
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <Header />
-        <main className="flex-1 overflow-y-auto bg-background p-4 md:p-6">{children}</main>
+        <main className="min-w-0 flex-1 overflow-y-auto bg-background p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

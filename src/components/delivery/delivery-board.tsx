@@ -344,6 +344,9 @@ export function DeliveryBoard({
       {/* Desktop/Tablet: 테이블 */}
       <div className="hidden overflow-x-auto md:block">
         <Table>
+          {/* P8 1-1번: "사장님이 가장 먼저 봐야 하는 정보" 순서 — 그룹→상태→
+              배송기사→배송지→고객→상품/주문. 정보를 지우지 않고 순서만
+              바꾼다 — 주문번호/배송일은 식별용 보조 정보로 뒤에 남긴다. */}
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
@@ -353,13 +356,13 @@ export function DeliveryBoard({
                 />
               </TableHead>
               {showGroupColumn ? <TableHead>그룹</TableHead> : null}
-              <TableHead>주문번호</TableHead>
-              <TableHead>고객</TableHead>
-              <TableHead>배송일</TableHead>
-              <TableHead className="w-64">배송지</TableHead>
-              <TableHead className="w-40">상품/주문 요약</TableHead>
-              <TableHead>담당기사</TableHead>
               <TableHead>상태</TableHead>
+              <TableHead>담당기사</TableHead>
+              <TableHead className="w-64">배송지</TableHead>
+              <TableHead>고객</TableHead>
+              <TableHead className="w-40">상품/주문 요약</TableHead>
+              <TableHead>주문번호</TableHead>
+              <TableHead>배송일</TableHead>
               {bagManagementEnabled ? <TableHead>가방 상태</TableHead> : null}
               <TableHead className="hidden lg:table-cell">연락처</TableHead>
               <TableHead className="hidden lg:table-cell text-right">금액</TableHead>
@@ -383,23 +386,13 @@ export function DeliveryBoard({
                     )}
                   </TableCell>
                 ) : null}
-                <TableCell className="font-medium">
-                  <Link href={`/orders/${order.id}`} className="mr-1.5 hover:underline">
-                    {order.internal_order_number}
-                  </Link>
-                  <Badge variant="outline" className="text-muted-foreground">
-                    {ORDER_SOURCE_LABELS[order.order_source]}
-                  </Badge>
-                </TableCell>
-                <TableCell className="font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</TableCell>
                 <TableCell>
-                  <DeliveryDateLabel isoDate={order.delivery_date} />
-                </TableCell>
-                <TableCell className="w-64 align-top">
-                  <DeliveryAddressBlock order={order} />
-                </TableCell>
-                <TableCell className="w-40 max-w-40 align-top whitespace-normal">
-                  <ItemSummaryBlock summary={itemSummaries[order.id]} />
+                  <DeliveryStatusControl
+                    status={order.delivery_status}
+                    disabled={isPending}
+                    showSpinner={isPending && pendingOrderId === order.id}
+                    onChange={(next) => handleSetStatus(order.id, next)}
+                  />
                 </TableCell>
                 <TableCell>
                   <DriverCell
@@ -412,13 +405,23 @@ export function DeliveryBoard({
                     onClearDirectPickup={() => handleClearDirectPickup(order.id)}
                   />
                 </TableCell>
+                <TableCell className="w-64 align-top">
+                  <DeliveryAddressBlock order={order} />
+                </TableCell>
+                <TableCell className="font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</TableCell>
+                <TableCell className="w-40 max-w-40 align-top whitespace-normal">
+                  <ItemSummaryBlock summary={itemSummaries[order.id]} />
+                </TableCell>
+                <TableCell className="font-medium">
+                  <Link href={`/orders/${order.id}`} className="mr-1.5 hover:underline">
+                    {order.internal_order_number}
+                  </Link>
+                  <Badge variant="outline" className="text-muted-foreground">
+                    {ORDER_SOURCE_LABELS[order.order_source]}
+                  </Badge>
+                </TableCell>
                 <TableCell>
-                  <DeliveryStatusControl
-                    status={order.delivery_status}
-                    disabled={isPending}
-                    showSpinner={isPending && pendingOrderId === order.id}
-                    onChange={(next) => handleSetStatus(order.id, next)}
-                  />
+                  <DeliveryDateLabel isoDate={order.delivery_date} />
                 </TableCell>
                 {bagManagementEnabled ? (
                   <TableCell>
@@ -454,14 +457,18 @@ export function DeliveryBoard({
                 checked={selected.has(order.id)}
                 onCheckedChange={(checked) => toggle(order.id, checked === true)}
               />
+              {/* P8 1-1번: 모바일 카드도 데스크톱과 같은 우선순위 — 그룹/상태를
+                  맨 위, 배송기사를 바로 아래, 주문번호/배송일은 카드 하단의
+                  보조 정보로 내린다. */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <Link href={`/orders/${order.id}`} className="flex items-center gap-1.5 font-medium text-text-strong hover:underline">
-                    {order.internal_order_number}
-                    <Badge variant="outline" className="text-muted-foreground">
-                      {ORDER_SOURCE_LABELS[order.order_source]}
+                  {showGroupColumn ? (
+                    <Badge variant="secondary">
+                      {order.delivery_group_id ? (groupLabelById.get(order.delivery_group_id) ?? "미그룹") : "미그룹"}
                     </Badge>
-                  </Link>
+                  ) : (
+                    <span />
+                  )}
                   <DeliveryStatusControl
                     status={order.delivery_status}
                     disabled={isPending}
@@ -469,18 +476,21 @@ export function DeliveryBoard({
                     onChange={(next) => handleSetStatus(order.id, next)}
                   />
                 </div>
-                <p className="mt-1 font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</p>
-                <div className="mt-1 flex items-center gap-2">
-                  <DeliveryDateLabel isoDate={order.delivery_date} />
-                  {showGroupColumn ? (
-                    <Badge variant="secondary">
-                      {order.delivery_group_id ? (groupLabelById.get(order.delivery_group_id) ?? "미그룹") : "미그룹"}
-                    </Badge>
-                  ) : null}
+                <div className="mt-2">
+                  <DriverCell
+                    name={order.driver_id ? driverNames[order.driver_id] : undefined}
+                    fulfillmentMethod={order.fulfillment_method}
+                    locked={order.delivery_status === "완료"}
+                    disabled={isPending}
+                    onAssign={() => quickSelectForAssign(order.id)}
+                    onUnassign={() => handleUnassign(order.id)}
+                    onClearDirectPickup={() => handleClearDirectPickup(order.id)}
+                  />
                 </div>
                 <div className="mt-2">
                   <DeliveryAddressBlock order={order} />
                 </div>
+                <p className="mt-2 font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</p>
                 <div className="mt-2">
                   <ItemSummaryBlock summary={itemSummaries[order.id]} />
                 </div>
@@ -492,16 +502,14 @@ export function DeliveryBoard({
                     </Badge>
                   </div>
                 ) : null}
-                <div className="mt-3">
-                  <DriverCell
-                    name={order.driver_id ? driverNames[order.driver_id] : undefined}
-                    fulfillmentMethod={order.fulfillment_method}
-                    locked={order.delivery_status === "완료"}
-                    disabled={isPending}
-                    onAssign={() => quickSelectForAssign(order.id)}
-                    onUnassign={() => handleUnassign(order.id)}
-                    onClearDirectPickup={() => handleClearDirectPickup(order.id)}
-                  />
+                <div className="mt-3 flex items-center gap-2 border-t border-border pt-2 text-xs text-muted-foreground">
+                  <Link href={`/orders/${order.id}`} className="flex items-center gap-1.5 hover:underline">
+                    {order.internal_order_number}
+                    <Badge variant="outline" className="text-muted-foreground">
+                      {ORDER_SOURCE_LABELS[order.order_source]}
+                    </Badge>
+                  </Link>
+                  <DeliveryDateLabel isoDate={order.delivery_date} />
                 </div>
               </div>
             </div>

@@ -24,14 +24,12 @@ export function ImportResultCards({ summary, errors }: { summary: ImportSummary;
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* P7 5번: "신규 고객 132 + 기존 고객 25 = 157(주문 생성)"이 우연이
-            아니라는 걸 구조로 드러낸다 — newCustomers/existingCustomers는
-            원래도 "이 주문의 고객이 새로 생겼는지/이미 있었는지"를 주문
-            그룹 단위로 센 값이라(runImport 참고), "생성된 주문"의 하위
-            항목(├─ 신규 고객 주문/└─ 기존 고객 주문)으로 묶으면 정확히
-            들어맞는다. 원본 행과는 다른 단위(행 vs 주문)라는 걸 명확히
-            분리해서, "261행인데 왜 157건이냐"는 의문에 숫자를 억지로
-            맞추지 않고 각 줄이 무엇을 세는지로 답한다. */}
+        {/* P8 3번: "신규 주문"/"반복 주문"은 고객 레코드가 새로 생겼는지가
+            아니라 "이 주문이 그 고객의 진짜 첫 주문인지"로 정의한다
+            (customer_order_stats 기준, runImport 참고) — 기존 고객이어도
+            이전 주문이 0건이면 신규 주문으로 잡힌다. 원본 행과는 다른
+            단위(행 vs 주문)라는 걸 명확히 분리해서, "261행인데 왜 157건이냐"
+            는 의문에 숫자를 억지로 맞추지 않고 각 줄이 무엇을 세는지로 답한다. */}
         <dl className="space-y-1.5 text-sm">
           <div className="flex items-baseline justify-between">
             <dt className="text-muted-foreground">원본 행</dt>
@@ -42,12 +40,12 @@ export function ImportResultCards({ summary, errors }: { summary: ImportSummary;
             <dd className="font-medium text-text-strong">{summary.newOrdersCreated.toLocaleString()}건</dd>
           </div>
           <div className="flex items-baseline justify-between pl-4">
-            <dt className="text-muted-foreground">├─ 신규 고객 주문</dt>
-            <dd className="text-text-strong">{summary.newCustomers.toLocaleString()}건</dd>
+            <dt className="text-muted-foreground">├─ 신규 주문</dt>
+            <dd className="text-text-strong">{summary.newOrders.toLocaleString()}건</dd>
           </div>
           <div className="flex items-baseline justify-between pl-4">
-            <dt className="text-muted-foreground">└─ 기존 고객 주문</dt>
-            <dd className="text-text-strong">{summary.existingCustomers.toLocaleString()}건</dd>
+            <dt className="text-muted-foreground">└─ 반복 주문</dt>
+            <dd className="text-text-strong">{summary.repeatOrders.toLocaleString()}건</dd>
           </div>
           <div className="flex items-baseline justify-between">
             <dt className={summary.duplicateCandidates > 0 ? "text-warning" : "text-muted-foreground"}>동일인 검토</dt>

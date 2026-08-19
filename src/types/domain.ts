@@ -288,14 +288,17 @@ export type ImportStatus = "processing" | "completed" | "failed";
  * 엑셀 원본 행(상품 라인 단위) 수, totalOrderGroups는 그 행들을 주문번호로
  * 묶은 그룹 수(주문번호별 여러 상품 라인이 하나로 합쳐짐) — 이 둘의 차이는
  * 유실이 아니라 "한 주문에 여러 상품"인 경우가 대부분이다.
+ * P8 3번: newOrders/repeatOrders는 "고객 레코드가 새로 생겼는지"가 아니라
+ * "이 주문이 그 고객의 진짜 첫 주문인지"로 정의한다(customer_order_stats
+ * 기준) — 기존 고객이어도 이전 주문이 0건이면 신규 주문으로 잡힌다.
  */
 export interface ImportSummary {
   totalRawRows: number;
   totalOrderGroups: number;
   newOrdersCreated: number;
   alreadyImportedOrders: number;
-  newCustomers: number;
-  existingCustomers: number;
+  newOrders: number;
+  repeatOrders: number;
   duplicateCandidates: number;
   failedRows: number;
 }

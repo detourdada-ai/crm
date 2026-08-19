@@ -205,6 +205,23 @@ export const customersRepository = {
     return data ?? [];
   },
 
+  /**
+   * P8 3번: "신규 주문 vs 반복 주문"을 정확히 정의하려면(고객 레코드가
+   * 새로 생겼는지가 아니라, 이 주문이 그 고객의 진짜 첫 주문인지) Import
+   * 실행 전 각 고객의 기존 주문 수를 알아야 한다. 이미 있는
+   * customer_order_stats 뷰(취소 제외 집계)를 그대로 재사용 — 새 테이블/
+   * 마이그레이션 없이 배치로 한 번에 조회한다.
+   */
+  async findOrderCounts(customerIds: string[]): Promise<Map<string, number>> {
+    if (customerIds.length === 0) return new Map();
+    const { data, error } = await getSupabaseAdmin()
+      .from("customer_order_stats")
+      .select("customer_id, total_orders")
+      .in("customer_id", customerIds);
+    if (error) throw error;
+    return new Map((data ?? []).map((r) => [r.customer_id as string, r.total_orders as number]));
+  },
+
   /** F15: ownerUsername이 주어지면(비-admin 호출) DB 쿼리에도 소유권 조건을 건다. */
   async update(id: string, input: CustomerUpdate, ownerUsername?: string): Promise<Customer> {
     let q = getSupabaseAdmin().from("customers").update(input).eq("id", id);
