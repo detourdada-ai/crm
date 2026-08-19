@@ -423,8 +423,12 @@ export function DeliveryBoard({
                 </TableCell>
                 {showGroupColumn ? (
                   <TableCell>
+                    {/* delivery_group_id가 있는데 groupLabelById에 없는 경우는
+                        "그룹 없음"이 아니라 "그룹은 있는데 방금 재계산되어
+                        아직 못 찾은" 상태다 — "미배송그룹"이라고 하면 실제로는
+                        그룹이 있는 주문을 없다고 잘못 알리게 된다. */}
                     {order.delivery_group_id ? (
-                      <Badge variant="secondary">{groupLabelById.get(order.delivery_group_id) ?? "미배송그룹"}</Badge>
+                      <Badge variant="secondary">{groupLabelById.get(order.delivery_group_id) ?? "그룹 정보 확인 중"}</Badge>
                     ) : (
                       <span className="text-muted-foreground">미배송그룹</span>
                     )}
@@ -509,7 +513,7 @@ export function DeliveryBoard({
                 <div className="flex items-center justify-between gap-2">
                   {showGroupColumn ? (
                     <Badge variant="secondary">
-                      {order.delivery_group_id ? (groupLabelById.get(order.delivery_group_id) ?? "미배송그룹") : "미배송그룹"}
+                      {order.delivery_group_id ? (groupLabelById.get(order.delivery_group_id) ?? "그룹 정보 확인 중") : "미배송그룹"}
                     </Badge>
                   ) : (
                     <span />
