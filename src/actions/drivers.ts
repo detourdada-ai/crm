@@ -172,7 +172,17 @@ export async function updateDriverRateAction(driverId: string, ratePerDelivery: 
   }
 }
 
-/** admin만 가능. 배정된 배송 이력이 있는 기사는 삭제 대신 비활성화를 사용해야 하므로 거부한다. */
+/**
+ * admin만 가능. 배정된 배송 이력이 있는 기사는 삭제 대신 비활성화를 사용해야
+ * 하므로 거부한다.
+ *
+ * P11-2: 기사 삭제는 createDriverWithAccount가 만든 두 row(drivers,
+ * app_accounts — 로그인 계정) 중 drivers만 지우고 app_accounts는 그대로
+ * 남겨(app_accounts.driver_id는 FK가 자동으로 null 처리) 로그인 계정이
+ * 고아로 남고 그 아이디를 영구히 재사용할 수 없는 문제가 있었다(P10-7-15
+ * ISSUE-3). drivers를 먼저 지운 뒤 계정을 지운다 — 계정 삭제가 실패해도
+ * 이전과 동일한(고아 계정) 상태로만 남을 뿐 새로운 손상은 없다.
+ */
 export async function deleteDriverAction(driverId: string): Promise<DriverActionState> {
   try {
     const session = await requireSession();
@@ -183,7 +193,9 @@ export async function deleteDriverAction(driverId: string): Promise<DriverAction
       return { ok: false, error: `배정된 배송 이력이 ${assignedCount}건 있어 삭제할 수 없습니다. 비활성화를 사용해주세요.` };
     }
 
+    const account = await accountsRepository.findByDriverId(driverId);
     await driversRepository.delete(driverId, undefined);
+    if (account) await accountsRepository.delete(account.username);
     revalidatePath("/settings");
     revalidatePath("/delivery");
     return { ok: true, error: null };
