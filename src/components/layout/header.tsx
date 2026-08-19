@@ -15,7 +15,7 @@ export async function Header() {
   const isAdmin = session?.role === "admin";
 
   return (
-    <header className="flex h-14 items-center gap-3 border-b bg-background px-4 md:px-6">
+    <header className="flex h-16 items-center gap-3 border-b bg-background px-4 md:px-6">
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="md:hidden">
@@ -24,7 +24,7 @@ export async function Header() {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="flex w-60 flex-col p-0">
-          <SheetTitle className="flex h-14 items-center border-b px-4">
+          <SheetTitle className="flex h-16 items-center border-b px-4">
             <Link href="/">
               <OrdifyLogo variant="full" />
             </Link>

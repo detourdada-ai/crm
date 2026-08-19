@@ -74,6 +74,7 @@ export function DeliveryBoard({
   drivers,
   itemSummaries,
   groups = [],
+  showGroupColumn = groups.length > 0,
   bagManagementEnabled = false,
 }: {
   orders: Order[];
@@ -82,9 +83,16 @@ export function DeliveryBoard({
   /**
    * P5: 배송그룹은 별도 카드/섹션이 아니라 이 리스트의 "그룹" 컬럼 +
    * 필터/정렬로만 노출한다(작업지시서 14-21번). 단일 배송일 조회가 아니면
-   * 페이지에서 빈 배열을 넘겨 컬럼/칩을 자연히 숨긴다.
+   * 페이지에서 빈 배열을 넘겨 필터 칩을 자연히 숨긴다.
    */
   groups?: DeliveryGroup[];
+  /**
+   * P7 7-4번: "그룹 컬럼은 항상 노출"— 그날 실제로 묶인 그룹이 하나도
+   * 없어도(groups=[]) 컬럼 자체는 사라지지 않고 각 행에 "미그룹"을 보여준다.
+   * 그룹 개념 자체가 없는 기간 조회(이번주/이번달/전체)에서만 페이지가
+   * false를 넘겨 컬럼을 숨긴다.
+   */
+  showGroupColumn?: boolean;
   /** Phase 10: 가방 관리 미사용 사업장에서는 가방 상태 컬럼/표시를 숨긴다. */
   bagManagementEnabled?: boolean;
 }) {
@@ -164,7 +172,7 @@ export function DeliveryBoard({
       startTransition(async () => {
         const result = await setFulfillmentMethodAction(Array.from(selected), "direct_pickup");
         if (result.ok) {
-          toast.success(`${selected.size}건을 직접수령으로 설정했습니다.`);
+          toast.success(`${selected.size}건을 직접수령으로 설정하고 배송완료 처리했습니다.`);
           setSelected(new Set());
         } else {
           toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
@@ -344,11 +352,11 @@ export function DeliveryBoard({
                   onCheckedChange={(checked) => toggleAll(checked === true)}
                 />
               </TableHead>
-              {groups.length > 0 ? <TableHead>그룹</TableHead> : null}
+              {showGroupColumn ? <TableHead>그룹</TableHead> : null}
               <TableHead>주문번호</TableHead>
               <TableHead>고객</TableHead>
               <TableHead>배송일</TableHead>
-              <TableHead className="w-56">배송지</TableHead>
+              <TableHead className="w-64">배송지</TableHead>
               <TableHead className="w-40">상품/주문 요약</TableHead>
               <TableHead>담당기사</TableHead>
               <TableHead>상태</TableHead>
@@ -366,12 +374,12 @@ export function DeliveryBoard({
                     onCheckedChange={(checked) => toggle(order.id, checked === true)}
                   />
                 </TableCell>
-                {groups.length > 0 ? (
+                {showGroupColumn ? (
                   <TableCell>
                     {order.delivery_group_id ? (
-                      <Badge variant="secondary">{groupLabelById.get(order.delivery_group_id) ?? "-"}</Badge>
+                      <Badge variant="secondary">{groupLabelById.get(order.delivery_group_id) ?? "미그룹"}</Badge>
                     ) : (
-                      <span className="text-muted-foreground">-</span>
+                      <span className="text-muted-foreground">미그룹</span>
                     )}
                   </TableCell>
                 ) : null}
@@ -387,7 +395,7 @@ export function DeliveryBoard({
                 <TableCell>
                   <DeliveryDateLabel isoDate={order.delivery_date} />
                 </TableCell>
-                <TableCell className="w-56 align-top">
+                <TableCell className="w-64 align-top">
                   <DeliveryAddressBlock order={order} />
                 </TableCell>
                 <TableCell className="w-40 max-w-40 align-top whitespace-normal">
@@ -464,8 +472,10 @@ export function DeliveryBoard({
                 <p className="mt-1 font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</p>
                 <div className="mt-1 flex items-center gap-2">
                   <DeliveryDateLabel isoDate={order.delivery_date} />
-                  {groups.length > 0 && order.delivery_group_id ? (
-                    <Badge variant="secondary">{groupLabelById.get(order.delivery_group_id) ?? "-"}</Badge>
+                  {showGroupColumn ? (
+                    <Badge variant="secondary">
+                      {order.delivery_group_id ? (groupLabelById.get(order.delivery_group_id) ?? "미그룹") : "미그룹"}
+                    </Badge>
                   ) : null}
                 </div>
                 <div className="mt-2">
@@ -541,10 +551,10 @@ function DeliveryAddressBlock({ order }: { order: Order }) {
   }
 
   return (
-    <div className="w-52 max-w-52 space-y-1.5 text-sm">
+    <div className="w-60 max-w-60 space-y-1.5 text-sm">
       <div className="space-y-0.5 whitespace-normal" title={fullText || undefined}>
         {regionSummary ? <p className="text-xs font-medium text-muted-foreground">{regionSummary}</p> : null}
-        <p className="truncate text-text-strong">{road ?? "-"}</p>
+        <p className="line-clamp-2 break-words text-text-strong">{road ?? "-"}</p>
       </div>
       {order.delivery_memo ? (
         <p className="flex items-start gap-1 whitespace-normal rounded-md bg-warning-soft px-1.5 py-1 text-xs text-warning">

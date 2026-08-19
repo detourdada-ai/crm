@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import {
   createProductAction,
   updateProductAction,
@@ -193,31 +194,21 @@ function ProductDeleteButton({ productId }: { productId: string }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={setOpen}
+      isPending={isPending}
+      onConfirm={handleDelete}
+      title="상품을 삭제하시겠습니까?"
+      target="이 상품"
+      description="이미 주문에서 사용된 상품은 삭제할 수 없습니다(사용 중지를 이용해주세요). 사용 이력이 없는 상품만 완전히 삭제됩니다."
+      trigger={
         <Button variant="outline" size="sm" className="gap-1.5 text-destructive hover:text-destructive">
           <Trash2 className="size-4" />
           삭제
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>상품을 삭제하시겠습니까?</DialogTitle>
-          <DialogDescription>
-            이미 주문에서 사용된 상품은 삭제할 수 없습니다(사용 중지를 이용해주세요). 사용 이력이 없는 상품만
-            완전히 삭제됩니다.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
-            취소
-          </Button>
-          <Button variant="destructive" onClick={handleDelete} disabled={isPending}>
-            {isPending ? "삭제하는 중..." : "삭제"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      }
+    />
   );
 }
 

@@ -24,32 +24,49 @@ export function ImportResultCards({ summary, errors }: { summary: ImportSummary;
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* P6 12번: "261건 → 157건, 104건은 어디 갔나"를 임의로 "정상 처리"라고
-            뭉개지 않는다 — CPO가 지정한 6줄(원본 행/주문 생성/신규 고객/기존
-            고객 매칭/동일인 검토/실패)을 값이 0이어도 항상 보여주고, 두 숫자가
-            차이나는 이유를 바로 아래 문장으로 설명한다. */}
-        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
-          <dt className="text-muted-foreground">원본 행</dt>
-          <dd className="text-right font-medium text-text-strong">{summary.totalRawRows.toLocaleString()}건</dd>
-          <dt className="text-muted-foreground">주문 생성</dt>
-          <dd className="text-right font-medium text-text-strong">{summary.totalOrderGroups.toLocaleString()}건</dd>
-          <dt className="text-muted-foreground">신규 고객</dt>
-          <dd className="text-right font-medium text-text-strong">{summary.newCustomers.toLocaleString()}명</dd>
-          <dt className="text-muted-foreground">기존 고객 매칭</dt>
-          <dd className="text-right font-medium text-text-strong">{summary.existingCustomers.toLocaleString()}명</dd>
-          <dt className={summary.duplicateCandidates > 0 ? "text-warning" : "text-muted-foreground"}>동일인 검토</dt>
-          <dd className={`text-right font-medium ${summary.duplicateCandidates > 0 ? "text-warning" : "text-text-strong"}`}>
-            {summary.duplicateCandidates.toLocaleString()}건
-          </dd>
-          <dt className={summary.failedRows > 0 ? "text-destructive" : "text-muted-foreground"}>실패</dt>
-          <dd className={`text-right font-medium ${summary.failedRows > 0 ? "text-destructive" : "text-text-strong"}`}>
-            {summary.failedRows.toLocaleString()}건
-          </dd>
+        {/* P7 5번: "신규 고객 132 + 기존 고객 25 = 157(주문 생성)"이 우연이
+            아니라는 걸 구조로 드러낸다 — newCustomers/existingCustomers는
+            원래도 "이 주문의 고객이 새로 생겼는지/이미 있었는지"를 주문
+            그룹 단위로 센 값이라(runImport 참고), "생성된 주문"의 하위
+            항목(├─ 신규 고객 주문/└─ 기존 고객 주문)으로 묶으면 정확히
+            들어맞는다. 원본 행과는 다른 단위(행 vs 주문)라는 걸 명확히
+            분리해서, "261행인데 왜 157건이냐"는 의문에 숫자를 억지로
+            맞추지 않고 각 줄이 무엇을 세는지로 답한다. */}
+        <dl className="space-y-1.5 text-sm">
+          <div className="flex items-baseline justify-between">
+            <dt className="text-muted-foreground">원본 행</dt>
+            <dd className="font-medium text-text-strong">{summary.totalRawRows.toLocaleString()}행</dd>
+          </div>
+          <div className="flex items-baseline justify-between">
+            <dt className="text-muted-foreground">생성된 주문</dt>
+            <dd className="font-medium text-text-strong">{summary.newOrdersCreated.toLocaleString()}건</dd>
+          </div>
+          <div className="flex items-baseline justify-between pl-4">
+            <dt className="text-muted-foreground">├─ 신규 고객 주문</dt>
+            <dd className="text-text-strong">{summary.newCustomers.toLocaleString()}건</dd>
+          </div>
+          <div className="flex items-baseline justify-between pl-4">
+            <dt className="text-muted-foreground">└─ 기존 고객 주문</dt>
+            <dd className="text-text-strong">{summary.existingCustomers.toLocaleString()}건</dd>
+          </div>
+          <div className="flex items-baseline justify-between">
+            <dt className={summary.duplicateCandidates > 0 ? "text-warning" : "text-muted-foreground"}>동일인 검토</dt>
+            <dd className={`font-medium ${summary.duplicateCandidates > 0 ? "text-warning" : "text-text-strong"}`}>
+              {summary.duplicateCandidates.toLocaleString()}건
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between">
+            <dt className={summary.failedRows > 0 ? "text-destructive" : "text-muted-foreground"}>실패</dt>
+            <dd className={`font-medium ${summary.failedRows > 0 ? "text-destructive" : "text-text-strong"}`}>
+              {summary.failedRows.toLocaleString()}건
+            </dd>
+          </div>
         </dl>
         <p className="text-xs text-muted-foreground">
-          여러 행이 하나의 주문에 포함된 경우 주문 단위로 합쳐집니다.
+          엑셀은 상품 단위 행이라 여러 행이 하나의 주문으로 합쳐질 수 있어, 원본 행과 생성된 주문 수는 서로 다른
+          기준입니다.
           {summary.alreadyImportedOrders > 0
-            ? ` 이 중 ${summary.alreadyImportedOrders.toLocaleString()}건은 이미 등록되어 있어 건너뛰었습니다(재업로드 시 정상).`
+            ? ` 이미 등록된 주문번호 ${summary.alreadyImportedOrders.toLocaleString()}건은 건너뛰었습니다(재업로드 시 정상).`
             : ""}
         </p>
 

@@ -2,7 +2,13 @@
 
 import { Loader2 } from "lucide-react";
 
-export function ImportLoadingOverlay({ message, hint }: { message: string; hint?: string }) {
+/**
+ * P7 2번: 엑셀 업로드에서만 쓰던 전체화면 로딩 오버레이를 공통 컴포넌트로
+ * 승격 — 시간이 걸리는 대량 작업(엑셀 삭제/전체삭제/데이터 초기화 등)에서
+ * "멈춘 건가?"라는 불안을 없앤다. 처리 중 다른 조작을 막아 중복 클릭을
+ * 방지하는 역할도 겸한다.
+ */
+export function LoadingOverlay({ message, hint }: { message: string; hint?: string }) {
   return (
     <div
       role="alert"
@@ -15,7 +21,6 @@ export function ImportLoadingOverlay({ message, hint }: { message: string; hint?
       <p className="max-w-sm text-center text-sm font-medium text-destructive">
         처리가 완료될 때까지 이 페이지를 닫거나 새로고침하지 마세요.
       </p>
-      <p className="text-xs text-muted-foreground">중복 등록을 막기 위해 다른 조작은 잠시 막혀 있습니다.</p>
     </div>
   );
 }

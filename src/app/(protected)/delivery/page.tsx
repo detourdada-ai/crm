@@ -194,6 +194,7 @@ export default async function DeliveryPage({
               drivers={drivers}
               itemSummaries={itemSummaries}
               groups={groupResult?.groups ?? []}
+              showGroupColumn={isSingleDay}
               bagManagementEnabled={features.bagManagement}
             />
           </CardContent>

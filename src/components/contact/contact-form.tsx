@@ -10,7 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 
 const initialState: ContactActionState = { error: null, ok: false };
 
-export function ContactForm() {
+/** P7 12-1번: 로그인 상태에서는 계정 정보로 신원이 이미 확인되므로 이름
+ * 입력란을 없앤다(submitContactAction이 세션에서 계정/사업장명을 채움) —
+ * 사용자에게 받는 항목은 이메일(회신용)/문의 유형/문의 내용만 남는다. */
+export function ContactForm({ loggedIn = false }: { loggedIn?: boolean }) {
   const [state, formAction, isPending] = useActionState(submitContactAction, initialState);
 
   if (state.ok) {
@@ -27,10 +30,12 @@ export function ContactForm() {
       {/* Honeypot — hidden from real users, a filled value marks a bot submission. */}
       <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
 
-      <div className="space-y-2">
-        <Label htmlFor="name">이름</Label>
-        <Input id="name" name="name" required maxLength={100} />
-      </div>
+      {!loggedIn ? (
+        <div className="space-y-2">
+          <Label htmlFor="name">이름</Label>
+          <Input id="name" name="name" required maxLength={100} />
+        </div>
+      ) : null}
       <div className="space-y-2">
         <Label htmlFor="email">이메일</Label>
         <Input id="email" name="email" type="email" required />

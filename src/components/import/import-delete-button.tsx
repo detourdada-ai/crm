@@ -1,24 +1,17 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { deleteImportAction } from "@/actions/import";
 
 export function ImportDeleteButton({ importId, fileName }: { importId: string; fileName: string }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   function handleDelete() {
     startTransition(async () => {
@@ -29,35 +22,24 @@ export function ImportDeleteButton({ importId, fileName }: { importId: string; f
       }
       toast.success("업로드 기록과 관련 주문을 삭제했습니다.");
       setOpen(false);
+      router.refresh();
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={setOpen}
+      isPending={isPending}
+      onConfirm={handleDelete}
+      title="업로드 삭제"
+      target={`"${fileName}" 업로드`}
+      description="이 업로드로 등록된 주문을 모두 삭제합니다. 이 업로드로 새로 생성되었고 다른 주문이 없는 고객도 함께 삭제됩니다."
+      trigger={
         <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
           <Trash2 className="size-4" />
         </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>업로드 삭제</DialogTitle>
-          <DialogDescription>
-            &quot;{fileName}&quot; 업로드로 등록된 주문을 모두 삭제합니다. 이 업로드로 새로 생성되었고 다른 주문이
-            없는 고객도 함께 삭제됩니다. 되돌릴 수 없습니다.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline" disabled={isPending}>
-              취소
-            </Button>
-          </DialogClose>
-          <Button variant="destructive" onClick={handleDelete} disabled={isPending}>
-            {isPending ? "삭제하는 중..." : "삭제"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      }
+    />
   );
 }

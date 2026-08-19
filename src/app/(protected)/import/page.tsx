@@ -22,7 +22,9 @@ export default async function ImportPage() {
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
             <CardTitle>엑셀 Import 이력</CardTitle>
-            <CardDescription>최근 업로드 20건</CardDescription>
+            <CardDescription>
+              {imports.length === 0 ? "업로드 이력이 없습니다." : `최근 업로드 ${imports.length}건 (최대 20건 표시)`}
+            </CardDescription>
           </div>
           <ImportDeleteAllButton disabled={imports.length === 0} />
         </CardHeader>

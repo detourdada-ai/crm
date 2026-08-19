@@ -484,13 +484,22 @@ export const ordersRepository = {
    * 배송관리 상단 집계의 "기사배정/미배정/직접수령" 세 버킷이 항상 서로
    * 배타적이도록). delivery로 되돌릴 때는 driver_id를 건드리지 않는다(원래
    * 없었으니 그대로 미배정 상태로 남고, 필요하면 별도로 기사를 배정한다).
+   * P7 7-1번: "직접수령 선택 → 상태가 완료로 안 바뀐다"는 지적 — 직접수령은
+   * 고객이 매장에서 이미 받아간 사건이라 배송중 단계가 없다. 그래서
+   * direct_pickup으로 바꾸는 순간 배송완료까지 같이 처리한다(배송대기→배송중
+   * 을 거치지 않고 바로 완료). 잘못 눌렀다면 상태 배지로 완료→배송대기를
+   * 되돌린 뒤(7-3) "해제" 버튼으로 배송방식을 되돌리면 된다.
    */
   async setFulfillmentMethod(orderIds: string[], method: FulfillmentMethod, ownerUsername?: string): Promise<number> {
     if (orderIds.length === 0) return 0;
     const admin = getSupabaseAdmin();
+    const update =
+      method === "direct_pickup"
+        ? { fulfillment_method: method, driver_id: null, delivery_status: "완료" as const, completed_at: new Date().toISOString() }
+        : { fulfillment_method: method };
     let q = admin
       .from("orders")
-      .update(method === "direct_pickup" ? { fulfillment_method: method, driver_id: null } : { fulfillment_method: method })
+      .update(update)
       .in("id", orderIds)
       .neq("delivery_status", "완료")
       .neq("delivery_status", "취소");

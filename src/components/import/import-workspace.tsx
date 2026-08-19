@@ -9,7 +9,7 @@ import type { ImportSummary, ImportRowError } from "@/types/domain";
 import { ImportDropzone } from "./import-dropzone";
 import { ColumnMappingForm } from "./column-mapping-form";
 import { ImportResultCards } from "./import-result-cards";
-import { ImportLoadingOverlay } from "./import-loading-overlay";
+import { LoadingOverlay } from "@/components/common/loading-overlay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -90,7 +90,7 @@ export function ImportWorkspace() {
   return (
     <>
       {isBusy ? (
-        <ImportLoadingOverlay
+        <LoadingOverlay
           message={isAnalyzing ? "파일을 확인하고 있습니다..." : "엑셀 주문을 처리하고 있습니다..."}
           hint={isAnalyzing ? undefined : "파일 크기에 따라 시간이 걸릴 수 있습니다."}
         />

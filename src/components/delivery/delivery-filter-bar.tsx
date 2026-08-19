@@ -101,12 +101,12 @@ export function DeliveryFilterBar({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="deliverySearch" className="text-xs text-muted-foreground">
-            고객/주문 검색
+            고객 검색
           </Label>
           <Input
             id="deliverySearch"
             className="w-52"
-            placeholder="고객명, 전화번호, 주문번호"
+            placeholder="고객명, 연락처, 수령인 검색"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleApply()}
