@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
+import { Check, ChevronDown, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -46,23 +46,17 @@ const GROUP_FILTER_UNGROUPED = "__ungrouped__";
  * 구조화해 보여주고, 배송메모는 breakpoint 숨김 없이 항상 강조 표시하며,
  * 주소복사/전화/지도(카카오맵 검색 링크, API 키 불필요) 퀵액션을 더했다.
  */
-type DeliverySortField =
-  | "delivery_date"
-  | "order_number"
-  | "recipient_name"
-  | "driver_name"
-  | "delivery_status"
-  | "address"
-  | "delivery_group";
+type DeliverySortField = "order_number" | "recipient_name" | "driver_name" | "delivery_status" | "address" | "delivery_group";
 
+// CEO 요청: 배송일순은 별도 배송일 필터가 이미 있어 정렬 옵션에서는 중복이라
+// 제거하고, 기본 정렬을 배송그룹순으로 바꾼다(가까운 배송지끼리 먼저 보이게).
 const SORT_OPTIONS: { value: DeliverySortField; label: string }[] = [
-  { value: "delivery_date", label: "배송일순" },
+  { value: "delivery_group", label: "배송그룹순" },
   { value: "order_number", label: "주문번호순" },
   { value: "recipient_name", label: "고객명순" },
   { value: "driver_name", label: "담당기사순" },
   { value: "delivery_status", label: "상태순" },
   { value: "address", label: "배송지순" },
-  { value: "delivery_group", label: "배송그룹순" },
 ];
 
 function composeAddressCopyText(order: Order): string {
@@ -100,8 +94,9 @@ export function DeliveryBoard({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [driverId, setDriverId] = useState<string>("");
   const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
-  const [sortField, setSortField] = useState<DeliverySortField>("delivery_date");
+  const [sortField, setSortField] = useState<DeliverySortField>("delivery_group");
   const [groupFilter, setGroupFilter] = useState<string>(GROUP_FILTER_ALL);
+  const [groupFilterExpanded, setGroupFilterExpanded] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
@@ -164,6 +159,7 @@ export function DeliveryBoard({
       case "address":
         return list.sort((a, b) => (a.address_snapshot ?? "").localeCompare(b.address_snapshot ?? "", "ko"));
       case "delivery_group":
+      default:
         // 미배송그룹(null)은 뒤로 — group_no가 없는 주문을 정렬 맨 뒤에 모은다.
         return list.sort((a, b) => {
           const ga = a.delivery_group_id ? (groupLabelById.get(a.delivery_group_id) ?? "") : null;
@@ -173,9 +169,6 @@ export function DeliveryBoard({
           if (gb === null) return -1;
           return ga.localeCompare(gb, "ko");
         });
-      case "delivery_date":
-      default:
-        return list.sort((a, b) => (a.delivery_date ?? "").localeCompare(b.delivery_date ?? ""));
     }
   }, [groupFilteredOrders, sortField, driverNames, groupLabelById]);
 
@@ -339,49 +332,66 @@ export function DeliveryBoard({
 
       {/* P5 20번: 배송그룹은 새 영역을 만들지 않고 기존 필터 영역 안에
           칩으로만 넣는다 — "그룹을 관리하세요"가 아니라 "그룹으로 정렬해서
-          가까운 주문들을 보고, 필요한 대로 기사 배정하세요"가 목표다. */}
+          가까운 주문들을 보고, 필요한 대로 기사 배정하세요"가 목표다.
+          CEO 요청: 그룹이 많으면 칩이 너무 길어져 접었다 펼 수 있게 하고,
+          기본은 접힌 상태로 시작한다. */}
       {groups.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">배송그룹</span>
+        <div className="space-y-1.5">
           <button
             type="button"
-            onClick={() => setGroupFilter(GROUP_FILTER_ALL)}
-            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-              groupFilter === GROUP_FILTER_ALL ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
-            }`}
+            onClick={() => setGroupFilterExpanded((v) => !v)}
+            className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
           >
-            전체
+            배송그룹 필터
+            <ChevronDown className={`size-3.5 transition-transform ${groupFilterExpanded ? "rotate-180" : ""}`} />
           </button>
-          <button
-            type="button"
-            onClick={() => setGroupFilter(GROUP_FILTER_HAS_GROUP)}
-            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-              groupFilter === GROUP_FILTER_HAS_GROUP ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            배송그룹 있음
-          </button>
-          {groups.map((g) => (
-            <button
-              key={g.id}
-              type="button"
-              onClick={() => setGroupFilter(g.id)}
-              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                groupFilter === g.id ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {groupLabel(g.group_no)} ({g.order_count})
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setGroupFilter(GROUP_FILTER_UNGROUPED)}
-            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-              groupFilter === GROUP_FILTER_UNGROUPED ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            미배송그룹
-          </button>
+          {groupFilterExpanded ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setGroupFilter(GROUP_FILTER_ALL)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  groupFilter === GROUP_FILTER_ALL ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                전체
+              </button>
+              <button
+                type="button"
+                onClick={() => setGroupFilter(GROUP_FILTER_HAS_GROUP)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  groupFilter === GROUP_FILTER_HAS_GROUP
+                    ? "border-primary bg-primary-soft text-primary"
+                    : "border-border text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                배송그룹 있음
+              </button>
+              {groups.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => setGroupFilter(g.id)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                    groupFilter === g.id ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {groupLabel(g.group_no)} ({g.order_count})
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setGroupFilter(GROUP_FILTER_UNGROUPED)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  groupFilter === GROUP_FILTER_UNGROUPED
+                    ? "border-primary bg-primary-soft text-primary"
+                    : "border-border text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                미배송그룹
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

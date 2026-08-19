@@ -4,8 +4,8 @@ import { deliveryGroupsRepository, type DeliveryGroupInsert } from "@/lib/reposi
 import { clusterPointsByDistance, computeCentroid, representativeRegion } from "@/lib/services/spatial-grouping.service";
 import type { Order } from "@/types/domain";
 
-/** 배송 그룹화 기본 반경 — CPO 승인: "50m마다 격자"가 아니라 "주문 간 실거리 50m 이내"가 연결 기준. */
-export const GROUP_RADIUS_METERS = 50;
+/** 배송 그룹화 기본 반경 — CPO 승인: "격자"가 아니라 "주문 간 실거리 N m 이내"가 연결 기준(그룹이 너무 잘게 쪼개진다는 CEO 피드백으로 50m→100m 확대). */
+export const GROUP_RADIUS_METERS = 100;
 
 /**
  * Phase 4: 하나의 (tenant, 배송일)에 대한 그룹 재계산 orchestration —
