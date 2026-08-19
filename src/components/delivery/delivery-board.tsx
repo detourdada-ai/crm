@@ -88,7 +88,7 @@ export function DeliveryBoard({
   groups?: DeliveryGroup[];
   /**
    * P7 7-4번: "그룹 컬럼은 항상 노출"— 그날 실제로 묶인 그룹이 하나도
-   * 없어도(groups=[]) 컬럼 자체는 사라지지 않고 각 행에 "미그룹"을 보여준다.
+   * 없어도(groups=[]) 컬럼 자체는 사라지지 않고 각 행에 "미배송그룹"을 보여준다.
    * 그룹 개념 자체가 없는 기간 조회(이번주/이번달/전체)에서만 페이지가
    * false를 넘겨 컬럼을 숨긴다.
    */
@@ -106,6 +106,16 @@ export function DeliveryBoard({
   const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
   const groupLabelById = useMemo(() => new Map(groups.map((g) => [g.id, groupLabel(g.group_no)])), [groups]);
   const toolbarRef = useRef<HTMLDivElement>(null);
+
+  // 직접수령 등으로 처리한 주문이 revalidate 후 orders에서 사라져도(예: "배정
+  // 필요" 필터 대상에서 빠짐) selected Set에는 예전 id가 그대로 남아 "선택한
+  // N건 적용" 버튼의 N이 실제 화면에 보이는 건수보다 커지는 문제가 있었다.
+  // state를 effect로 동기화하는 대신, 지금도 존재하는 id만 남긴 파생값을
+  // 매 렌더마다 계산해 selected 대신 이 값을 화면/액션 양쪽에 쓴다.
+  const visibleSelected = useMemo(() => {
+    const currentIds = new Set(orders.map((o) => o.id));
+    return new Set([...selected].filter((id) => currentIds.has(id)));
+  }, [selected, orders]);
 
   const groupFilteredOrders = useMemo(() => {
     if (groupFilter === GROUP_FILTER_ALL) return orders;
@@ -130,7 +140,7 @@ export function DeliveryBoard({
       case "address":
         return list.sort((a, b) => (a.address_snapshot ?? "").localeCompare(b.address_snapshot ?? "", "ko"));
       case "delivery_group":
-        // 미그룹(null)은 뒤로 — group_no가 없는 주문을 정렬 맨 뒤에 모은다.
+        // 미배송그룹(null)은 뒤로 — group_no가 없는 주문을 정렬 맨 뒤에 모은다.
         return list.sort((a, b) => {
           const ga = a.delivery_group_id ? (groupLabelById.get(a.delivery_group_id) ?? "") : null;
           const gb = b.delivery_group_id ? (groupLabelById.get(b.delivery_group_id) ?? "") : null;
@@ -170,9 +180,9 @@ export function DeliveryBoard({
   function handleAssign() {
     if (fulfillmentChoice === "direct_pickup") {
       startTransition(async () => {
-        const result = await setFulfillmentMethodAction(Array.from(selected), "direct_pickup");
+        const result = await setFulfillmentMethodAction(Array.from(visibleSelected), "direct_pickup");
         if (result.ok) {
-          toast.success(`${selected.size}건을 직접수령으로 설정하고 배송완료 처리했습니다.`);
+          toast.success(`${visibleSelected.size}건을 직접수령으로 설정하고 배송완료 처리했습니다.`);
           setSelected(new Set());
         } else {
           toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
@@ -185,9 +195,9 @@ export function DeliveryBoard({
       return;
     }
     startTransition(async () => {
-      const result = await assignDriverAction(Array.from(selected), driverId);
+      const result = await assignDriverAction(Array.from(visibleSelected), driverId);
       if (result.ok) {
-        toast.success(`${selected.size}건을 배정했습니다.`);
+        toast.success(`${visibleSelected.size}건을 배정했습니다.`);
         setSelected(new Set());
       } else {
         toast.error(result.error ?? "배정 중 오류가 발생했습니다.");
@@ -275,8 +285,8 @@ export function DeliveryBoard({
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" disabled={selected.size === 0 || isPending} onClick={handleAssign}>
-            {isPending ? "처리하는 중..." : `선택한 ${selected.size}건 적용`}
+          <Button size="sm" disabled={visibleSelected.size === 0 || isPending} onClick={handleAssign}>
+            {isPending ? "처리하는 중..." : `선택한 ${visibleSelected.size}건 적용`}
           </Button>
         </div>
         <Select value={sortField} onValueChange={(v) => setSortField(v as DeliverySortField)}>
@@ -315,7 +325,7 @@ export function DeliveryBoard({
               groupFilter === GROUP_FILTER_HAS_GROUP ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
             }`}
           >
-            그룹 있음
+            배송그룹 있음
           </button>
           {groups.map((g) => (
             <button
@@ -336,7 +346,7 @@ export function DeliveryBoard({
               groupFilter === GROUP_FILTER_UNGROUPED ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
             }`}
           >
-            미그룹
+            미배송그룹
           </button>
         </div>
       ) : null}
@@ -351,16 +361,16 @@ export function DeliveryBoard({
             <TableRow>
               <TableHead className="w-10">
                 <Checkbox
-                  checked={selected.size === orders.length}
+                  checked={visibleSelected.size === orders.length && orders.length > 0}
                   onCheckedChange={(checked) => toggleAll(checked === true)}
                 />
               </TableHead>
-              {showGroupColumn ? <TableHead>그룹</TableHead> : null}
+              {showGroupColumn ? <TableHead>배송그룹</TableHead> : null}
               <TableHead>상태</TableHead>
               <TableHead>담당기사</TableHead>
-              <TableHead className="w-64">배송지</TableHead>
+              <TableHead className="w-80">배송지</TableHead>
               <TableHead>고객</TableHead>
-              <TableHead className="w-40">상품/주문 요약</TableHead>
+              <TableHead className="w-56">상품/주문 요약</TableHead>
               <TableHead>주문번호</TableHead>
               <TableHead>배송일</TableHead>
               {bagManagementEnabled ? <TableHead>가방 상태</TableHead> : null}
@@ -380,9 +390,9 @@ export function DeliveryBoard({
                 {showGroupColumn ? (
                   <TableCell>
                     {order.delivery_group_id ? (
-                      <Badge variant="secondary">{groupLabelById.get(order.delivery_group_id) ?? "미그룹"}</Badge>
+                      <Badge variant="secondary">{groupLabelById.get(order.delivery_group_id) ?? "미배송그룹"}</Badge>
                     ) : (
-                      <span className="text-muted-foreground">미그룹</span>
+                      <span className="text-muted-foreground">미배송그룹</span>
                     )}
                   </TableCell>
                 ) : null}
@@ -406,11 +416,11 @@ export function DeliveryBoard({
                     onClearDirectPickup={() => handleClearDirectPickup(order.id)}
                   />
                 </TableCell>
-                <TableCell className="w-64 align-top">
+                <TableCell className="w-80 align-top">
                   <DeliveryAddressBlock order={order} />
                 </TableCell>
                 <TableCell className="font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</TableCell>
-                <TableCell className="w-40 max-w-40 align-top whitespace-normal">
+                <TableCell className="w-56 max-w-56 align-top whitespace-normal">
                   <ItemSummaryBlock summary={itemSummaries[order.id]} />
                 </TableCell>
                 <TableCell className="font-medium">
@@ -465,7 +475,7 @@ export function DeliveryBoard({
                 <div className="flex items-center justify-between gap-2">
                   {showGroupColumn ? (
                     <Badge variant="secondary">
-                      {order.delivery_group_id ? (groupLabelById.get(order.delivery_group_id) ?? "미그룹") : "미그룹"}
+                      {order.delivery_group_id ? (groupLabelById.get(order.delivery_group_id) ?? "미배송그룹") : "미배송그룹"}
                     </Badge>
                   ) : (
                     <span />
@@ -532,7 +542,7 @@ export function DeliveryBoard({
 function ItemSummaryBlock({ summary }: { summary: OrderItemSummary | undefined }) {
   if (!summary) return <span className="text-sm text-muted-foreground">-</span>;
   return (
-    <div className="w-40 max-w-40 space-y-0.5 text-sm">
+    <div className="w-56 max-w-56 space-y-0.5 text-sm">
       <p className="line-clamp-1 break-words text-text-strong" title={summary.productSummary}>
         {summary.productSummary}
       </p>
@@ -561,7 +571,7 @@ function DeliveryAddressBlock({ order }: { order: Order }) {
   }
 
   return (
-    <div className="w-60 max-w-60 space-y-1.5 text-sm">
+    <div className="w-80 max-w-80 space-y-1.5 text-sm">
       <div className="space-y-0.5 whitespace-normal" title={fullText || undefined}>
         {regionSummary ? <p className="text-xs font-medium text-muted-foreground">{regionSummary}</p> : null}
         <p className="line-clamp-2 break-words text-text-strong">{road ?? "-"}</p>
