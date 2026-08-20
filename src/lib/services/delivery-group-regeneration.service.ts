@@ -121,3 +121,27 @@ export async function regenerateDeliveryGroupsForTenant(
     if (groupId) await ordersRepository.assignOrdersToGroup(clusters[i], groupId);
   }
 }
+
+/**
+ * P15-A: `/delivery` 조회 시마다 무조건 돌던 재계산(15~20초 지연의 원인)을
+ * 없애고, 그룹에 실제 영향을 주는 쓰기(주문 생성/주소·배송일 변경/삭제/
+ * 취소·취소해제/Excel import·삭제)가 일어난 시점에만 그 (tenant, 배송일)
+ * 하나만 재계산하도록 호출 위치를 옮긴다 — regenerateDeliveryGroupsForTenant
+ * 자체(알고리즘, overlap matching, group_no/driver_id 유지)는 손대지 않는다.
+ *
+ * 절대 throw하지 않는다: CPO 방침(P15-A 3번) — 그룹 재계산 실패가 주문
+ * 저장/삭제 자체를 실패로 보이게 하면 안 되므로, 실패는 로그로만 남기고
+ * 호출자에게는 항상 정상 반환한다.
+ */
+export async function triggerDeliveryGroupRegeneration(
+  tenantId: string,
+  dateStr: string,
+  ownerUsername: string
+): Promise<void> {
+  try {
+    const orders = await ordersRepository.findEligibleForGrouping(dateStr, ownerUsername);
+    await regenerateDeliveryGroupsForTenant(tenantId, dateStr, orders, ownerUsername);
+  } catch (e) {
+    console.warn(`[delivery-group] regeneration trigger failed (tenant=${tenantId}, date=${dateStr})`, e);
+  }
+}

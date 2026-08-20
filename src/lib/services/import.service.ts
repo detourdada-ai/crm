@@ -11,6 +11,8 @@ import { cleanAddress, normalizeAddressForCompare } from "@/lib/utils/address";
 import { parseDeliveryDateFromOption, parseDeliveryAreaFromOption } from "@/lib/utils/delivery-date";
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { geocodeBatch, type GeocodeFields } from "@/lib/services/geocoding.service";
+import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
+import { kstDayDateStrOf } from "@/lib/utils/kst-date";
 import type { ParsedSheet, ColumnMapping } from "@/types/excel";
 import type { Customer, ImportRowError, ImportSummary } from "@/types/domain";
 
@@ -546,6 +548,16 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   }
   if (newOrderInserts.length > 0) {
     await ordersRepository.createMany(newOrderInserts);
+    // P15-A: 150건이 들어와도 "건마다"가 아니라 이번 import에 포함된 배송일
+    // 종류 수만큼만(보통 1~수 회) 재계산한다 — CPO 방침(P15-A 2번, Excel Import).
+    const distinctDateStrs = new Set(
+      newOrderInserts
+        .filter((o): o is typeof o & { delivery_date: string } => !!o.delivery_date)
+        .map((o) => kstDayDateStrOf(o.delivery_date))
+    );
+    for (const dateStr of distinctDateStrs) {
+      await triggerDeliveryGroupRegeneration(tenant.id, dateStr, ownerUsername);
+    }
   }
   if (newItemInserts.length > 0) {
     await ordersRepository.createItems(newItemInserts);
@@ -609,6 +621,20 @@ export interface DeleteImportResult {
 export async function deleteImport(importId: string, ownerUsername?: string): Promise<DeleteImportResult> {
   const orders = await ordersRepository.findByImportId(importId);
   await ordersRepository.deleteMany(orders.map((o) => o.id));
+
+  // P15-A: 삭제된 주문들이 걸쳐 있던 배송일마다 그룹을 재계산한다 —
+  // deleteAllImports()가 이 함수를 반복 호출하므로 "전체 삭제"도 자동으로
+  // 커버된다(별도 트리거 불필요).
+  const affected = new Map<string, { tenantId: string; ownerUsername: string }>();
+  for (const order of orders) {
+    if (!order.delivery_date) continue;
+    const dateStr = kstDayDateStrOf(order.delivery_date);
+    affected.set(`${order.tenant_id}|${dateStr}`, { tenantId: order.tenant_id, ownerUsername: order.owner_username });
+  }
+  for (const [key, { tenantId, ownerUsername: owner }] of affected) {
+    const dateStr = key.split("|")[1];
+    await triggerDeliveryGroupRegeneration(tenantId, dateStr, owner);
+  }
 
   const candidateCustomers = await customersRepository.findByCreatedByImportId(importId);
   let deletedCustomers = 0;

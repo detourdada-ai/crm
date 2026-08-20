@@ -8,9 +8,11 @@ import { productsRepository } from "@/lib/repositories/products.repository";
 import { createCustomerDirect } from "@/lib/services/customer.service";
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { geocodeAddress } from "@/lib/services/geocoding.service";
+import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { toActionError } from "@/lib/utils/action-error";
 import { isUuid } from "@/lib/utils/id";
+import { kstDayDateStrOf } from "@/lib/utils/kst-date";
 import { ownerScopeFor, requireSession, tenantScopeFor } from "@/lib/auth/current-session";
 import { isOrderSource } from "@/lib/constants/order-source";
 import type { Order, OrderItem, DeliveryStatus, OrderSource, Customer } from "@/types/domain";
@@ -341,6 +343,10 @@ export async function createManualOrderAction(
       },
     ]);
 
+    // P15-A: 신규 주문은 배송그룹에 새로 편입될 수 있으므로 그 배송일 하나만
+    // 재계산한다 — 실패해도 주문 저장 자체는 이미 성공했으므로 무시(로그만).
+    await triggerDeliveryGroupRegeneration(tenantId, kstDayDateStrOf(deliveryDate), session.username);
+
     revalidatePath("/orders");
     revalidatePath("/customers");
     revalidatePath("/");
@@ -432,6 +438,14 @@ export async function updateManualOrderAction(
         geocoded_at: order.geocoded_at,
       };
 
+  // P15-A: 주소 또는 배송일이 실제로 바뀐 경우에만 그룹을 재계산한다 — 그
+  // 외 필드만 고치는 흔한 수정에서 불필요한 재계산을 피한다. 배송일이 바뀌면
+  // 예전 날짜(그 그룹에서 빠져야 함)와 새 날짜(그 그룹에 들어가야 함) 둘 다
+  // 재계산해야 한다.
+  const oldDateStr = order.delivery_date ? kstDayDateStrOf(order.delivery_date) : null;
+  const newDateStr = deliveryDate ? kstDayDateStrOf(deliveryDate) : null;
+  const deliveryDateChanged = oldDateStr !== newDateStr;
+
   try {
     await ordersRepository.update(orderId, {
       recipient_name: recipientName,
@@ -464,6 +478,13 @@ export async function updateManualOrderAction(
       await ordersRepository.createItems([
         { order_id: orderId, product_name: productName, option_name: optionName, quantity, unit_price: unitPrice, amount },
       ]);
+    }
+
+    if (addressChanged || deliveryDateChanged) {
+      if (oldDateStr) await triggerDeliveryGroupRegeneration(order.tenant_id, oldDateStr, order.owner_username);
+      if (newDateStr && newDateStr !== oldDateStr) {
+        await triggerDeliveryGroupRegeneration(order.tenant_id, newDateStr, order.owner_username);
+      }
     }
 
     revalidatePath("/orders");
@@ -502,6 +523,10 @@ export async function deleteManualOrderAction(orderId: string): Promise<DeleteMa
 
   try {
     await ordersRepository.deleteOne(orderId, session.role === "admin" ? undefined : session.username);
+    // P15-A: 삭제된 주문이 그룹에 속해 있었을 수 있으므로 그 배송일만 재계산.
+    if (order.delivery_date) {
+      await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username);
+    }
     revalidatePath("/orders");
     revalidatePath("/customers");
     revalidatePath("/");
@@ -532,6 +557,10 @@ export async function cancelOrderAction(orderId: string): Promise<OrderCancelAct
 
   try {
     await ordersRepository.cancelOrder(orderId, session.role === "admin" ? undefined : session.username);
+    // P15-A: 취소된 주문은 배송그룹 대상에서 빠져야 하므로 그 배송일만 재계산.
+    if (order.delivery_date) {
+      await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username);
+    }
     revalidatePath("/orders");
     revalidatePath(`/orders/${orderId}`);
     revalidatePath("/delivery");
@@ -553,6 +582,10 @@ export async function uncancelOrderAction(orderId: string): Promise<OrderCancelA
 
   try {
     await ordersRepository.uncancelOrder(orderId, session.role === "admin" ? undefined : session.username);
+    // P15-A: 취소 해제된 주문은 다시 배송그룹 대상이 될 수 있으므로 그 배송일만 재계산.
+    if (order.delivery_date) {
+      await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username);
+    }
     revalidatePath("/orders");
     revalidatePath(`/orders/${orderId}`);
     revalidatePath("/delivery");

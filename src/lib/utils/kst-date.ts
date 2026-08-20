@@ -26,6 +26,12 @@ export function kstDayStrOf(isoInstant: string): string {
   return kst.toISOString().slice(0, 10).replace(/-/g, "");
 }
 
+/** The KST calendar day of an arbitrary ISO instant, as "YYYY-MM-DD" (dashed) — used wherever a delivery_groups.delivery_date-shaped key is needed (e.g. P15-A group-regeneration triggers). */
+export function kstDayDateStrOf(isoInstant: string): string {
+  const kst = new Date(new Date(isoInstant).getTime() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().slice(0, 10);
+}
+
 /** The UTC instant corresponding to 00:00:00.000 KST on the given "YYYY-MM-DD" calendar day. */
 export function kstDayStartIso(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00.000${KST_OFFSET}`).toISOString();

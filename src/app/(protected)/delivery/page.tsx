@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Truck } from "lucide-react";
 import Link from "next/link";
 import { getDeliveryBoardAction } from "@/actions/delivery";
-import { listDeliveryGroupsAction, regenerateDeliveryGroupsAction } from "@/actions/delivery-groups";
+import { listDeliveryGroupsAction } from "@/actions/delivery-groups";
 import { listDriversAction } from "@/actions/drivers";
 import { listKnownRegionsAction } from "@/actions/driver-regions";
 import { requireSession } from "@/lib/auth/current-session";
@@ -62,14 +62,14 @@ export default async function DeliveryPage({
 
   const session = await requireSession();
 
-  // P5 18번: "그룹 생성" 버튼을 누르지 않아도 배송관리를 조회할 때마다 자동으로
-  // 좌표 있는 주문을 50m 기준으로 재계산한다(수동 버튼/확인 다이얼로그 제거).
-  // 알고리즘은 기존 그대로(regenerateDeliveryGroupsForTenant) — 이 재계산이
-  // 끝난 뒤에 주문 목록을 읽어야 delivery_group_id가 최신 상태로 보인다.
-  if (isSingleDay && range) {
-    await regenerateDeliveryGroupsAction(range.start);
-  }
-
+  // P15-A: 예전엔 "그룹 생성" 버튼 대신 조회할 때마다 자동으로 그룹을
+  // 재계산했다(P5 18번) — 하지만 100~150건 기준 15~20초가 걸리는 원인이었다
+  // (그룹 하나당 순차 DB 왕복 2회, 20개 그룹이면 40회+). 조회 페이지는 DB를
+  // 변경하지 않는다는 원칙에 따라 이 호출을 없애고, 대신 그룹에 실제 영향을
+  // 주는 쓰기 시점(주문 생성/주소·배송일 변경/삭제/취소·취소해제/Excel
+  // import·삭제 — actions/orders.ts, import.service.ts)에만
+  // triggerDeliveryGroupRegeneration()으로 그 날짜 하나만 재계산한다. 알고리즘
+  // 자체(regenerateDeliveryGroupsForTenant)는 전혀 바뀌지 않았다.
   const [features, boardResult, allDrivers, accounts, knownRegions, groupResult] = await Promise.all([
     getTenantFeaturesForSession(session),
     getDeliveryBoardAction(range?.start ?? null, range?.end),
