@@ -13,6 +13,7 @@ const UNASSIGNED_COLOR = "bg-slate-400";
 const COMPLETED_COLOR = "bg-muted-foreground";
 
 const DRIVER_ALL = "__all__";
+const DRIVER_UNASSIGNED = "__unassigned__";
 const REGION_ALL = "__all__";
 
 function regionKeyOf(g: Pick<DeliveryGroup, "representative_sido" | "representative_sigungu" | "representative_eupmyeondong">): string {
@@ -20,16 +21,18 @@ function regionKeyOf(g: Pick<DeliveryGroup, "representative_sido" | "representat
 }
 
 /**
- * P15-B: 사장님 배송관제 지도 — 기존 목록(DeliveryBoard)은 전혀 건드리지
- * 않고, `/delivery`에 "지도" 탭으로만 추가한다(delivery-view-switcher).
- * 이미 서버에서 한 번 불러온 orders/drivers/groups를 그대로 받아쓸 뿐,
- * 이 컴포넌트 자체는 어떤 조회도, 배송그룹 재계산도 하지 않는다
- * (작업지시서 8번 성능 원칙) — P14-B 지역 필터도 이미 계산된 groups의
- * representative_* 필드를 재사용한다(신규 계산 없음).
+ * P15-B / P15-B-2: 사장님 배송관제 지도 — 기존 목록(DeliveryBoard)은 전혀
+ * 건드리지 않고 `/delivery`에 "지도" 탭으로만 추가한다. 서버에서 한 번
+ * 불러온 orders/drivers/groups를 그대로 받아쓸 뿐 이 컴포넌트 자체는 어떤
+ * 조회도, 배송그룹 재계산도 하지 않는다(성능 원칙).
  *
- * 필터는 "상세 필터" 안에 접어 넣고 기본은 지도만 크게 보이게 한다
- * (작업지시서 6번) — 배송구역/배송대상/단지까지 전부 복제하지 않고
- * 기사/지역/완료여부 정도로만 좁힌다(화려한 범례·복잡한 필터 금지, 9번).
+ * P15-B-2: 기사 필터는 상단 탭으로 올리고(작업지시서 7-9번),
+ * `orders.filter(driver_id === 선택)` 기준으로만 동작한다 —
+ * delivery_group_id는 필터 기준으로 쓰지 않는다. 지도 마커는 항상 Order
+ * 단위이고, 카카오가 동일 좌표로 묶어 반환한 주문들은 DeliveryMap이
+ * 알아서 "N건" 배지로 표시한다(이 컴포넌트는 좌표 grouping을 모른다).
+ * 겹침 팝업의 각 행은 배정/선택 상태를 바꾸지 않고 주문 상세 페이지로만
+ * 연결한다(이번 라운드는 "개별 주문 확인"까지로 범위를 잘랐다 — CPO 승인).
  */
 export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; drivers: Driver[]; groups: DeliveryGroup[] }) {
   const [driverFilter, setDriverFilter] = useState(DRIVER_ALL);
@@ -71,7 +74,11 @@ export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; 
 
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
-      if (driverFilter !== DRIVER_ALL && o.driver_id !== driverFilter) return false;
+      if (driverFilter === DRIVER_UNASSIGNED) {
+        if (o.driver_id) return false;
+      } else if (driverFilter !== DRIVER_ALL && o.driver_id !== driverFilter) {
+        return false;
+      }
       if (regionGroupIds && (!o.delivery_group_id || !regionGroupIds.has(o.delivery_group_id))) return false;
       if (hideCompleted && o.delivery_status === "완료") return false;
       return true;
@@ -85,28 +92,44 @@ export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; 
         id: o.id,
         lat: o.latitude,
         lng: o.longitude,
+        label: o.recipient_name || o.buyer_name || "-",
+        sublabel: o.address_snapshot ?? undefined,
+        statusLabel: o.delivery_status,
         colorClassName:
           o.delivery_status === "완료" ? COMPLETED_COLOR : o.driver_id ? (driverColorById.get(o.driver_id) ?? UNASSIGNED_COLOR) : UNASSIGNED_COLOR,
+        href: `/orders/${o.id}`,
+        actionLabel: "상세보기",
       }));
   }, [filteredOrders, driverColorById]);
 
   const noCoordCount = filteredOrders.length - markers.length;
 
+  const tabs = useMemo(
+    () => [
+      { id: DRIVER_ALL, label: "전체", count: orders.length, colorClassName: undefined as string | undefined },
+      ...drivers.map((d) => ({ id: d.id, label: d.name, count: driverCounts.counts.get(d.id) ?? 0, colorClassName: driverColorById.get(d.id) })),
+      { id: DRIVER_UNASSIGNED, label: "미배정", count: driverCounts.unassigned, colorClassName: UNASSIGNED_COLOR },
+    ],
+    [orders.length, drivers, driverCounts, driverColorById]
+  );
+
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 text-sm">
-        {drivers.map((d) => (
-          <span key={d.id} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1">
-            <span className={cn("size-2.5 rounded-full", driverColorById.get(d.id))} />
-            {d.name} · {driverCounts.counts.get(d.id) ?? 0}건
-          </span>
+      <div className="flex flex-wrap gap-1.5">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setDriverFilter(tab.id)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm font-medium transition-colors",
+              driverFilter === tab.id ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
+            )}
+          >
+            {tab.colorClassName ? <span className={cn("size-2.5 rounded-full", tab.colorClassName)} /> : null}
+            {tab.label} {tab.count}
+          </button>
         ))}
-        {driverCounts.unassigned > 0 ? (
-          <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-muted-foreground">
-            <span className="size-2.5 rounded-full bg-slate-400" />
-            미배정 · {driverCounts.unassigned}건
-          </span>
-        ) : null}
       </div>
 
       <button
@@ -119,19 +142,6 @@ export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; 
       </button>
       {detailOpen ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={driverFilter} onValueChange={setDriverFilter}>
-            <SelectTrigger className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={DRIVER_ALL}>전체 기사</SelectItem>
-              {drivers.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           {regionOptions.length > 0 ? (
             <Select value={regionFilter} onValueChange={setRegionFilter}>
               <SelectTrigger className="w-40">

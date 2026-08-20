@@ -1,76 +1,85 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, MapPin, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { markDeliveredAction } from "@/actions/delivery";
 import type { Order } from "@/types/domain";
 
 /**
- * P15-B: 기사 화면 — "오늘 어디로 가서 배송하면 되는지 한눈에 보고, 하나씩
- * 완료한다"는 목표만 남기고 관리자 화면 요소(필터/정렬/일괄작업)는 넣지
- * 않는다(작업지시서 2번). 완료/남은 두 개만 쓰고 "배송중"이라는 DB 상태는
- * 기사에게 노출하지 않는다(작업지시서 3번).
+ * P15-B-2: 기사 화면 — 배송그룹은 이 화면의 업무 단위가 아니다. 지도
+ * 마커·리스트·배송완료는 전부 Order 단위로만 동작한다. 카카오가 같은
+ * 도로명주소(예: 아파트 단지)의 여러 동/호를 동일 좌표로 반환하는 경우가
+ * 흔하다는 게 Discovery에서 확인됐는데, 그 좌표를 임의로 흩뜨리면 실제와
+ * 다른 위치를 보여주는 위험이 있어(101동↔110동이 실제로 100~200m 떨어져
+ * 있을 수 있음) 하지 않는다 — 겹치는 좌표는 DeliveryMap이 "N건" 배지로
+ * 보여주고, 그 안의 개별 주문은 이 컴포넌트의 오늘 배송 리스트와 연결된다.
  *
- * 지도와 카드가 반드시 같은 state(orders)를 공유해야 한다는 원칙(작업지시서
- * 2번 "중요한 UX") — 배송완료는 이 컴포넌트 안에서 orders 배열을 직접
- * 갱신하고, markers/다음 배송 카드/카운트가 전부 그 하나의 배열에서
- * 파생된다. 서버 재조회 없이 로컬에서 즉시 갱신(낙관적 업데이트)한다.
+ * 배송완료는 실사용 피드백(다건 동시완료는 실수 위험 — 기사가 한 번에
+ * 여러 건을 완료 처리하면 안 됨)에 따라 반드시 한 건씩만 처리한다 —
+ * 리스트/지도에서 선택은 항상 단일 선택이고, bulk 액션은 없다.
+ * markDeliveredAction(orderId)를 그대로 재사용한다.
  *
- * 순서는 절대 "추천 동선"처럼 보이지 않게 한다(작업지시서 4번) — 마커에
- * 번호를 붙이지 않고, "다음 배송" 카드는 기사가 지도에서 직접 고른 배송지
- * (또는 고르지 않았으면 목록 첫 번째, 즉 DB 순서 그대로)를 보여줄 뿐이다.
+ * 선택은 절대 자동으로 하지 않는다 — 기사가 의도치 않은 주문을 완료
+ * 처리할 위험, "첫 주문 = 추천 순서"라는 오해를 막기 위해 초기 선택은
+ * 항상 없음이다.
  */
 export function MyDeliveriesList({ orders: initialOrders }: { orders: Order[] }) {
   const [orders, setOrders] = useState(initialOrders);
   const [showCompleted, setShowCompleted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pendingId, setPendingId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const remaining = useMemo(() => orders.filter((o) => o.delivery_status !== "완료"), [orders]);
   const completed = useMemo(() => orders.filter((o) => o.delivery_status === "완료"), [orders]);
-
-  const active = useMemo(() => {
-    if (selectedId) {
-      const found = remaining.find((o) => o.id === selectedId);
-      if (found) return found;
-    }
-    return remaining[0] ?? null;
-  }, [remaining, selectedId]);
-
-  const visible = useMemo(() => (showCompleted ? orders : remaining), [orders, remaining, showCompleted]);
+  const visibleOrders = useMemo(() => (showCompleted ? orders : remaining), [orders, remaining, showCompleted]);
+  const selectedOrder = useMemo(() => orders.find((o) => o.id === selectedId) ?? null, [orders, selectedId]);
 
   const markers: DeliveryMapMarker[] = useMemo(() => {
-    return visible
+    return visibleOrders
       .filter((o): o is Order & { latitude: number; longitude: number } => o.latitude != null && o.longitude != null)
       .map((o) => ({
         id: o.id,
         lat: o.latitude,
         lng: o.longitude,
-        colorClassName:
-          o.delivery_status === "완료" ? "bg-muted-foreground" : o.id === active?.id ? "bg-primary" : "bg-slate-600",
-        onClick: o.delivery_status === "완료" ? undefined : () => setSelectedId(o.id),
+        label: o.recipient_name || o.buyer_name || "-",
+        sublabel: o.address_snapshot ?? undefined,
+        statusLabel: o.delivery_status === "완료" ? "완료" : undefined,
+        colorClassName: o.delivery_status === "완료" ? "bg-muted-foreground" : o.id === selectedId ? "bg-primary" : "bg-slate-600",
+        onClick: o.delivery_status === "완료" ? undefined : () => selectFromMap(o.id),
+        actionLabel: "선택",
       }));
-  }, [visible, active?.id]);
+  }, [visibleOrders, selectedId]);
 
-  const noCoordCount = visible.length - markers.length;
+  const noCoordCount = visibleOrders.length - markers.length;
 
-  function handleComplete(orderId: string) {
-    setPendingId(orderId);
+  /** 지도(단일 마커 또는 겹침 팝업)에서 주문을 선택하면 리스트의 해당 행으로 스크롤한다 — 자동 완료는 절대 하지 않는다. */
+  function selectFromMap(id: string) {
+    setSelectedId(id);
+    rowRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function selectRow(id: string) {
+    setSelectedId((prev) => (prev === id ? null : id));
+  }
+
+  function handleComplete() {
+    if (!selectedId) return;
+    const orderId = selectedId;
     startTransition(async () => {
       const result = await markDeliveredAction(orderId);
       if (!result.ok) {
         toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
       } else {
         setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, delivery_status: "완료" as const } : o)));
-        if (selectedId === orderId) setSelectedId(null);
+        setSelectedId(null);
         toast.success("배송완료로 처리했습니다.");
       }
-      setPendingId(null);
     });
   }
 
@@ -99,51 +108,78 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: Order[] })
         <p className="text-xs text-muted-foreground">주소 확인 필요 {noCoordCount}건은 좌표가 없어 지도에 표시되지 않습니다 — 목록에서는 계속 확인할 수 있습니다.</p>
       ) : null}
 
-      {active ? (
+      {remaining.length === 0 ? <p className="text-sm font-medium text-text-strong">오늘 배송을 모두 완료했습니다.</p> : null}
+
+      <div className="rounded-lg border bg-card">
+        <div className="border-b px-4 py-2.5">
+          <p className="text-sm font-medium text-text-strong">오늘 배송 {visibleOrders.length}건</p>
+        </div>
+        <div className="divide-y">
+          {visibleOrders.map((o) => {
+            const isDone = o.delivery_status === "완료";
+            const isSelected = o.id === selectedId;
+            return (
+              <div
+                key={o.id}
+                ref={(el) => {
+                  if (el) rowRefs.current.set(o.id, el);
+                  else rowRefs.current.delete(o.id);
+                }}
+                role={isDone ? undefined : "button"}
+                tabIndex={isDone ? undefined : 0}
+                onClick={isDone ? undefined : () => selectRow(o.id)}
+                className={cn(
+                  "flex items-start gap-3 px-4 py-3",
+                  !isDone && "cursor-pointer hover:bg-muted/40",
+                  isSelected && "bg-primary-soft"
+                )}
+              >
+                <div
+                  className={cn(
+                    "mt-1 size-3.5 shrink-0 rounded-full border-2",
+                    isDone ? "border-transparent" : isSelected ? "border-primary bg-primary" : "border-muted-foreground/40"
+                  )}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate font-medium text-text-strong">{o.recipient_name || o.buyer_name || "-"}</p>
+                    <Badge variant={isDone ? "outline" : "secondary"} className="shrink-0">
+                      {isDone ? "완료" : "배송중"}
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">
+                    {o.latitude != null && o.longitude != null ? (o.address_snapshot ?? "-") : "주소 위치 확인 필요"}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {selectedOrder ? (
         <div className="space-y-3 rounded-lg border bg-card p-4">
-          <p className="text-xs font-medium text-muted-foreground">다음 배송</p>
+          <p className="text-xs font-medium text-muted-foreground">선택한 배송</p>
           <div className="space-y-1.5">
-            <p className="text-lg font-semibold text-text-strong">{active.recipient_name || active.buyer_name || "-"}</p>
+            <p className="text-lg font-semibold text-text-strong">{selectedOrder.recipient_name || selectedOrder.buyer_name || "-"}</p>
             <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
               <MapPin className="mt-0.5 size-3.5 shrink-0" />
-              {active.address_snapshot ?? "-"}
+              {selectedOrder.address_snapshot ?? "-"}
             </p>
-            {active.phone_snapshot ? (
-              <a href={`tel:${active.phone_snapshot}`} className="flex items-center gap-1.5 text-sm text-primary">
+            {selectedOrder.phone_snapshot ? (
+              <a href={`tel:${selectedOrder.phone_snapshot}`} className="flex items-center gap-1.5 text-sm text-primary">
                 <Phone className="size-3.5" />
-                {active.phone_snapshot}
+                {selectedOrder.phone_snapshot}
               </a>
             ) : null}
-            {active.delivery_memo ? (
-              <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">메모: {active.delivery_memo}</p>
+            {selectedOrder.delivery_memo ? (
+              <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">메모: {selectedOrder.delivery_memo}</p>
             ) : null}
           </div>
-          <Button
-            type="button"
-            size="lg"
-            className="h-14 w-full gap-2 text-base"
-            disabled={isPending && pendingId === active.id}
-            onClick={() => handleComplete(active.id)}
-          >
+          <Button type="button" size="lg" className="h-14 w-full gap-2 text-base" disabled={isPending} onClick={handleComplete}>
             <CheckCircle2 className="size-5" />
-            {isPending && pendingId === active.id ? "처리하는 중..." : "배송완료"}
+            {isPending ? "처리하는 중..." : "배송완료"}
           </Button>
-        </div>
-      ) : (
-        <div className="rounded-lg border bg-card p-6 text-center">
-          <p className="text-sm font-medium text-text-strong">오늘 배송을 모두 완료했습니다.</p>
-        </div>
-      )}
-
-      {showCompleted && completed.length > 0 ? (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">완료된 배송</p>
-          {completed.map((o) => (
-            <div key={o.id} className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2 text-sm">
-              <span className="text-text-strong">{o.recipient_name || o.buyer_name || "-"}</span>
-              <Badge variant="outline">완료</Badge>
-            </div>
-          ))}
         </div>
       ) : null}
     </div>
