@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ENTRIES, NAV_HELP_ENTRY, DRIVER_NAV_ITEMS, isNavSection, type NavItem } from "@/lib/constants/nav";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 function NavLink({ item, isActive, onNavigate }: { item: NavItem; isActive: boolean; onNavigate?: () => void }) {
@@ -48,30 +47,14 @@ function NavSectionBlock({
   );
 }
 
-/** 계정명/역할 배지 — 데스크톱 Sidebar와 모바일 Sheet 둘 다 이 컴포넌트를 쓰므로 한 곳에서만 렌더링한다. 로그아웃 버튼은 스크롤 없이 항상 보이도록 상단 Header로 옮겼다(header.tsx). */
-function AccountFooter({ username, roleLabel }: { username: string; roleLabel: string }) {
-  return (
-    <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-2 px-2.5 py-2 text-sm">
-      <span className="truncate font-medium text-foreground">{username}</span>
-      <Badge variant="outline" className="shrink-0">
-        {roleLabel}
-      </Badge>
-    </div>
-  );
-}
-
 export function NavLinks({
   onNavigate,
   isDriver = false,
   isAdmin = false,
-  username,
-  roleLabel,
 }: {
   onNavigate?: () => void;
   isDriver?: boolean;
   isAdmin?: boolean;
-  username?: string;
-  roleLabel?: string;
 }) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
@@ -84,7 +67,6 @@ export function NavLinks({
             <NavLink key={item.href} item={item} isActive={isActive(item.href)} onNavigate={onNavigate} />
           ))}
         </div>
-        {username && roleLabel ? <AccountFooter username={username} roleLabel={roleLabel} /> : null}
       </nav>
     );
   }
@@ -103,7 +85,6 @@ export function NavLinks({
         </div>
         <NavSectionBlock entry={NAV_HELP_ENTRY} isActive={isActive} isAdmin={isAdmin} onNavigate={onNavigate} withDivider />
       </div>
-      {username && roleLabel ? <AccountFooter username={username} roleLabel={roleLabel} /> : null}
     </nav>
   );
 }

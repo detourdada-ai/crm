@@ -19,17 +19,7 @@ import { OrdifyLogo } from "@/components/brand/ordify-logo";
  * render 경고를 피하려고 useEffect 대신 React가 권장하는 "렌더 중 상태 조정"
  * 패턴(pathname이 바뀐 걸 렌더 중에 감지해 그 자리에서 바로 닫음)을 쓴다.
  */
-export function MobileHeaderSheet({
-  isDriver,
-  isAdmin,
-  username,
-  roleLabel,
-}: {
-  isDriver: boolean;
-  isAdmin: boolean;
-  username?: string;
-  roleLabel?: string;
-}) {
+export function MobileHeaderSheet({ isDriver, isAdmin }: { isDriver: boolean; isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const [prevPathname, setPrevPathname] = useState(pathname);
@@ -54,13 +44,7 @@ export function MobileHeaderSheet({
           </Link>
         </SheetTitle>
         <div className="flex flex-1 flex-col overflow-y-auto p-3">
-          <NavLinks
-            isDriver={isDriver}
-            isAdmin={isAdmin}
-            username={username}
-            roleLabel={roleLabel}
-            onNavigate={() => setOpen(false)}
-          />
+          <NavLinks isDriver={isDriver} isAdmin={isAdmin} onNavigate={() => setOpen(false)} />
         </div>
       </SheetContent>
     </Sheet>
