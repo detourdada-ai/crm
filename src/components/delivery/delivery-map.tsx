@@ -43,16 +43,26 @@ export function DeliveryMap({
   markers,
   emptyMessage = "표시할 배송지가 없습니다.",
   className,
+  highlightId,
 }: {
   markers: DeliveryMapMarker[];
   emptyMessage?: string;
   className?: string;
+  /**
+   * P15-B-3: 지도 밖(사장님 화면 하단 배송목록)에서 특정 주문을 선택했을 때
+   * 그 주문의 마커를 강조한다 — 좌표가 겹치지 않는 단일 마커면 시각적으로
+   * 강조하고 지도 중심을 옮기며, 겹침 배지 안에 있는 주문이면 그 배지의
+   * 팝업을 대신 열어 보여준다(배지 자체를 강조할 방법이 없으므로).
+   */
+  highlightId?: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<kakao.maps.Map | null>(null);
   const pinOverlaysRef = useRef<Map<string, kakao.maps.CustomOverlay>>(new Map());
+  const pinElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const groupMembersRef = useRef<Map<string, DeliveryMapMarker[]>>(new Map());
   const popupOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
+  const highlightedElRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
 
@@ -102,6 +112,7 @@ export function DeliveryMap({
       if (!nextKeys.has(key)) {
         pinOverlaysRef.current.get(key)?.setMap(null);
         pinOverlaysRef.current.delete(key);
+        pinElementsRef.current.delete(key);
         groupMembersRef.current.delete(key);
       }
     }
@@ -114,6 +125,7 @@ export function DeliveryMap({
         continue;
       }
       pinOverlaysRef.current.get(key)?.setMap(null);
+      pinElementsRef.current.delete(key);
       groupMembersRef.current.set(key, list);
 
       const el = document.createElement("div");
@@ -130,6 +142,7 @@ export function DeliveryMap({
             m.onClick?.();
           });
         }
+        pinElementsRef.current.set(key, el);
       } else {
         el.className =
           "flex size-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-slate-800 text-[11px] font-bold text-white shadow-md";
@@ -229,6 +242,31 @@ export function DeliveryMap({
     overlay.setMap(map);
     popupOverlayRef.current = overlay;
   }, [openGroupKey, status, markers]);
+
+  // P15-B-3: 지도 밖 목록에서 주문을 선택하면 그 주문의 마커를 강조한다.
+  useEffect(() => {
+    if (highlightedElRef.current) {
+      highlightedElRef.current.classList.remove("ring-4", "ring-offset-2", "ring-warning", "scale-125", "z-10");
+      highlightedElRef.current = null;
+    }
+    if (!highlightId || status !== "ready" || !mapRef.current || !window.kakao) return;
+    const kakaoNs = window.kakao;
+    for (const [key, list] of groupMembersRef.current) {
+      if (!list.some((m) => m.id === highlightId)) continue;
+      const [lat, lng] = key.split(",").map(Number);
+      mapRef.current.setCenter(new kakaoNs.maps.LatLng(lat, lng));
+      if (list.length > 1) {
+        setOpenGroupKey(key);
+      } else {
+        const el = pinElementsRef.current.get(key);
+        if (el) {
+          el.classList.add("ring-4", "ring-offset-2", "ring-warning", "scale-125", "z-10");
+          highlightedElRef.current = el;
+        }
+      }
+      break;
+    }
+  }, [highlightId, status]);
 
   if (status === "error") {
     return (

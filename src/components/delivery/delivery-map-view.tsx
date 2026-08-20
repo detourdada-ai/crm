@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { groupRegionLabel } from "@/lib/utils/delivery-group";
 import { cn } from "@/lib/utils";
@@ -21,30 +22,37 @@ function regionKeyOf(g: Pick<DeliveryGroup, "representative_sido" | "representat
 }
 
 /**
- * P15-B / P15-B-2: 사장님 배송관제 지도 — 기존 목록(DeliveryBoard)은 전혀
- * 건드리지 않고 `/delivery`에 "지도" 탭으로만 추가한다. 서버에서 한 번
+ * P15-B / P15-B-2 / P15-B-3: 사장님 배송관제 지도 — 기존 목록(DeliveryBoard)은
+ * 전혀 건드리지 않고 `/delivery`에 "지도" 탭으로만 추가한다. 서버에서 한 번
  * 불러온 orders/drivers/groups를 그대로 받아쓸 뿐 이 컴포넌트 자체는 어떤
  * 조회도, 배송그룹 재계산도 하지 않는다(성능 원칙).
  *
- * P15-B-2: 기사 필터는 상단 탭으로 올리고(작업지시서 7-9번),
- * `orders.filter(driver_id === 선택)` 기준으로만 동작한다 —
- * delivery_group_id는 필터 기준으로 쓰지 않는다. 지도 마커는 항상 Order
- * 단위이고, 카카오가 동일 좌표로 묶어 반환한 주문들은 DeliveryMap이
- * 알아서 "N건" 배지로 표시한다(이 컴포넌트는 좌표 grouping을 모른다).
- * 겹침 팝업의 각 행은 배정/선택 상태를 바꾸지 않고 주문 상세 페이지로만
- * 연결한다(이번 라운드는 "개별 주문 확인"까지로 범위를 잘랐다 — CPO 승인).
+ * P15-B-2: 기사 필터는 상단 탭이고 `orders.filter(driver_id === 선택)` 기준으로만
+ * 동작한다 — delivery_group_id는 필터 기준으로 쓰지 않는다.
+ *
+ * P15-B-3: 지도 아래에 선택한 기사(또는 전체/미배정)의 배송목록을 추가한다.
+ * 목록은 지도 markers와 완전히 같은 filteredOrders에서 파생되므로("지도에는
+ * 20건인데 목록에는 19건" 같은 불일치가 구조적으로 생길 수 없다) 신규 조회가
+ * 없다. 목록도 배송그룹으로 합치지 않고 Order 하나당 행 하나다. 지도 마커
+ * 클릭 ↔ 목록 행 클릭이 highlightedOrderId 하나로 양방향 연결된다 — 겹침
+ * 배지 안의 주문을 강조하면 그 배지의 팝업이 대신 열린다(배지 자체는 숫자라
+ * 개별 강조가 불가능하므로).
  */
 export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; drivers: Driver[]; groups: DeliveryGroup[] }) {
   const [driverFilter, setDriverFilter] = useState(DRIVER_ALL);
   const [regionFilter, setRegionFilter] = useState(REGION_ALL);
   const [hideCompleted, setHideCompleted] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const driverColorById = useMemo(() => {
     const map = new Map<string, string>();
     drivers.forEach((d, i) => map.set(d.id, DRIVER_COLOR_CLASSES[i % DRIVER_COLOR_CLASSES.length]));
     return map;
   }, [drivers]);
+
+  const driverNameById = useMemo(() => new Map(drivers.map((d) => [d.id, d.name])), [drivers]);
 
   const driverCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -85,6 +93,11 @@ export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; 
     });
   }, [orders, driverFilter, regionGroupIds, hideCompleted]);
 
+  function selectOrder(id: string) {
+    setHighlightedOrderId(id);
+    rowRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   const markers: DeliveryMapMarker[] = useMemo(() => {
     return filteredOrders
       .filter((o): o is Order & { latitude: number; longitude: number } => o.latitude != null && o.longitude != null)
@@ -97,8 +110,8 @@ export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; 
         statusLabel: o.delivery_status,
         colorClassName:
           o.delivery_status === "완료" ? COMPLETED_COLOR : o.driver_id ? (driverColorById.get(o.driver_id) ?? UNASSIGNED_COLOR) : UNASSIGNED_COLOR,
-        href: `/orders/${o.id}`,
-        actionLabel: "상세보기",
+        onClick: () => selectOrder(o.id),
+        actionLabel: "선택",
       }));
   }, [filteredOrders, driverColorById]);
 
@@ -164,10 +177,64 @@ export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; 
         </div>
       ) : null}
 
-      <DeliveryMap markers={markers} className="h-[420px] sm:h-[520px]" emptyMessage="표시할 배송지가 없습니다." />
+      <DeliveryMap markers={markers} className="h-[420px] sm:h-[520px]" highlightId={highlightedOrderId} emptyMessage="표시할 배송지가 없습니다." />
       {noCoordCount > 0 ? (
         <p className="text-xs text-muted-foreground">주소 확인 필요 {noCoordCount}건은 좌표가 없어 지도에 표시되지 않습니다 — 목록에서는 계속 확인할 수 있습니다.</p>
       ) : null}
+
+      <div className="rounded-lg border bg-card">
+        <div className="border-b px-4 py-2.5">
+          <p className="text-sm font-medium text-text-strong">
+            {tabs.find((t) => t.id === driverFilter)?.label ?? "전체"} 배송목록 · {filteredOrders.length}건
+          </p>
+        </div>
+        {filteredOrders.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">해당 조건의 배송이 없습니다.</p>
+        ) : (
+          <div className="max-h-[420px] divide-y overflow-y-auto">
+            {filteredOrders.map((o) => {
+              const isDone = o.delivery_status === "완료";
+              const isSelected = o.id === highlightedOrderId;
+              return (
+                <div
+                  key={o.id}
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(o.id, el);
+                    else rowRefs.current.delete(o.id);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => selectOrder(o.id)}
+                  className={cn("flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-muted/40", isSelected && "bg-primary-soft")}
+                >
+                  {driverFilter === DRIVER_ALL || driverFilter === DRIVER_UNASSIGNED ? (
+                    <span
+                      className={cn(
+                        "mt-1.5 size-2.5 shrink-0 rounded-full",
+                        isDone ? COMPLETED_COLOR : o.driver_id ? (driverColorById.get(o.driver_id) ?? UNASSIGNED_COLOR) : UNASSIGNED_COLOR
+                      )}
+                    />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate font-medium text-text-strong">{o.recipient_name || o.buyer_name || "-"}</p>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {(driverFilter === DRIVER_ALL || driverFilter === DRIVER_UNASSIGNED) && o.driver_id ? (
+                          <span className="text-xs text-muted-foreground">{driverNameById.get(o.driver_id) ?? ""}</span>
+                        ) : null}
+                        <Badge variant={isDone ? "outline" : "secondary"}>{o.delivery_status}</Badge>
+                      </div>
+                    </div>
+                    <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">
+                      {o.latitude != null && o.longitude != null ? (o.address_snapshot ?? "-") : "주소 위치 확인 필요"}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
