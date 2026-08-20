@@ -1,11 +1,16 @@
 import Link from "next/link";
+import { LogOut } from "lucide-react";
 import { getSession } from "@/lib/auth/current-session";
 import { MobileHeaderSheet } from "./mobile-header-sheet";
 import { OrdifyLogo } from "@/components/brand/ordify-logo";
 import { HeaderClock } from "./header-clock";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
+import { logoutAction } from "@/actions/auth";
+import { Button } from "@/components/ui/button";
 
-/** Sprint 14-I UI/UX 리뉴얼 2차 (Phase UI-1): 계정 정보/로그아웃은 이제 NavLinks 하단(Sidebar/Sheet 공용)에서만 노출한다 — 상단 바는 모바일 메뉴 진입점 역할만 한다. */
+/** 로그아웃이 사이드바/시트 맨 아래(스크롤 필요)에 있어 불편하다는 피드백으로
+ * 상단 바로 옮겼다 — 시계는 좌측, 로그아웃은 우측. 계정명/역할 배지는
+ * 여전히 NavLinks 하단(AccountFooter)에 남는다. */
 export async function Header() {
   const session = await getSession();
   const isDriver = session?.role === "driver";
@@ -24,9 +29,18 @@ export async function Header() {
         <OrdifyLogo variant="mark" />
       </Link>
 
+      <HeaderClock />
+
       <div className="flex-1" />
 
-      <HeaderClock />
+      {session ? (
+        <form action={logoutAction}>
+          <Button type="submit" variant="ghost" size="sm" className="gap-2 text-muted-foreground">
+            <LogOut className="size-4" />
+            로그아웃
+          </Button>
+        </form>
+      ) : null}
     </header>
   );
 }

@@ -2,10 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
 import { NAV_ENTRIES, NAV_HELP_ENTRY, DRIVER_NAV_ITEMS, isNavSection, type NavItem } from "@/lib/constants/nav";
-import { logoutAction } from "@/actions/auth";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -51,22 +48,14 @@ function NavSectionBlock({
   );
 }
 
-/** Sprint 14-I UI/UX 리뉴얼 2차 (Phase UI-1): 로그아웃/계정 정보를 상단 헤더가 아니라 사이드바 하단으로 옮긴다 — 데스크톱 Sidebar와 모바일 Sheet 둘 다 이 컴포넌트를 쓰므로 한 곳에서만 렌더링한다. */
+/** 계정명/역할 배지 — 데스크톱 Sidebar와 모바일 Sheet 둘 다 이 컴포넌트를 쓰므로 한 곳에서만 렌더링한다. 로그아웃 버튼은 스크롤 없이 항상 보이도록 상단 Header로 옮겼다(header.tsx). */
 function AccountFooter({ username, roleLabel }: { username: string; roleLabel: string }) {
   return (
-    <div className="mt-3 flex flex-col gap-1 rounded-lg border border-border bg-muted/40 p-2">
-      <div className="flex items-center gap-2 px-1.5 py-1 text-sm">
-        <span className="truncate font-medium text-foreground">{username}</span>
-        <Badge variant="outline" className="shrink-0">
-          {roleLabel}
-        </Badge>
-      </div>
-      <form action={logoutAction}>
-        <Button type="submit" variant="ghost" size="sm" className="w-full justify-start gap-2 text-muted-foreground">
-          <LogOut className="size-4" />
-          로그아웃
-        </Button>
-      </form>
+    <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-2 px-2.5 py-2 text-sm">
+      <span className="truncate font-medium text-foreground">{username}</span>
+      <Badge variant="outline" className="shrink-0">
+        {roleLabel}
+      </Badge>
     </div>
   );
 }
