@@ -98,7 +98,6 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: Order[] })
         <div className="mt-4 lg:mt-0">
           {selectedOrders ? (
             <OrderCardGroup
-              title={`${selectedOrders[0]?.address_snapshot ?? "선택한 위치"} · 배송 ${selectedOrders.length}건`}
               orders={selectedOrders}
               pendingOrderId={isPending ? pendingOrderId : null}
               onComplete={handleComplete}
@@ -131,7 +130,7 @@ function OrderCardGroup({
   onComplete,
   onClose,
 }: {
-  title: string;
+  title?: string;
   orders: Order[];
   pendingOrderId: string | null;
   onComplete: (orderId: string) => void;
@@ -142,19 +141,25 @@ function OrderCardGroup({
 
   return (
     <div className="space-y-3 rounded-lg border bg-card p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-sm font-medium text-text-strong">{title}</p>
-          <p className="text-xs text-muted-foreground">
-            남은 {remaining.length}건 · 완료 {completed.length}건
-          </p>
+      {title || onClose ? (
+        <div className="flex items-start justify-between gap-2">
+          {title ? (
+            <div>
+              <p className="text-sm font-medium text-text-strong">{title}</p>
+              <p className="text-xs text-muted-foreground">
+                남은 {remaining.length}건 · 완료 {completed.length}건
+              </p>
+            </div>
+          ) : (
+            <div />
+          )}
+          {onClose ? (
+            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+              닫기
+            </Button>
+          ) : null}
         </div>
-        {onClose ? (
-          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            닫기
-          </Button>
-        ) : null}
-      </div>
+      ) : null}
 
       {remaining.length > 0 ? (
         <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1 lg:max-h-[460px]">
