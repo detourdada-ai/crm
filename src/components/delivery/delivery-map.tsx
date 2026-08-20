@@ -16,12 +16,14 @@ export interface DeliveryMapMarker {
   statusLabel?: string;
   /** Tailwind 배경색 클래스 — 완료/미완료, 기사별 구분에 쓴다. 좌표가 겹쳐 배지로 표시되는 경우에는 쓰이지 않는다. */
   colorClassName?: string;
-  /** 좌표가 겹치지 않는 단일 마커일 때만 호출된다. */
+  /** 좌표가 겹치지 않는 단일 마커일 때만 호출된다. onGroupSelect가 있으면 무시된다. */
   onClick?: () => void;
   /** 겹침 팝업 행의 액션 버튼 텍스트. 기본 "선택". href가 있으면 무시된다. */
   actionLabel?: string;
   /** 있으면 팝업 행이 버튼 대신 <a href>로 렌더링된다(사장님 화면 "상세보기" 등). */
   href?: string;
+  /** P15-B-4: 이 좌표 그룹 전체가 완료됐는지 판단하는 배지 색상 기준(그룹 크기 2+일 때만 사용). */
+  done?: boolean;
 }
 
 function coordKey(lat: number, lng: number): string {
@@ -44,6 +46,7 @@ export function DeliveryMap({
   emptyMessage = "표시할 배송지가 없습니다.",
   className,
   highlightId,
+  onGroupSelect,
 }: {
   markers: DeliveryMapMarker[];
   emptyMessage?: string;
@@ -55,6 +58,14 @@ export function DeliveryMap({
    * 팝업을 대신 열어 보여준다(배지 자체를 강조할 방법이 없으므로).
    */
   highlightId?: string | null;
+  /**
+   * P15-B-4: 지정되면 마커 클릭(단일/겹침 배지 모두)이 기존의 개별
+   * onClick·겹침 팝업 대신 이 콜백 하나로만 처리된다 — 클릭한 좌표에 속한
+   * 모든 order id를 그대로 넘긴다(단일 마커면 배열 길이 1). 기사 화면처럼
+   * "마커 선택 = 그 위치의 배송을 전부 카드로 펼친다"는 흐름에 쓴다.
+   * 넘기지 않으면(사장님 화면) 기존 동작이 그대로 유지된다.
+   */
+  onGroupSelect?: (orderIds: string[]) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<kakao.maps.Map | null>(null);
@@ -101,9 +112,11 @@ export function DeliveryMap({
     const existingKeys = new Set(pinOverlaysRef.current.keys());
     const nextKeys = new Set(groups.keys());
 
+    // id뿐 아니라 done도 서명에 포함 — 그룹 구성은 그대로인데 완료 상태만
+    // 바뀐 경우(배송완료 클릭)에도 배지 숫자/색을 다시 그려야 하기 때문.
     function memberIdSet(list: DeliveryMapMarker[]): string {
       return list
-        .map((m) => m.id)
+        .map((m) => `${m.id}:${m.done ? 1 : 0}`)
         .sort()
         .join(",");
     }
@@ -135,21 +148,29 @@ export function DeliveryMap({
           "flex size-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-semibold text-white shadow-md",
           m.colorClassName ?? "bg-primary"
         );
-        if (m.onClick) {
+        if (m.onClick || onGroupSelect) {
           el.style.cursor = "pointer";
           el.addEventListener("click", (e) => {
             e.stopPropagation();
-            m.onClick?.();
+            if (onGroupSelect) onGroupSelect([m.id]);
+            else m.onClick?.();
           });
         }
         pinElementsRef.current.set(key, el);
       } else {
-        el.className =
-          "flex size-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-slate-800 text-[11px] font-bold text-white shadow-md";
-        el.textContent = String(list.length);
+        const remaining = list.filter((m) => !m.done).length;
+        const allDone = remaining === 0;
+        el.className = cn(
+          "flex size-8 cursor-pointer items-center justify-center rounded-full border-2 border-white text-[11px] font-bold text-white shadow-md",
+          allDone ? "bg-muted-foreground" : "bg-slate-800"
+        );
+        // 남은 건수를 보여준다(완료할 때마다 ⑫→⑪ 감소) — 전부 완료되면
+        // 더 이상 처리할 게 없다는 뜻이므로 전체 건수로 되돌려 완료색과 함께 보여준다.
+        el.textContent = String(allDone ? list.length : remaining);
         el.addEventListener("click", (e) => {
           e.stopPropagation();
-          setOpenGroupKey((prev) => (prev === key ? null : key));
+          if (onGroupSelect) onGroupSelect(list.map((m) => m.id));
+          else setOpenGroupKey((prev) => (prev === key ? null : key));
         });
       }
 
@@ -171,7 +192,7 @@ export function DeliveryMap({
       }
       map.setBounds(bounds);
     }
-  }, [markers, status]);
+  }, [markers, status, onGroupSelect]);
 
   // 열려 있는 그룹이 바뀌면 팝업 오버레이를 새로 그린다.
   useEffect(() => {
