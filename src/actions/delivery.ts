@@ -7,7 +7,7 @@ import { settlementsRepository } from "@/lib/repositories/settlements.repository
 import { buildOrderItemSummaries, type OrderItemSummary } from "@/actions/orders";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession, requireDriverSession } from "@/lib/auth/current-session";
-import { kstDayStrOf } from "@/lib/utils/kst-date";
+import { kstDayStrOf, kstTodayIso } from "@/lib/utils/kst-date";
 import type { Order, Driver, FulfillmentMethod } from "@/types/domain";
 
 export interface DeliveryBoardResult {
@@ -251,10 +251,16 @@ export async function setFulfillmentMethodAction(orderIds: string[], method: Ful
   }
 }
 
-/** 기사 화면: this driver's own in-progress (배송중) deliveries. */
+/**
+ * P15-B: 기사 화면 — "오늘" 이 기사에게 배정된 배송(배송중+완료, 취소 제외)을
+ * 전부 반환한다. 예전엔 배송중만 가져왔지만(날짜 조건 없이), 기사 화면에
+ * 지도+완료/남은 카운트를 보여주려면 오늘 완료한 건도 필요하다(카운트,
+ * "완료 보기" 토글) — 이미 갖고 있는 orders[]를 그대로 쓰는 것이므로
+ * 별도 API 호출/재조회가 늘지 않는다.
+ */
 export async function listMyDeliveriesAction(): Promise<Order[]> {
   const { driverId } = await requireDriverSession();
-  return ordersRepository.findByDriverId(driverId, "배송중");
+  return ordersRepository.findByDriverIdAndDeliveryDate(driverId, kstTodayIso());
 }
 
 export async function markDeliveredAction(orderId: string): Promise<DeliveryActionState> {

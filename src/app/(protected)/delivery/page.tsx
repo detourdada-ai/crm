@@ -1,5 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DeliveryBoard } from "@/components/delivery/delivery-board";
+import { DeliveryMapView } from "@/components/delivery/delivery-map-view";
+import { DeliveryViewSwitcher } from "@/components/delivery/delivery-view-switcher";
 import { DeliveryFilterBar } from "@/components/delivery/delivery-filter-bar";
 import { DriverManagementDialog } from "@/components/delivery/driver-management-dialog";
 import { DeliveryStatusFlow, type DeliveryFilter, type DeliveryFlowCount } from "@/components/delivery/delivery-status-flow";
@@ -189,13 +191,18 @@ export default async function DeliveryPage({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <DeliveryBoard
-              orders={visibleOrders}
-              drivers={drivers}
-              itemSummaries={itemSummaries}
-              groups={groupResult?.groups ?? []}
-              showGroupColumn={isSingleDay}
-              bagManagementEnabled={features.bagManagement}
+            <DeliveryViewSwitcher
+              listView={
+                <DeliveryBoard
+                  orders={visibleOrders}
+                  drivers={drivers}
+                  itemSummaries={itemSummaries}
+                  groups={groupResult?.groups ?? []}
+                  showGroupColumn={isSingleDay}
+                  bagManagementEnabled={features.bagManagement}
+                />
+              }
+              mapView={<DeliveryMapView orders={visibleOrders} drivers={drivers} groups={groupResult?.groups ?? []} />}
             />
           </CardContent>
         </Card>

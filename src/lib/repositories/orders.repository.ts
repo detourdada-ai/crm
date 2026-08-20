@@ -541,6 +541,28 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
+  /**
+   * P15-B: 기사 화면 — findByDriverId는 배송일 조건이 없어(상태만 필터)
+   * "오늘"이 아니라 이 기사에게 배정된 모든 날짜의 해당 상태 주문을
+   * 반환한다. 기사 지도/카드는 "오늘 배송"만 봐야 하므로 배송일 범위를
+   * 추가한 별도 메서드로 분리한다. 취소 건은 제외하고 배송중+완료를
+   * 모두 가져와(완료는 카운트/"완료 보기" 토글용), 화면에서 남은/완료로
+   * 나눈다 — 완료 여부와 무관하게 "오늘 이 기사 담당"인 건 전부 필요하기
+   * 때문에 상태 인자를 받지 않는다.
+   */
+  async findByDriverIdAndDeliveryDate(driverId: string, dateStr: string): Promise<Order[]> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("orders")
+      .select("*")
+      .eq("driver_id", driverId)
+      .neq("delivery_status", "취소")
+      .gte("delivery_date", kstDayStartIso(dateStr))
+      .lte("delivery_date", kstDayEndIso(dateStr))
+      .order("delivery_date", { ascending: true });
+    if (error) throw error;
+    return (data as Order[]) ?? [];
+  },
+
   /** F15: driverId가 주어지면(기사 세션 호출) 본인에게 배정된 주문만 완료 처리된다. */
   async markDelivered(orderId: string, driverId?: string): Promise<Order> {
     let q = getSupabaseAdmin()
