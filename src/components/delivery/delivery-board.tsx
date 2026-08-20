@@ -107,15 +107,24 @@ export function DeliveryBoard({
   const isHasGroupTabActive = groupFilter === GROUP_FILTER_HAS_GROUP || isSpecificGroupSelected;
   const toolbarRef = useRef<HTMLDivElement>(null);
 
-  // 직접수령 등으로 처리한 주문이 revalidate 후 orders에서 사라져도(예: "배정
-  // 필요" 필터 대상에서 빠짐) selected Set에는 예전 id가 그대로 남아 "선택한
-  // N건 적용" 버튼의 N이 실제 화면에 보이는 건수보다 커지는 문제가 있었다.
-  // state를 effect로 동기화하는 대신, 지금도 존재하는 id만 남긴 파생값을
-  // 매 렌더마다 계산해 selected 대신 이 값을 화면/액션 양쪽에 쓴다.
+  const groupFilteredOrders = useMemo(() => {
+    if (groupFilter === GROUP_FILTER_ALL) return orders;
+    if (groupFilter === GROUP_FILTER_HAS_GROUP) return orders.filter((o) => !!o.delivery_group_id);
+    if (groupFilter === GROUP_FILTER_UNGROUPED) return orders.filter((o) => !o.delivery_group_id);
+    return orders.filter((o) => o.delivery_group_id === groupFilter);
+  }, [orders, groupFilter]);
+
+  // P14-A: 두 가지를 동시에 걸러내야 한다 — (1) 직접수령 등으로 처리된 주문이
+  // revalidate 후 orders에서 통째로 사라지는 경우(P7), (2) 그룹 필터로 화면에서
+  // 숨겨졌을 뿐 orders에는 여전히 존재하는 경우(P14-A, "선택 2건인데 101건
+  // 적용" 버그의 원인 — 이전에는 orders 전체를 기준으로 걸러서 그룹 필터가
+  // 걸러내는 대상에서 빠졌다). 따라서 기준을 orders가 아니라 "지금 화면에
+  // 보이는 집합"인 groupFilteredOrders로 삼는다 — 정렬 순서는 멤버십 판정과
+  // 무관하므로 sortedOrders 대신 이 값으로 충분하다.
   const visibleSelected = useMemo(() => {
-    const currentIds = new Set(orders.map((o) => o.id));
+    const currentIds = new Set(groupFilteredOrders.map((o) => o.id));
     return new Set([...selected].filter((id) => currentIds.has(id)));
-  }, [selected, orders]);
+  }, [selected, groupFilteredOrders]);
 
   // P0(기사관리 3건) 3번: 선택된 주문들의 배송지를 담당하는 기사 후보를
   // 담당 기사 선택 드롭다운을 열 때만 조회한다(선택이 바뀔 때마다 매번
@@ -139,13 +148,6 @@ export function DeliveryBoard({
     const rest = drivers.filter((d) => !candidateDriverIds.has(d.id));
     return [...candidates, ...rest];
   }, [drivers, candidateDriverIds]);
-
-  const groupFilteredOrders = useMemo(() => {
-    if (groupFilter === GROUP_FILTER_ALL) return orders;
-    if (groupFilter === GROUP_FILTER_HAS_GROUP) return orders.filter((o) => !!o.delivery_group_id);
-    if (groupFilter === GROUP_FILTER_UNGROUPED) return orders.filter((o) => !o.delivery_group_id);
-    return orders.filter((o) => o.delivery_group_id === groupFilter);
-  }, [orders, groupFilter]);
 
   const sortedOrders = useMemo(() => {
     const list = [...groupFilteredOrders];
@@ -189,8 +191,12 @@ export function DeliveryBoard({
     });
   }
 
+  // P14-A: "전체 선택"은 orders(그날 전체)가 아니라 sortedOrders(현재 그룹
+  // 필터로 화면에 보이는 집합)를 기준으로 삼는다 — 이전에는 화면에 2건만
+  // 보여도 실제로는 101건 전체가 선택되어 "선택한 101건 적용"으로 잘못
+  // 배정될 수 있었다.
   function toggleAll(checked: boolean) {
-    setSelected(checked ? new Set(orders.map((o) => o.id)) : new Set());
+    setSelected(checked ? new Set(sortedOrders.map((o) => o.id)) : new Set());
   }
 
   function quickSelectForAssign(id: string) {
@@ -405,7 +411,7 @@ export function DeliveryBoard({
             <TableRow>
               <TableHead className="w-10">
                 <Checkbox
-                  checked={visibleSelected.size === orders.length && orders.length > 0}
+                  checked={visibleSelected.size === sortedOrders.length && sortedOrders.length > 0}
                   onCheckedChange={(checked) => toggleAll(checked === true)}
                 />
               </TableHead>

@@ -50,6 +50,15 @@ function loadDaumPostcodeScript(): Promise<void> {
  * 허용하지 않는다") — 상세주소(동/호수 등)만 자유 입력이다. name prop을
  * 접두사로 삼아 postalCode/roadAddress/detailAddress 3개의 폼 필드를 각각
  * `${name}PostalCode` 등으로 제출한다.
+ *
+ * P14-A(ISSUE-1): 상세주소는 선택 입력이다 — 예전엔 이 컴포넌트의 `required`
+ * prop이 상세주소 input에 걸려 있었는데, 실제 운영 주문의 99%가 Excel 원본
+ * 주소를 한 줄로만 갖고 있어(road_address_snapshot/detail_address_snapshot
+ * 둘 다 비어있음) 그 주문들을 수정할 때마다 저장이 막혔다. 도로명주소는
+ * readOnly 표시 필드라 HTML required가 애초에 적용되지 않으므로(readonly인
+ * 요소는 constraint validation 대상에서 제외됨) 여기서 별도로 검증하지
+ * 않고, 이미 존재하는 서버 액션의 검증(actions/orders.ts의
+ * readAddressFields 호출부, `if (!roadAddress) return error`)에 맡긴다.
  */
 export function AddressSearchInput({
   name,
@@ -98,6 +107,7 @@ export function AddressSearchInput({
         <Input
           value={roadAddress ? `[${postalCode}] ${roadAddress}` : ""}
           readOnly
+          aria-required={required}
           placeholder="주소 검색을 눌러 도로명 주소를 선택하세요"
           className="bg-muted"
         />
@@ -114,8 +124,7 @@ export function AddressSearchInput({
         name={`${name}DetailAddress`}
         value={detailAddress}
         onChange={(e) => setDetailAddress(e.target.value)}
-        placeholder="상세주소 (동/호수 등)"
-        required={required}
+        placeholder="상세주소 (동/호수 등, 선택 입력)"
       />
       <input type="hidden" name={`${name}PostalCode`} value={postalCode} />
       <input type="hidden" name={`${name}RoadAddress`} value={roadAddress} />
