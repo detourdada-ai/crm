@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
-import type { Order } from "@/types/domain";
+import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 /** Read-only preview of today's deliveries for the Dashboard action center — full management stays on /delivery. */
-export function TodayDeliveryList({ orders }: { orders: Order[] }) {
+export function TodayDeliveryList({ orders }: { orders: OrderShipmentBoardRow[] }) {
   if (orders.length === 0) {
     return <p className="py-6 text-center text-sm text-muted-foreground">오늘 예정된 배송이 없습니다.</p>;
   }
@@ -12,7 +12,7 @@ export function TodayDeliveryList({ orders }: { orders: Order[] }) {
   return (
     <ul className="space-y-2">
       {orders.slice(0, 5).map((order) => (
-        <li key={order.id} className="flex items-center justify-between gap-2 border-b pb-2 text-sm last:border-0">
+        <li key={order.rowKey} className="flex items-center justify-between gap-2 border-b pb-2 text-sm last:border-0">
           <div className="min-w-0">
             <Link href={`/orders/${order.id}`} className="font-medium text-primary hover:underline">
               {order.buyer_name ?? order.recipient_name}

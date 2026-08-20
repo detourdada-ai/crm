@@ -1,8 +1,7 @@
 import "server-only";
-import { ordersRepository } from "@/lib/repositories/orders.repository";
+import { orderShipmentsRepository, type OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import { deliveryGroupsRepository, type DeliveryGroupInsert } from "@/lib/repositories/delivery-groups.repository";
 import { clusterPointsByDistance, computeCentroid, representativeRegion } from "@/lib/services/spatial-grouping.service";
-import type { Order } from "@/types/domain";
 
 /** 배송 그룹화 기본 반경 — CPO 승인: "격자"가 아니라 "주문 간 실거리 N m 이내"가 연결 기준(그룹이 너무 잘게 쪼개진다는 CEO 피드백으로 50m→100m 확대). */
 export const GROUP_RADIUS_METERS = 100;
@@ -17,6 +16,10 @@ export const GROUP_RADIUS_METERS = 100;
  * tenant의 그룹을 조작할 수 있는 구멍이 생긴다. 여기 두면 서버 코드에서만
  * import 가능하고, DB QA 스크립트에서도(별도 세션 없이) 직접 재사용할 수 있다.
  *
+ * S1-1 Phase 5: 클러스터링 단위가 주문에서 배송건으로 바뀌었다 — 같은 주소라도
+ * 발송일이 다른 배송건은 좌표가 같아 여전히 지리적으로는 묶이지만, 그룹
+ * 소속(delivery_group_id)은 배송건 각자가 따로 가진다(주문이 아니라).
+ *
  * Idempotent — 같은 입력으로 다시 실행해도 그룹 구성이 같으면 group_no와
  * driver_id가 그대로 유지된다(작업지시서 9번, 기존 그룹 ↔ 새 클러스터를
  * "재계산 직전 소속과 겹치는 정도"로 매칭).
@@ -24,30 +27,30 @@ export const GROUP_RADIUS_METERS = 100;
 export async function regenerateDeliveryGroupsForTenant(
   tenantId: string,
   dateStr: string,
-  orders: Order[],
+  shipments: OrderShipmentBoardRow[],
   ownerUsernameFallback: string
 ): Promise<void> {
   // 1) 기존 그룹 + 기존 소속(재계산 전 스냅샷) — 새 클러스터와 겹치는 정도로
   //    "같은 그룹"을 판단해 group_no/driver_id를 최대한 유지한다.
   const existingGroups = await deliveryGroupsRepository.findByTenantAndDate(tenantId, dateStr);
-  const priorMembers = await ordersRepository.findByGroupIds(existingGroups.map((g) => g.id));
+  const priorMembers = await orderShipmentsRepository.findByGroupIds(existingGroups.map((g) => g.id));
 
   const priorMembersByGroup = new Map<string, Set<string>>();
-  for (const order of priorMembers) {
-    if (!order.delivery_group_id) continue;
-    const set = priorMembersByGroup.get(order.delivery_group_id) ?? new Set<string>();
-    set.add(order.id);
-    priorMembersByGroup.set(order.delivery_group_id, set);
+  for (const shipment of priorMembers) {
+    if (!shipment.delivery_group_id) continue;
+    const set = priorMembersByGroup.get(shipment.delivery_group_id) ?? new Set<string>();
+    set.add(shipment.id);
+    priorMembersByGroup.set(shipment.delivery_group_id, set);
   }
 
   // 2) 새 클러스터 계산 — 크기 2 이상만 "그룹" 후보(1개짜리는 미그룹으로 처리).
-  const points = orders
-    .filter((o) => o.latitude !== null && o.longitude !== null)
-    .map((o) => ({ id: o.id, lat: o.latitude as number, lng: o.longitude as number }));
+  const points = shipments
+    .filter((s) => s.latitude !== null && s.longitude !== null)
+    .map((s) => ({ id: s.shipmentId, lat: s.latitude as number, lng: s.longitude as number }));
   const clusters = clusterPointsByDistance(points, GROUP_RADIUS_METERS).filter((c) => c.length >= 2);
-  const orderById = new Map(orders.map((o) => [o.id, o]));
+  const shipmentById = new Map(shipments.map((s) => [s.shipmentId, s]));
 
-  // 3) 기존 그룹 ↔ 새 클러스터 매칭: 겹치는 주문 수(intersection)가 가장 큰
+  // 3) 기존 그룹 ↔ 새 클러스터 매칭: 겹치는 배송건 수(intersection)가 가장 큰
   //    조합을 그리디로 이어붙인다. 매칭된 기존 그룹은 id/group_no/driver_id를
   //    유지, 매칭 안 된 새 클러스터는 신규 생성, 매칭 안 된 기존 그룹은 삭제.
   type Candidate = { groupId: string; clusterIndex: number; overlap: number };
@@ -75,29 +78,29 @@ export async function regenerateDeliveryGroupsForTenant(
   const groupsToDelete = existingGroups.filter((g) => !matchedGroupIds.has(g.id)).map((g) => g.id);
   let nextGroupNo = existingGroups.reduce((max, g) => Math.max(max, g.group_no), 0) + 1;
 
-  // 4) 실제 반영: 삭제 → 매칭된 그룹 재계산 → 신규 그룹 생성 → 주문 소속 초기화 → 재배정.
+  // 4) 실제 반영: 삭제 → 매칭된 그룹 재계산 → 신규 그룹 생성 → 배송건 소속 초기화 → 재배정.
   await deliveryGroupsRepository.deleteByIds(groupsToDelete);
 
   const finalGroupIdByCluster = new Map<number, string>();
   for (let i = 0; i < clusters.length; i++) {
     const cluster = clusters[i];
-    const memberOrders = cluster.map((id) => orderById.get(id)!).filter(Boolean);
-    const centroid = computeCentroid(memberOrders.map((o) => ({ lat: o.latitude as number, lng: o.longitude as number })));
-    const region = representativeRegion(memberOrders.map((o) => ({ sido: o.sido, sigungu: o.sigungu, eupmyeondong: o.eupmyeondong })));
+    const members = cluster.map((id) => shipmentById.get(id)!).filter(Boolean);
+    const centroid = computeCentroid(members.map((s) => ({ lat: s.latitude as number, lng: s.longitude as number })));
+    const region = representativeRegion(members.map((s) => ({ sido: s.sido, sigungu: s.sigungu, eupmyeondong: s.eupmyeondong })));
 
     const matchedId = clusterToGroupId.get(i);
     if (matchedId) {
       await deliveryGroupsRepository.recompute(matchedId, {
         center_latitude: centroid.lat,
         center_longitude: centroid.lng,
-        order_count: memberOrders.length,
+        order_count: members.length,
         representative_sido: region.sido,
         representative_sigungu: region.sigungu,
         representative_eupmyeondong: region.eupmyeondong,
       });
       finalGroupIdByCluster.set(i, matchedId);
     } else {
-      const ownerUsername = memberOrders[0]?.owner_username ?? ownerUsernameFallback;
+      const ownerUsername = members[0]?.owner_username ?? ownerUsernameFallback;
       const insert: DeliveryGroupInsert = {
         tenant_id: tenantId,
         owner_username: ownerUsername,
@@ -105,7 +108,7 @@ export async function regenerateDeliveryGroupsForTenant(
         group_no: nextGroupNo++,
         center_latitude: centroid.lat,
         center_longitude: centroid.lng,
-        order_count: memberOrders.length,
+        order_count: members.length,
         representative_sido: region.sido,
         representative_sigungu: region.sigungu,
         representative_eupmyeondong: region.eupmyeondong,
@@ -115,10 +118,10 @@ export async function regenerateDeliveryGroupsForTenant(
     }
   }
 
-  await ordersRepository.clearDeliveryGroupsForDate(tenantId, dateStr);
+  await orderShipmentsRepository.clearDeliveryGroupsForDate(tenantId, dateStr);
   for (let i = 0; i < clusters.length; i++) {
     const groupId = finalGroupIdByCluster.get(i);
-    if (groupId) await ordersRepository.assignOrdersToGroup(clusters[i], groupId);
+    if (groupId) await orderShipmentsRepository.assignShipmentsToGroup(clusters[i], groupId);
   }
 }
 
@@ -139,8 +142,8 @@ export async function triggerDeliveryGroupRegeneration(
   ownerUsername: string
 ): Promise<void> {
   try {
-    const orders = await ordersRepository.findEligibleForGrouping(dateStr, ownerUsername);
-    await regenerateDeliveryGroupsForTenant(tenantId, dateStr, orders, ownerUsername);
+    const shipments = await orderShipmentsRepository.findEligibleForGrouping(dateStr, ownerUsername);
+    await regenerateDeliveryGroupsForTenant(tenantId, dateStr, shipments, ownerUsername);
   } catch (e) {
     console.warn(`[delivery-group] regeneration trigger failed (tenant=${tenantId}, date=${dateStr})`, e);
   }

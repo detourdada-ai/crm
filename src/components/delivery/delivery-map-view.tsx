@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { groupRegionLabel } from "@/lib/utils/delivery-group";
 import { cn } from "@/lib/utils";
-import type { Order, Driver, DeliveryGroup } from "@/types/domain";
+import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
+import type { Driver, DeliveryGroup } from "@/types/domain";
 
 const DRIVER_COLOR_CLASSES = ["bg-primary", "bg-sky-600", "bg-emerald-600", "bg-amber-600", "bg-violet-600", "bg-rose-600"];
 const UNASSIGNED_COLOR = "bg-slate-400";
@@ -33,12 +34,25 @@ function regionKeyOf(g: Pick<DeliveryGroup, "representative_sido" | "representat
  * P15-B-3: 지도 아래에 선택한 기사(또는 전체/미배정)의 배송목록을 추가한다.
  * 목록은 지도 markers와 완전히 같은 filteredOrders에서 파생되므로("지도에는
  * 20건인데 목록에는 19건" 같은 불일치가 구조적으로 생길 수 없다) 신규 조회가
- * 없다. 목록도 배송그룹으로 합치지 않고 Order 하나당 행 하나다. 지도 마커
+ * 없다. 목록도 배송그룹으로 합치지 않고 배송건 하나당 행 하나다. 지도 마커
  * 클릭 ↔ 목록 행 클릭이 highlightedOrderId 하나로 양방향 연결된다 — 겹침
  * 배지 안의 주문을 강조하면 그 배지의 팝업이 대신 열린다(배지 자체는 숫자라
  * 개별 강조가 불가능하므로).
+ *
+ * S1-1 Phase 5: 마커/목록 키는 order.id가 아니라 rowKey(=shipmentId)다 —
+ * 같은 주문이 발송일이 달라 배송건 두 개로 쪼개진 경우(예: "이번주" 같은
+ * 여러 날짜를 아우르는 조회), 좌표가 같아 지도상 같은 위치에 뜨더라도
+ * 서로 다른 배송건이라 반드시 구분되는 id가 필요하기 때문이다.
  */
-export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; drivers: Driver[]; groups: DeliveryGroup[] }) {
+export function DeliveryMapView({
+  orders,
+  drivers,
+  groups,
+}: {
+  orders: OrderShipmentBoardRow[];
+  drivers: Driver[];
+  groups: DeliveryGroup[];
+}) {
   const [driverFilter, setDriverFilter] = useState(DRIVER_ALL);
   const [regionFilter, setRegionFilter] = useState(REGION_ALL);
   const [hideCompleted, setHideCompleted] = useState(false);
@@ -100,9 +114,9 @@ export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; 
 
   const markers: DeliveryMapMarker[] = useMemo(() => {
     return filteredOrders
-      .filter((o): o is Order & { latitude: number; longitude: number } => o.latitude != null && o.longitude != null)
+      .filter((o): o is OrderShipmentBoardRow & { latitude: number; longitude: number } => o.latitude != null && o.longitude != null)
       .map((o) => ({
-        id: o.id,
+        id: o.rowKey,
         lat: o.latitude,
         lng: o.longitude,
         label: o.recipient_name || o.buyer_name || "-",
@@ -110,7 +124,7 @@ export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; 
         statusLabel: o.delivery_status,
         colorClassName:
           o.delivery_status === "완료" ? COMPLETED_COLOR : o.driver_id ? (driverColorById.get(o.driver_id) ?? UNASSIGNED_COLOR) : UNASSIGNED_COLOR,
-        onClick: () => selectOrder(o.id),
+        onClick: () => selectOrder(o.rowKey),
         actionLabel: "선택",
       }));
   }, [filteredOrders, driverColorById]);
@@ -194,17 +208,17 @@ export function DeliveryMapView({ orders, drivers, groups }: { orders: Order[]; 
           <div className="max-h-[420px] divide-y overflow-y-auto">
             {filteredOrders.map((o) => {
               const isDone = o.delivery_status === "완료";
-              const isSelected = o.id === highlightedOrderId;
+              const isSelected = o.rowKey === highlightedOrderId;
               return (
                 <div
-                  key={o.id}
+                  key={o.rowKey}
                   ref={(el) => {
-                    if (el) rowRefs.current.set(o.id, el);
-                    else rowRefs.current.delete(o.id);
+                    if (el) rowRefs.current.set(o.rowKey, el);
+                    else rowRefs.current.delete(o.rowKey);
                   }}
                   role="button"
                   tabIndex={0}
-                  onClick={() => selectOrder(o.id)}
+                  onClick={() => selectOrder(o.rowKey)}
                   className={cn("flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-muted/40", isSelected && "bg-primary-soft")}
                 >
                   {driverFilter === DRIVER_ALL || driverFilter === DRIVER_UNASSIGNED ? (

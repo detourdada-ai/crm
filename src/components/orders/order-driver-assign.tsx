@@ -11,15 +11,18 @@ import type { DeliveryStatus, Driver } from "@/types/domain";
  * 주문 상세에서 담당 기사를 배정/변경/해제한다. assignDriverAction/
  * unassignDriverAction을 그대로 재사용 — 배송관리 보드의 배정 로직과
  * 완전히 동일한 서버 검증(소유권 + 완료/취소 주문 차단)을 거친다.
+ *
+ * S1-1 Phase 5: 배정은 이제 배송건(order_shipments) 단위다 — order.id가
+ * 아니라 그 주문에 속한 배송건의 id를 받는다.
  */
 export function OrderDriverAssign({
-  orderId,
+  shipmentId,
   deliveryStatus,
   driverId,
   driverName,
   drivers,
 }: {
-  orderId: string;
+  shipmentId: string;
   deliveryStatus: DeliveryStatus;
   driverId: string | null;
   driverName: string | null;
@@ -37,7 +40,7 @@ export function OrderDriverAssign({
       return;
     }
     startTransition(async () => {
-      const result = await assignDriverAction([orderId], selected);
+      const result = await assignDriverAction([shipmentId], selected);
       if (!result.ok) {
         toast.error(result.error ?? "기사 배정 중 오류가 발생했습니다.");
         return;
@@ -48,7 +51,7 @@ export function OrderDriverAssign({
 
   function handleUnassign() {
     startTransition(async () => {
-      const result = await unassignDriverAction([orderId]);
+      const result = await unassignDriverAction([shipmentId]);
       if (!result.ok) {
         toast.error(result.error ?? "배정 해제 중 오류가 발생했습니다.");
         return;

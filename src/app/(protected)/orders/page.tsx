@@ -18,7 +18,7 @@ import {
   kstTodayIso,
   resolveKstQuickRange,
   isQuickDateFilter,
-  ORDER_DATE_QUICK_OPTIONS,
+  DELIVERY_DATE_QUICK_OPTIONS,
   type QuickDateFilterValue,
 } from "@/lib/utils/kst-date";
 import { isOrderSource } from "@/lib/constants/order-source";
@@ -50,10 +50,10 @@ export default async function OrdersPage({
   const page = Number(params.page) > 0 ? Number(params.page) : 1;
   const today = kstTodayIso();
 
-  // Phase 4-B STEP3: 주문일 기본값은 이번주(운영 데이터가 자연스럽게 보이는
-  // 범위), 배송일 기본값은 전체(필터 없음) — 배송일이 비어있는 주문(엑셀 옵션
-  // 텍스트에 날짜 패턴이 없는 경우 등)도 기본 화면에서 조용히 사라지지 않는다.
-  const orderDateFilter: QuickDateFilterValue = isQuickDateFilter(params.orderDateFilter) ? params.orderDateFilter : "week";
+  // S1-3: "오늘 발송할 상품주문만 오늘 화면에 보여준다"가 주문관리의 기본
+  // 화면이어야 한다는 CEO 지시로, 배송일 기본값을 오늘로, 주문일 기본값을
+  // 전체로 뒤집었다(Phase 4-B STEP3 때의 반대).
+  const orderDateFilter: QuickDateFilterValue = isQuickDateFilter(params.orderDateFilter) ? params.orderDateFilter : "all";
   const orderRange =
     orderDateFilter === "custom"
       ? {
@@ -68,7 +68,7 @@ export default async function OrdersPage({
 
   const deliveryDateFilter: QuickDateFilterValue = isQuickDateFilter(params.deliveryDateFilter)
     ? params.deliveryDateFilter
-    : "all";
+    : "today";
   const deliveryRange =
     deliveryDateFilter === "all"
       ? null
@@ -128,18 +128,18 @@ export default async function OrdersPage({
     return qs ? `/orders?${qs}` : "/orders";
   }
 
-  const orderRangeLabel =
-    orderDateFilter === "all"
+  const deliveryRangeLabel =
+    deliveryDateFilter === "all"
       ? "전체 기간"
-      : orderDateFilter === "custom"
+      : deliveryDateFilter === "custom"
         ? "선택한 기간"
-        : (ORDER_DATE_QUICK_OPTIONS.find((o) => o.value === orderDateFilter)?.label ?? "선택한 기간");
+        : (DELIVERY_DATE_QUICK_OPTIONS.find((o) => o.value === deliveryDateFilter)?.label ?? "선택한 기간");
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="주문관리"
-        description={`${orderRangeLabel} 주문(주문일 기준)을 확인하고 처리하세요. 배송일 필터는 기본적으로 전체입니다.`}
+        description={`${deliveryRangeLabel} 발송할 상품주문(배송일 기준)을 확인하고 처리하세요. 주문일 필터는 기본적으로 전체입니다.`}
         action={<ManualOrderButton />}
       />
 

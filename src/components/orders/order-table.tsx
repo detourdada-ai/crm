@@ -23,7 +23,8 @@ export function OrderTable({
   bagManagementEnabled = false,
   editableBag = false,
 }: {
-  orders: Order[];
+  /** S1-3: rowKey가 있으면(배송건 단위 조회) 그것을 React key/상품요약 조회 키로 쓴다 — 같은 주문이 배송일별로 여러 행이 될 수 있어 order.id만으로는 행이 충돌한다. */
+  orders: (Order & { rowKey?: string })[];
   itemSummaries?: Record<string, OrderItemSummary>;
   driverNames?: Record<string, string>;
   showCustomerLink?: boolean;
@@ -71,9 +72,10 @@ export function OrderTable({
         </TableHeader>
         <TableBody>
           {orders.map((order) => {
-            const summary = itemSummaries?.[order.id];
+            const rowKey = order.rowKey ?? order.id;
+            const summary = itemSummaries?.[rowKey];
             return (
-              <TableRow key={order.id} className="hover:bg-muted/40">
+              <TableRow key={rowKey} className="hover:bg-muted/40">
                 <TableCell className="font-medium">
                   <Link href={`/orders/${order.id}`} className="flex items-center gap-1.5 text-primary hover:underline">
                     <span>{order.internal_order_number}</span>
@@ -100,7 +102,7 @@ export function OrderTable({
                 <TableCell>
                   <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
                 </TableCell>
-                <TableCell className="text-right">{formatCurrency(Number(order.total_amount))}</TableCell>
+                <TableCell className="text-right">{formatCurrency(summary ? summary.totalAmount : Number(order.total_amount))}</TableCell>
                 <TableCell className="hidden lg:table-cell text-muted-foreground">
                   {formatDateTime(order.order_date)}
                 </TableCell>

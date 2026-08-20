@@ -21,9 +21,10 @@ import {
 } from "@/actions/delivery";
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
+import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import { groupRegionLabel, extractComplexName, isApartmentName } from "@/lib/utils/delivery-group";
-import type { Order, Driver, DeliveryGroup, DeliveryStatus, FulfillmentMethod } from "@/types/domain";
+import type { Driver, DeliveryGroup, DeliveryStatus, FulfillmentMethod } from "@/types/domain";
 
 const GROUP_FILTER_ALL = "__all__";
 const GROUP_FILTER_HAS_GROUP = "__has_group__";
@@ -63,7 +64,7 @@ const SORT_OPTIONS: { value: DeliverySortField; label: string }[] = [
   { value: "address", label: "배송지순" },
 ];
 
-function composeAddressCopyText(order: Order): string {
+function composeAddressCopyText(order: OrderShipmentBoardRow): string {
   const road = order.road_address_snapshot ?? order.address_snapshot;
   return [order.zipcode ? `[${order.zipcode}]` : null, road, order.detail_address_snapshot].filter(Boolean).join(" ");
 }
@@ -76,7 +77,8 @@ export function DeliveryBoard({
   showGroupColumn = groups.length > 0,
   bagManagementEnabled = false,
 }: {
-  orders: Order[];
+  /** S1-1 Phase 5: 배송건(order_shipments) 기준 — 같은 주문이라도 발송일이 다르면 서로 다른 행으로 나타난다. */
+  orders: OrderShipmentBoardRow[];
   drivers: Driver[];
   itemSummaries: Record<string, OrderItemSummary>;
   /**
@@ -196,7 +198,7 @@ export function DeliveryBoard({
   // 문자열에 "아파트"/"APT"가 명시된 경우만 아파트로 판정하고, 판별 불가능한
   // 경우(단지명은 있지만 "아파트"라는 단어가 없는 경우 포함) 전부 기타로
   // 분류한다 — 억지로 아파트로 넣지 않는다.
-  function isApartmentOrder(order: Order): boolean {
+  function isApartmentOrder(order: OrderShipmentBoardRow): boolean {
     const name = extractComplexName(order.address_snapshot);
     return !!name && isApartmentName(name);
   }
@@ -242,9 +244,15 @@ export function DeliveryBoard({
   // 최종 결과)로 삼는다 — 정렬 순서는 멤버십 판정과 무관하므로 sortedOrders
   // 대신 이 값으로 충분하다.
   const visibleSelected = useMemo(() => {
-    const currentIds = new Set(groupFilteredOrders.map((o) => o.id));
+    const currentIds = new Set(groupFilteredOrders.map((o) => o.rowKey));
     return new Set([...selected].filter((id) => currentIds.has(id)));
   }, [selected, groupFilteredOrders]);
+
+  // S1-1 Phase 5: 선택 상태(visibleSelected)는 이제 배송건(shipmentId)을
+  // 담고 있다 — 기사 후보 지역조회는 여전히 "주문"의 주소를 봐야 하므로
+  // (배송건은 주소를 따로 갖지 않는다), 선택된 배송건들이 속한 실제
+  // 주문 id로 되돌려서 넘긴다.
+  const orderById = useMemo(() => new Map(orders.map((o) => [o.rowKey, o.id])), [orders]);
 
   // P0(기사관리 3건) 3번: 선택된 주문들의 배송지를 담당하는 기사 후보를
   // 담당 기사 선택 드롭다운을 열 때만 조회한다(선택이 바뀔 때마다 매번
@@ -255,7 +263,7 @@ export function DeliveryBoard({
 
   function handleDriverSelectOpenChange(nextOpen: boolean) {
     if (!nextOpen || visibleSelected.size === 0) return;
-    const orderIds = Array.from(visibleSelected);
+    const orderIds = Array.from(new Set(Array.from(visibleSelected).map((shipmentId) => orderById.get(shipmentId)).filter((id): id is string => !!id)));
     startCandidateLookup(async () => {
       const ids = await listCandidateDriverIdsForOrdersAction(orderIds);
       setCandidateDriverIds(new Set(ids));
@@ -344,7 +352,7 @@ export function DeliveryBoard({
   // 보여도 실제로는 101건 전체가 선택되어 "선택한 101건 적용"으로 잘못
   // 배정될 수 있었다.
   function toggleAll(checked: boolean) {
-    setSelected(checked ? new Set(sortedOrders.map((o) => o.id)) : new Set());
+    setSelected(checked ? new Set(sortedOrders.map((o) => o.rowKey)) : new Set());
   }
 
   function quickSelectForAssign(id: string) {
@@ -380,10 +388,10 @@ export function DeliveryBoard({
     });
   }
 
-  function handleUnassign(orderId: string) {
-    setPendingOrderId(orderId);
+  function handleUnassign(shipmentId: string) {
+    setPendingOrderId(shipmentId);
     startTransition(async () => {
-      const result = await unassignDriverAction([orderId]);
+      const result = await unassignDriverAction([shipmentId]);
       if (result.ok) {
         toast.success("배정을 해제했습니다.");
       } else {
@@ -398,10 +406,10 @@ export function DeliveryBoard({
    * 어디로든 바로 전환한다(되돌리기 포함). 배송중으로 가는데 기사도
    * 없고 직접수령도 아니면 서버가 거부 — 에러 메시지를 그대로 보여준다.
    */
-  function handleSetStatus(orderId: string, status: DeliveryStatus) {
-    setPendingOrderId(orderId);
+  function handleSetStatus(shipmentId: string, status: DeliveryStatus) {
+    setPendingOrderId(shipmentId);
     startTransition(async () => {
-      const result = await setDeliveryStatusAction([orderId], status as "배송대기" | "배송중" | "완료");
+      const result = await setDeliveryStatusAction([shipmentId], status as "배송대기" | "배송중" | "완료");
       if (result.ok) {
         toast.success(`상태를 ${status}(으)로 변경했습니다.`);
       } else {
@@ -412,10 +420,10 @@ export function DeliveryBoard({
   }
 
   /** 직접수령 해제 — fulfillment_method를 delivery로 되돌린다(다시 미배정 상태가 됨). */
-  function handleClearDirectPickup(orderId: string) {
-    setPendingOrderId(orderId);
+  function handleClearDirectPickup(shipmentId: string) {
+    setPendingOrderId(shipmentId);
     startTransition(async () => {
-      const result = await setFulfillmentMethodAction([orderId], "delivery");
+      const result = await setFulfillmentMethodAction([shipmentId], "delivery");
       if (!result.ok) toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
       setPendingOrderId(null);
     });
@@ -637,11 +645,11 @@ export function DeliveryBoard({
           </TableHeader>
           <TableBody>
             {sortedOrders.map((order) => (
-              <TableRow key={order.id} className="hover:bg-muted/40">
+              <TableRow key={order.rowKey} className="hover:bg-muted/40">
                 <TableCell>
                   <Checkbox
-                    checked={selected.has(order.id)}
-                    onCheckedChange={(checked) => toggle(order.id, checked === true)}
+                    checked={selected.has(order.rowKey)}
+                    onCheckedChange={(checked) => toggle(order.rowKey, checked === true)}
                   />
                 </TableCell>
                 {showGroupColumn ? (
@@ -662,8 +670,8 @@ export function DeliveryBoard({
                     status={order.delivery_status}
                     canProgress={!!order.driver_id || order.fulfillment_method === "direct_pickup"}
                     disabled={isPending}
-                    showSpinner={isPending && pendingOrderId === order.id}
-                    onChange={(next) => handleSetStatus(order.id, next)}
+                    showSpinner={isPending && pendingOrderId === order.rowKey}
+                    onChange={(next) => handleSetStatus(order.rowKey, next)}
                   />
                 </TableCell>
                 <TableCell>
@@ -672,9 +680,9 @@ export function DeliveryBoard({
                     fulfillmentMethod={order.fulfillment_method}
                     locked={order.delivery_status === "완료"}
                     disabled={isPending}
-                    onAssign={() => quickSelectForAssign(order.id)}
-                    onUnassign={() => handleUnassign(order.id)}
-                    onClearDirectPickup={() => handleClearDirectPickup(order.id)}
+                    onAssign={() => quickSelectForAssign(order.rowKey)}
+                    onUnassign={() => handleUnassign(order.rowKey)}
+                    onClearDirectPickup={() => handleClearDirectPickup(order.rowKey)}
                   />
                 </TableCell>
                 <TableCell className="w-80 align-top">
@@ -682,7 +690,7 @@ export function DeliveryBoard({
                 </TableCell>
                 <TableCell className="font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</TableCell>
                 <TableCell className="w-56 max-w-56 align-top whitespace-normal">
-                  <ItemSummaryBlock summary={itemSummaries[order.id]} />
+                  <ItemSummaryBlock summary={itemSummaries[order.rowKey]} />
                 </TableCell>
                 <TableCell className="font-medium">
                   <Link href={`/orders/${order.id}`} className="mr-1.5 hover:underline">
@@ -722,12 +730,12 @@ export function DeliveryBoard({
       {/* Mobile: 카드형 Row */}
       <div className="space-y-3 md:hidden">
         {sortedOrders.map((order) => (
-          <div key={order.id} className="rounded-xl border border-border bg-surface p-4">
+          <div key={order.rowKey} className="rounded-xl border border-border bg-surface p-4">
             <div className="flex items-start gap-3">
               <Checkbox
                 className="mt-1"
-                checked={selected.has(order.id)}
-                onCheckedChange={(checked) => toggle(order.id, checked === true)}
+                checked={selected.has(order.rowKey)}
+                onCheckedChange={(checked) => toggle(order.rowKey, checked === true)}
               />
               {/* P8 1-1번: 모바일 카드도 데스크톱과 같은 우선순위 — 그룹/상태를
                   맨 위, 배송기사를 바로 아래, 주문번호/배송일은 카드 하단의
@@ -745,8 +753,8 @@ export function DeliveryBoard({
                     status={order.delivery_status}
                     canProgress={!!order.driver_id || order.fulfillment_method === "direct_pickup"}
                     disabled={isPending}
-                    showSpinner={isPending && pendingOrderId === order.id}
-                    onChange={(next) => handleSetStatus(order.id, next)}
+                    showSpinner={isPending && pendingOrderId === order.rowKey}
+                    onChange={(next) => handleSetStatus(order.rowKey, next)}
                   />
                 </div>
                 <div className="mt-2">
@@ -755,9 +763,9 @@ export function DeliveryBoard({
                     fulfillmentMethod={order.fulfillment_method}
                     locked={order.delivery_status === "완료"}
                     disabled={isPending}
-                    onAssign={() => quickSelectForAssign(order.id)}
-                    onUnassign={() => handleUnassign(order.id)}
-                    onClearDirectPickup={() => handleClearDirectPickup(order.id)}
+                    onAssign={() => quickSelectForAssign(order.rowKey)}
+                    onUnassign={() => handleUnassign(order.rowKey)}
+                    onClearDirectPickup={() => handleClearDirectPickup(order.rowKey)}
                   />
                 </div>
                 <div className="mt-2">
@@ -765,7 +773,7 @@ export function DeliveryBoard({
                 </div>
                 <p className="mt-2 font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</p>
                 <div className="mt-2">
-                  <ItemSummaryBlock summary={itemSummaries[order.id]} />
+                  <ItemSummaryBlock summary={itemSummaries[order.rowKey]} />
                 </div>
                 {bagManagementEnabled && order.bag_number ? (
                   <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
@@ -818,7 +826,7 @@ function ItemSummaryBlock({ summary }: { summary: OrderItemSummary | undefined }
  * title과 주문 상세 페이지에서 확인한다. 전화 버튼은 배송관리 리스트에서
  * 제공하지 않는다(작업지시서 7번) — 필요하면 주문 상세에서 확인.
  */
-function DeliveryAddressBlock({ order }: { order: Order }) {
+function DeliveryAddressBlock({ order }: { order: OrderShipmentBoardRow }) {
   const road = order.road_address_snapshot ?? order.address_snapshot;
   const regionSummary = [order.sido, order.sigungu, order.eupmyeondong].filter(Boolean).join(" ");
   const fullText = composeAddressCopyText(order);

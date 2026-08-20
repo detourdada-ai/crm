@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
+import { orderShipmentsRepository } from "@/lib/repositories/order-shipments.repository";
 import { settlementsRepository } from "@/lib/repositories/settlements.repository";
 import { resolvePeriodRange, type SettlementPeriodType } from "@/lib/services/settlement.service";
 import { toActionError } from "@/lib/utils/action-error";
@@ -21,6 +22,22 @@ export interface SettlementBoardResult {
   rows: SettlementRow[];
 }
 
+/**
+ * S1-1 Phase 6: 정산 카운트 기준을 배송건(order_shipments)으로 바꾸되, 이미
+ * 한 번이라도 계산된(=settlements 행이 존재하는) 기간은 CPO 지시에 따라 계속
+ * orders 기준으로 재계산한다 — 정산 보드는 매번 조회 시 delivery_count를
+ * 새로 계산해 덮어쓰므로(upsertStats), 기준을 무조건 바꾸면 이미 확인했거나
+ * 지급완료 처리한 과거 기간의 건수/금액이 조회할 때마다 조용히 바뀔 수
+ * 있다. 행이 아직 없는(=이번이 처음 계산되는) 기간만 새 기준을 쓴다 —
+ * 한 번 새 기준으로 계산되면 그 다음부터는 행이 존재하므로 계속 새 기준을
+ * 쓰게 된다(뒤집히지 않음).
+ */
+async function resolveDeliveryCount(driverId: string, periodStart: string, periodEnd: string, periodStartIso: string, periodEndIso: string) {
+  const existing = await settlementsRepository.findByDriverAndPeriod(driverId, periodStart, periodEnd);
+  if (existing) return ordersRepository.countCompletedByDriverInPeriod(driverId, periodStartIso, periodEndIso);
+  return orderShipmentsRepository.countCompletedByDriverInPeriod(driverId, periodStartIso, periodEndIso);
+}
+
 async function computeSettlementRows(
   periodType: SettlementPeriodType,
   referenceDate: string,
@@ -33,7 +50,7 @@ async function computeSettlementRows(
   const drivers = await driversRepository.listAll(ownerUsername);
   const rows: SettlementRow[] = [];
   for (const driver of drivers) {
-    const deliveryCount = await ordersRepository.countCompletedByDriverInPeriod(driver.id, periodStartIso, periodEndIso);
+    const deliveryCount = await resolveDeliveryCount(driver.id, start, end, periodStartIso, periodEndIso);
     const amount = deliveryCount * driver.rate_per_delivery;
     const settlement = await settlementsRepository.upsertStats({
       driver_id: driver.id,
@@ -102,7 +119,7 @@ export async function getMySettlementAction(
   const { start, end } = resolvePeriodRange(periodType, referenceDate);
   const periodStartIso = kstDayStartIso(start);
   const periodEndIso = kstDayEndIso(end);
-  const deliveryCount = await ordersRepository.countCompletedByDriverInPeriod(driverId, periodStartIso, periodEndIso);
+  const deliveryCount = await resolveDeliveryCount(driverId, start, end, periodStartIso, periodEndIso);
   const amount = deliveryCount * driver.rate_per_delivery;
   const settlement = await settlementsRepository.upsertStats({
     driver_id: driverId,

@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { ordersRepository, type OrderInsert, type OrderItemInsert } from "@/lib/repositories/orders.repository";
+import { orderShipmentsRepository, type OrderShipmentInsert } from "@/lib/repositories/order-shipments.repository";
 import { importsRepository } from "@/lib/repositories/imports.repository";
 import { duplicatesRepository, type DuplicateCandidateInsert } from "@/lib/repositories/duplicates.repository";
 import { customersRepository, type CustomerInsert } from "@/lib/repositories/customers.repository";
@@ -267,6 +268,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   const newCustomerInserts: CustomerInsert[] = [];
   const newOrderInserts: OrderInsert[] = [];
   const newItemInserts: OrderItemInsert[] = [];
+  const newShipmentInserts: OrderShipmentInsert[] = [];
   const newDuplicateInserts: DuplicateCandidateInsert[] = [];
   const bagNoUpdates: { id: string; bagNo: string }[] = [];
   // P10-1.5: Excel 주문은 geocoding이 아예 빠져 있어 기사후보 추천/배송그룹
@@ -415,9 +417,13 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       // priorOrderCounts에 항목이 없어 0으로 취급되어 항상 신규 주문이고,
       // 기존 고객이면 Import 시작 시점 주문 수를 기준으로 판정한다. 판정
       // 직후 카운트를 올려 같은 파일 안의 다음 주문부터는 반복으로 잡는다.
+      // S1-4: 이 카운터는 "주문" 건수가 아니라 "상품주문"(엑셀 원본 행) 건수로
+      // 센다 — 한 주문에 상품주문이 5개면 신규/재주문 어느 쪽이든 5건으로
+      // 잡힌다. CEO 지시: "Excel 원본 행 = 상품주문 단위"이므로 업로드 결과
+      // 화면의 숫자가 그 정의와 항상 일치해야 한다.
       const priorOrders = priorOrderCounts.get(customerId) ?? 0;
-      if (priorOrders === 0) newOrderCount += 1;
-      else repeatOrderCount += 1;
+      if (priorOrders === 0) newOrderCount += rows.length;
+      else repeatOrderCount += rows.length;
       priorOrderCounts.set(customerId, priorOrders + 1);
 
       const items = rows.map((row) => ({
@@ -437,9 +443,11 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       // (e.g. "하남/강동(일부): ... / 날짜 선택: 07월16일") — pull both out
       // of whichever item's option text has them first.
       const orderDateObj = new Date(orderDate);
-      const deliveryDate = items
-        .map((item) => parseDeliveryDateFromOption(item.option_name, orderDateObj))
-        .find((d) => d !== null) ?? null;
+      const itemDeliveryDates = items.map((item) => parseDeliveryDateFromOption(item.option_name, orderDateObj));
+      // orders.delivery_date는 과도기 호환 필드로 지금까지와 동일하게 "이
+      // 주문에서 처음 발견된 발송일" 하나만 담는다 — 아래 배송건 분리와는
+      // 별개다(orders 컬럼은 이번 스프린트에서 삭제하지 않는다).
+      const deliveryDate = itemDeliveryDates.find((d) => d !== null) ?? null;
       const deliveryArea = items
         .map((item) => parseDeliveryAreaFromOption(item.option_name))
         .find((a) => a !== null) ?? null;
@@ -478,9 +486,31 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         pendingOrderGeocode.push({ insert: orderInsert, addressKey: addressNormalized });
       }
       newOrderInserts.push(orderInsert);
-      for (const item of items) {
-        newItemInserts.push({ ...item, order_id: orderId });
-      }
+
+      // S1-2: 상품주문별 발송일이 다르면 서로 다른 배송건(order_shipments)으로
+      // 분리한다 — 절대로 첫 번째 상품의 발송일로 덮어쓰지 않는다. 상품 자체
+      // 파싱이 실패한 경우에만 주문 대표값(deliveryDate)으로 폴백하고, 그마저
+      // 없으면 "배송일 미지정" 배송건이 된다. 0038 마이그레이션의 백필과
+      // 완전히 동일한 규칙이라, 이후 재업로드/기존 데이터 사이에 배송건이
+      // 갈라지는 방식이 달라지지 않는다.
+      const shipmentIdByDateKey = new Map<string, string>();
+      items.forEach((item, i) => {
+        const effectiveDate = itemDeliveryDates[i] ?? deliveryDate;
+        const dateKey = effectiveDate ? kstDayDateStrOf(effectiveDate) : "unassigned";
+        let shipmentId = shipmentIdByDateKey.get(dateKey);
+        if (!shipmentId) {
+          shipmentId = randomUUID();
+          shipmentIdByDateKey.set(dateKey, shipmentId);
+          newShipmentInserts.push({
+            id: shipmentId,
+            order_id: orderId,
+            tenant_id: tenant.id,
+            owner_username: ownerUsername,
+            delivery_date: effectiveDate,
+          });
+        }
+        newItemInserts.push({ ...item, order_id: orderId, shipment_id: shipmentId });
+      });
 
       if (isNew) {
         const candidates = pool.detectCandidates(customerId, name, phone, addressNormalized);
@@ -559,6 +589,9 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       await triggerDeliveryGroupRegeneration(tenant.id, dateStr, ownerUsername);
     }
   }
+  if (newShipmentInserts.length > 0) {
+    await orderShipmentsRepository.createMany(newShipmentInserts);
+  }
   if (newItemInserts.length > 0) {
     await ordersRepository.createItems(newItemInserts);
   }
@@ -597,6 +630,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       alreadyImportedOrders,
       newOrders: newOrderCount,
       repeatOrders: repeatOrderCount,
+      newCustomers: newCustomerInserts.length,
       duplicateCandidates: duplicateCandidateCount,
       failedRows,
       geocodeSuccess,

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { ordersRepository, type OrderSortField } from "@/lib/repositories/orders.repository";
+import { orderShipmentsRepository } from "@/lib/repositories/order-shipments.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { customersRepository } from "@/lib/repositories/customers.repository";
 import { productsRepository } from "@/lib/repositories/products.repository";
@@ -15,7 +16,7 @@ import { isUuid } from "@/lib/utils/id";
 import { kstDayDateStrOf } from "@/lib/utils/kst-date";
 import { ownerScopeFor, requireSession, tenantScopeFor } from "@/lib/auth/current-session";
 import { isOrderSource } from "@/lib/constants/order-source";
-import type { Order, OrderItem, DeliveryStatus, OrderSource, Customer } from "@/types/domain";
+import type { Order, OrderItem, OrderShipment, DeliveryStatus, OrderSource, Customer } from "@/types/domain";
 
 export async function listOrdersAction(page = 1, pageSize = 20) {
   const session = await requireSession();
@@ -25,6 +26,8 @@ export async function listOrdersAction(page = 1, pageSize = 20) {
 export interface OrderItemSummary {
   productSummary: string;
   totalQuantity: number;
+  /** S1-3: 이 요약이 어느 범위(주문 전체 vs 배송건 하나)의 합인지에 따라 값이 다르다 — 배송일 필터가 걸린 목록에서는 order.total_amount(주문 전체 합)를 쓰면 안 되고 반드시 이 값을 써야 한다. */
+  totalAmount: number;
 }
 
 export interface SearchOrdersParams {
@@ -45,17 +48,31 @@ export interface SearchOrdersParams {
   sortAscending?: boolean;
 }
 
+/** S1-3: 목록 한 행 — 배송일 필터가 걸려 있으면 배송건 하나(rowKey=shipmentId), 아니면 주문 전체(rowKey=order.id)다. */
+export type OrderListRow = Order & { rowKey: string; shipmentId?: string };
+
 export interface SearchOrdersResult {
-  orders: Order[];
+  orders: OrderListRow[];
   total: number;
   itemSummaries: Record<string, OrderItemSummary>;
   driverNames: Record<string, string>;
 }
 
+function summarize(items: OrderItem[]): OrderItemSummary {
+  const totalQuantity = items.reduce((sum, i) => sum + i.quantity, 0);
+  const totalAmount = items.reduce((sum, i) => sum + i.amount, 0);
+  const productSummary =
+    items.length === 0 ? "-" : items.length === 1 ? items[0].product_name : `${items[0].product_name} 외 ${items.length - 1}건`;
+  return { productSummary, totalQuantity, totalAmount };
+}
+
 /**
- * "상품A 외 N건" 요약 문자열 + 총수량을 주문별로 계산한다. Phase 6 STEP4:
- * 배송관리 보드도 주문관리와 동일하게 상품 요약을 보여줘야 해서 공용으로
- * 뺐다 — 로직은 원래 searchOrdersAction 안에 있던 것 그대로, 새 규칙 없음.
+ * "상품A 외 N건" 요약 문자열 + 총수량/총금액을 주문 전체 기준으로 계산한다.
+ * Phase 6 STEP4: 배송관리 보드도 주문관리와 동일하게 상품 요약을 보여줘야
+ * 해서 공용으로 뺐다. S1-3: 배송일 필터가 걸린 주문관리 목록에서는 이 함수
+ * 대신 buildShipmentItemSummaries를 써야 한다 — 여기는 여전히 "주문에 속한
+ * 모든 상품"을 합치므로, 배송일별로 갈라 보여줘야 하는 화면에 쓰면 CEO가
+ * 금지한 "여러 날짜 금액을 합쳐서 표시"가 재발한다.
  */
 export async function buildOrderItemSummaries(orders: Order[]): Promise<Record<string, OrderItemSummary>> {
   const items = await ordersRepository.findItemsByOrderIds(orders.map((o) => o.id));
@@ -68,26 +85,61 @@ export async function buildOrderItemSummaries(orders: Order[]): Promise<Record<s
 
   const itemSummaries: Record<string, OrderItemSummary> = {};
   for (const order of orders) {
-    const orderItems = byOrder.get(order.id) ?? [];
-    const totalQuantity = orderItems.reduce((sum, i) => sum + i.quantity, 0);
-    const productSummary =
-      orderItems.length === 0
-        ? "-"
-        : orderItems.length === 1
-          ? orderItems[0].product_name
-          : `${orderItems[0].product_name} 외 ${orderItems.length - 1}건`;
-    itemSummaries[order.id] = { productSummary, totalQuantity };
+    itemSummaries[order.id] = summarize(byOrder.get(order.id) ?? []);
+  }
+  return itemSummaries;
+}
+
+/**
+ * S1-3/Phase 5: 배송건 하나에 속한 상품주문만 합친다 — 같은 주문의 다른
+ * 배송일 상품은 절대 섞이지 않는다. 주문관리(OrderShipmentRow)와
+ * 배송관리(OrderShipmentBoardRow) 둘 다 구조적으로 동일한 모양(Order &
+ * {shipmentId, rowKey})이라 이 함수 하나를 공유한다.
+ */
+export async function buildShipmentItemSummaries(
+  rows: { shipmentId: string; rowKey: string }[]
+): Promise<Record<string, OrderItemSummary>> {
+  const items = await ordersRepository.findItemsByShipmentIds(rows.map((r) => r.shipmentId));
+  const byShipment = new Map<string, OrderItem[]>();
+  for (const item of items) {
+    if (!item.shipment_id) continue;
+    const list = byShipment.get(item.shipment_id) ?? [];
+    list.push(item);
+    byShipment.set(item.shipment_id, list);
+  }
+
+  const itemSummaries: Record<string, OrderItemSummary> = {};
+  for (const row of rows) {
+    itemSummaries[row.rowKey] = summarize(byShipment.get(row.shipmentId) ?? []);
   }
   return itemSummaries;
 }
 
 export async function searchOrdersAction(params: SearchOrdersParams): Promise<SearchOrdersResult> {
   const session = await requireSession();
-  const { orders, total } = await ordersRepository.search({ ...params, ownerUsername: ownerScopeFor(session) });
+  const ownerUsername = ownerScopeFor(session);
 
-  const itemSummaries = await buildOrderItemSummaries(orders);
+  // S1-3: 배송일 필터가 걸려 있으면(기본값이 "오늘"이라 사실상 항상) 배송건
+  // 단위로 조회한다 — 같은 주문이라도 상품주문별 발송일이 다르면 여러 행으로
+  // 나타난다. 배송일 필터가 없는("전체") 경우에만 기존 주문 단위 조회로
+  // 돌아간다.
+  if (params.deliveryDateFrom || params.deliveryDateTo) {
+    const { rows, total } = await ordersRepository.searchByShipmentDate({ ...params, ownerUsername });
+    const orders: OrderListRow[] = rows.map((r) => ({ ...r, rowKey: r.rowKey, shipmentId: r.shipmentId }));
+    const itemSummaries = await buildShipmentItemSummaries(rows);
 
-  const driverIds = Array.from(new Set(orders.map((o) => o.driver_id).filter((id): id is string => id !== null)));
+    const driverIds = Array.from(new Set(rows.map((r) => r.driver_id).filter((id): id is string => id !== null)));
+    const drivers = await driversRepository.findByIds(driverIds);
+    const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
+
+    return { orders, total, itemSummaries, driverNames };
+  }
+
+  const { orders: rawOrders, total } = await ordersRepository.search({ ...params, ownerUsername });
+  const orders: OrderListRow[] = rawOrders.map((o) => ({ ...o, rowKey: o.id }));
+  const itemSummaries = await buildOrderItemSummaries(rawOrders);
+
+  const driverIds = Array.from(new Set(rawOrders.map((o) => o.driver_id).filter((id): id is string => id !== null)));
   const drivers = await driversRepository.findByIds(driverIds);
   const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
 
@@ -98,6 +150,8 @@ export interface OrderDetail {
   order: Order;
   items: OrderItem[];
   driverName: string | null;
+  shipments: OrderShipment[];
+  shipmentDriverNames: Record<string, string>;
 }
 
 export async function getOrderDetailAction(id: string): Promise<OrderDetail | null> {
@@ -107,11 +161,15 @@ export async function getOrderDetailAction(id: string): Promise<OrderDetail | nu
   if (!order) return null;
   if (session.role !== "admin" && order.owner_username !== session.username) return null;
 
-  const [items, driver] = await Promise.all([
+  const [items, driver, shipments] = await Promise.all([
     ordersRepository.findItemsByOrderIds([id]),
     order.driver_id ? driversRepository.findById(order.driver_id) : Promise.resolve(null),
+    orderShipmentsRepository.findByOrderId(id),
   ]);
-  return { order, items, driverName: driver?.name ?? null };
+  const shipmentDriverIds = Array.from(new Set(shipments.map((s) => s.driver_id).filter((d): d is string => d !== null)));
+  const shipmentDrivers = await driversRepository.findByIds(shipmentDriverIds);
+  const shipmentDriverNames = Object.fromEntries(shipmentDrivers.map((d) => [d.id, d.name]));
+  return { order, items, driverName: driver?.name ?? null, shipments, shipmentDriverNames };
 }
 
 export interface UpdateOrderBagActionState {
@@ -411,7 +469,10 @@ export async function updateManualOrderAction(
   const internalMemo = String(formData.get("internalMemo") || "").trim() || null;
   const orderDateRaw = String(formData.get("orderDate") || "").trim();
   const deliveryDateRaw = String(formData.get("deliveryDate") || "").trim();
-  const status = String(formData.get("status") || "").trim() || "접수완료";
+  // S1-7: 운영 UI에서 이 필드의 입력창을 없앴다 — DB 컬럼은 유지하되, 폼에
+  // 값이 없으면(항상 없음) 기존 값을 그대로 보존한다. "접수완료"로 덮어쓰면
+  // 안 된다(그건 신규 생성 시에만 쓰는 기본값이다).
+  const status = String(formData.get("status") || "").trim() || order.status;
   const quantity = Math.max(1, Number(formData.get("quantity")) || 1);
   const unitPrice = Math.max(0, Number(formData.get("unitPrice")) || 0);
 

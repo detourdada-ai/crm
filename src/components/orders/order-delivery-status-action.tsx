@@ -12,13 +12,16 @@ import type { DeliveryStatus } from "@/types/domain";
  * 바로 쓸 수 있게 한다 — F13에서 만든 startDeliveryAction/completeDeliveryAction을
  * 그대로 재사용(단건 배열)하므로 서버 쪽 새 코드는 없다. 완료/취소 상태에는
  * 다음 액션이 없으므로 아무것도 렌더링하지 않는다.
+ *
+ * S1-1 Phase 5: 이 액션들은 이제 배송건(order_shipments) 단위로 동작하므로
+ * order.id가 아니라 그 주문에 속한 배송건의 id를 받는다.
  */
-export function OrderDeliveryStatusAction({ orderId, deliveryStatus }: { orderId: string; deliveryStatus: DeliveryStatus }) {
+export function OrderDeliveryStatusAction({ shipmentId, deliveryStatus }: { shipmentId: string; deliveryStatus: DeliveryStatus }) {
   const [isPending, startTransition] = useTransition();
 
   function handleStart() {
     startTransition(async () => {
-      const result = await startDeliveryAction([orderId]);
+      const result = await startDeliveryAction([shipmentId]);
       if (!result.ok) {
         toast.error(result.error ?? "배송 시작 중 오류가 발생했습니다.");
         return;
@@ -29,7 +32,7 @@ export function OrderDeliveryStatusAction({ orderId, deliveryStatus }: { orderId
 
   function handleComplete() {
     startTransition(async () => {
-      const result = await completeDeliveryAction([orderId]);
+      const result = await completeDeliveryAction([shipmentId]);
       if (!result.ok) {
         toast.error(result.error ?? "배송완료 처리 중 오류가 발생했습니다.");
         return;

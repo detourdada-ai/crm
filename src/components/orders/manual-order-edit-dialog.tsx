@@ -125,10 +125,6 @@ export function ManualOrderEditDialog({ order, item }: { order: Order; item: Ord
             <Label htmlFor="editInternalMemo">내부 메모</Label>
             <Input id="editInternalMemo" name="internalMemo" defaultValue={order.internal_memo ?? ""} />
           </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="editStatus">상태</Label>
-            <Input id="editStatus" name="status" defaultValue={order.status} placeholder="접수완료" />
-          </div>
           <DialogFooter className="sm:col-span-2">
             <Button type="submit" disabled={isPending}>
               {isPending ? "저장하는 중..." : "저장"}

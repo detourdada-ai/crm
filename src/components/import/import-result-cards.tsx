@@ -11,6 +11,11 @@ import type { ImportSummary, ImportRowError } from "@/types/domain";
  * Phase 5 STEP4: 업로드 직후 "그래서 제대로 들어간 건가?"를 다시 주문관리에서
  * 찾아보지 않아도 되도록, 결과 요약 + 바로가기 버튼(주문 확인하기/동일인
  * 검토/오류 확인)을 한 화면에 모은다.
+ *
+ * S1-4: 건수의 기준은 "상품주문"(엑셀 원본 행)이다 — 한 주문번호에 상품주문이
+ * 5개면 5건으로 센다. "원본 행 vs 생성된 주문" 같은 내부 처리 단위 설명이나
+ * 좌표/geocoding 같은 기술적 세부사항은 사장님이 볼 필요가 없으므로 이 화면에
+ * 노출하지 않는다.
  */
 export function ImportResultCards({ summary, errors }: { summary: ImportSummary; errors: ImportRowError[] }) {
   const [showErrors, setShowErrors] = useState(false);
@@ -24,28 +29,21 @@ export function ImportResultCards({ summary, errors }: { summary: ImportSummary;
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* P8 3번: "신규 주문"/"반복 주문"은 고객 레코드가 새로 생겼는지가
-            아니라 "이 주문이 그 고객의 진짜 첫 주문인지"로 정의한다
-            (customer_order_stats 기준, runImport 참고) — 기존 고객이어도
-            이전 주문이 0건이면 신규 주문으로 잡힌다. 원본 행과는 다른
-            단위(행 vs 주문)라는 걸 명확히 분리해서, "261행인데 왜 157건이냐"
-            는 의문에 숫자를 억지로 맞추지 않고 각 줄이 무엇을 세는지로 답한다. */}
+        <p className="text-sm text-muted-foreground">
+          총 <span className="font-semibold text-text-strong">{summary.totalRawRows.toLocaleString()}개</span> 상품주문
+        </p>
         <dl className="space-y-1.5 text-sm">
           <div className="flex items-baseline justify-between">
-            <dt className="text-muted-foreground">원본 행</dt>
-            <dd className="font-medium text-text-strong">{summary.totalRawRows.toLocaleString()}행</dd>
+            <dt className="text-muted-foreground">신규 주문</dt>
+            <dd className="font-medium text-text-strong">{summary.newOrders.toLocaleString()}건</dd>
           </div>
           <div className="flex items-baseline justify-between">
-            <dt className="text-muted-foreground">생성된 주문</dt>
-            <dd className="font-medium text-text-strong">{summary.newOrdersCreated.toLocaleString()}건</dd>
+            <dt className="text-muted-foreground">재주문</dt>
+            <dd className="font-medium text-text-strong">{summary.repeatOrders.toLocaleString()}건</dd>
           </div>
-          <div className="flex items-baseline justify-between pl-4">
-            <dt className="text-muted-foreground">├─ 신규 주문</dt>
-            <dd className="text-text-strong">{summary.newOrders.toLocaleString()}건</dd>
-          </div>
-          <div className="flex items-baseline justify-between pl-4">
-            <dt className="text-muted-foreground">└─ 반복 주문</dt>
-            <dd className="text-text-strong">{summary.repeatOrders.toLocaleString()}건</dd>
+          <div className="flex items-baseline justify-between">
+            <dt className="text-muted-foreground">신규 고객</dt>
+            <dd className="font-medium text-text-strong">{summary.newCustomers.toLocaleString()}건</dd>
           </div>
           <div className="flex items-baseline justify-between">
             <dt className={summary.duplicateCandidates > 0 ? "text-warning" : "text-muted-foreground"}>동일인 검토</dt>
@@ -59,31 +57,12 @@ export function ImportResultCards({ summary, errors }: { summary: ImportSummary;
               {summary.failedRows.toLocaleString()}건
             </dd>
           </div>
-          {summary.geocodeSuccess + summary.geocodeFailed > 0 ? (
-            <>
-              <div className="flex items-baseline justify-between pt-1">
-                <dt className="text-muted-foreground">배송지 좌표 확보</dt>
-                <dd className="text-text-strong">{summary.geocodeSuccess.toLocaleString()}건</dd>
-              </div>
-              {summary.geocodeFailed > 0 ? (
-                <div className="flex items-baseline justify-between">
-                  <dt className="text-warning">좌표 확보 실패</dt>
-                  <dd className="font-medium text-warning">{summary.geocodeFailed.toLocaleString()}건</dd>
-                </div>
-              ) : null}
-            </>
-          ) : null}
         </dl>
-        <p className="text-xs text-muted-foreground">
-          엑셀은 상품 단위 행이라 여러 행이 하나의 주문으로 합쳐질 수 있어, 원본 행과 생성된 주문 수는 서로 다른
-          기준입니다.
-          {summary.alreadyImportedOrders > 0
-            ? ` 이미 등록된 주문번호 ${summary.alreadyImportedOrders.toLocaleString()}건은 건너뛰었습니다(재업로드 시 정상).`
-            : ""}
-          {summary.geocodeFailed > 0
-            ? ` 좌표 확보에 실패한 주문도 정상 등록되며, 주문 상세에서 주소를 다시 저장하면 재시도됩니다.`
-            : ""}
-        </p>
+        {summary.alreadyImportedOrders > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            이미 등록된 주문 {summary.alreadyImportedOrders.toLocaleString()}건은 건너뛰었습니다(재업로드 시 정상).
+          </p>
+        ) : null}
 
         <div className="flex flex-wrap gap-2 pt-2">
           <Button asChild size="sm">

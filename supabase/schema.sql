@@ -420,6 +420,46 @@ create table if not exists order_items (
 create index if not exists idx_order_items_order_id on order_items (order_id);
 
 -- ----------------------------------------------------------------------------
+-- order_shipments (S1-1): 주문(결제 묶음)과 배송건(실제 운영 단위)을 분리한다.
+-- 같은 주문번호 안에서도 상품주문별 발송일이 다르면 서로 다른 배송건이 된다.
+-- orders의 배송 관련 컬럼(driver_id 등)은 당분간 병행 유지되며 삭제되지
+-- 않는다 — 자세한 배경/백필 규칙은 0038_order_shipments.sql 참고.
+-- ----------------------------------------------------------------------------
+create table if not exists order_shipments (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references orders (id) on delete cascade,
+  tenant_id uuid not null references tenants (id),
+  owner_username text not null,
+  delivery_date timestamptz,
+  driver_id uuid references drivers (id) on delete set null,
+  delivery_status text not null default '배송대기' check (delivery_status in ('배송대기', '배송중', '완료', '취소')),
+  fulfillment_method text not null default 'delivery' check (fulfillment_method in ('delivery', 'direct_pickup')),
+  bag_number text,
+  bag_returned boolean not null default false,
+  completed_at timestamptz,
+  cancelled_at timestamptz,
+  delivery_group_id uuid references delivery_groups (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_order_shipments_order_id on order_shipments (order_id);
+create index if not exists idx_order_shipments_tenant_id on order_shipments (tenant_id);
+create index if not exists idx_order_shipments_owner_username on order_shipments (owner_username);
+create index if not exists idx_order_shipments_driver_id on order_shipments (driver_id);
+create index if not exists idx_order_shipments_delivery_status on order_shipments (delivery_status);
+create index if not exists idx_order_shipments_delivery_date on order_shipments (delivery_date desc);
+create index if not exists idx_order_shipments_delivery_group_id on order_shipments (delivery_group_id);
+
+drop trigger if exists trg_order_shipments_updated_at on order_shipments;
+create trigger trg_order_shipments_updated_at
+  before update on order_shipments
+  for each row execute function set_updated_at();
+
+alter table order_items add column if not exists shipment_id uuid references order_shipments (id) on delete set null;
+create index if not exists idx_order_items_shipment_id on order_items (shipment_id);
+
+-- ----------------------------------------------------------------------------
 -- products (Phase 3-B: 상품 카탈로그 — tenant별 완전 격리)
 -- ----------------------------------------------------------------------------
 -- order_items.product_name/unit_price는 이미 F6부터 "주문 당시 스냅샷"으로
@@ -903,6 +943,7 @@ alter table settlements enable row level security;
 alter table products enable row level security;
 -- Phase 1에서 driver_regions에 RLS 활성화가 누락됐던 것을 함께 바로잡는다.
 alter table driver_regions enable row level security;
+alter table order_shipments enable row level security;
 
 -- ----------------------------------------------------------------------------
 -- Sprint 8: tenant_isolation policies — FUTURE-READY ONLY, not the current
@@ -934,6 +975,10 @@ create policy tenant_isolation on customers
 
 drop policy if exists tenant_isolation on orders;
 create policy tenant_isolation on orders
+  for all using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
+
+drop policy if exists tenant_isolation on order_shipments;
+create policy tenant_isolation on order_shipments
   for all using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
 
 drop policy if exists tenant_isolation on drivers;

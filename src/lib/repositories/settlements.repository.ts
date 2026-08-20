@@ -17,6 +17,19 @@ export const settlementsRepository = {
     return data;
   },
 
+  /** S1-1 Phase 6: 이 (기사, 기간) 조합이 이전에 한 번이라도 계산된 적 있는지 — 있으면 정산 카운트 기준을 orders(레거시)로 고정해 소급 변경을 막는다(actions/settlements.ts 참고). */
+  async findByDriverAndPeriod(driverId: string, periodStart: string, periodEnd: string): Promise<Settlement | null> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("settlements")
+      .select("*")
+      .eq("driver_id", driverId)
+      .eq("period_start", periodStart)
+      .eq("period_end", periodEnd)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
   async listByPeriod(periodStart: string, periodEnd: string): Promise<Settlement[]> {
     const { data, error } = await getSupabaseAdmin()
       .from("settlements")

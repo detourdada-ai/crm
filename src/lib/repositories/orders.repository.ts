@@ -117,8 +117,22 @@ export interface OrderSearchParams {
   sortAscending?: boolean;
 }
 
+/**
+ * S1-3: 배송건 단위 조회 결과 행. `delivery_date`는 주문 전체가 아니라 이
+ * 배송건 하나의 발송일로 덮어써져 있다 — 같은 주문이 여러 행으로 나타날 때
+ * 각 행이 서로 다른 날짜를 보여주기 위함이다. `id`는 여전히 실제 주문 id라
+ * 상세페이지 링크(/orders/[id])는 그대로 동작하고, `rowKey`(=shipmentId)를
+ * React key/상품요약 조회 키로 따로 써서 같은 주문의 여러 행이 서로
+ * 충돌하지 않게 한다.
+ */
+export interface OrderShipmentRow extends Order {
+  shipmentId: string;
+  rowKey: string;
+}
+
 export interface OrderItemInsert {
   order_id: string;
+  shipment_id?: string | null;
   product_order_number?: string | null;
   product_code?: string | null;
   product_id?: string | null;
@@ -270,6 +284,97 @@ export const ordersRepository = {
       .range(from, to);
     if (error) throw error;
     return { orders: (data as Order[]) ?? [], total: count ?? 0 };
+  },
+
+  /**
+   * S1-3: 배송일 필터가 걸려 있을 때는 "주문" 대신 "배송건(order_shipments)"이
+   * 조회 단위가 된다 — 같은 주문이라도 상품주문별 발송일이 다르면 서로 다른
+   * 배송건이므로 여러 행으로 나뉘어 나타난다(CEO 지시: 절대 합산 금지).
+   *
+   * 배송건은 delivery_date 범위로 먼저 좁혀 작은 집합을 만든 뒤(실제 운영
+   * 스케일에서 "오늘"/"이번주" 범위는 항상 소수 건), 그 주문들만 findByIds로
+   * 가져와 나머지 필터(상태/출처/검색어/가방)를 메모리에서 적용한다 —
+   * PostgREST로 order_shipments↔orders를 텍스트 검색까지 포함해 한 번에
+   * 조인하려면 임베디드 필터 문법에 의존해야 하는데, 이 방식이 훨씬 검증하기
+   * 쉽고 이 프로젝트 실제 데이터 규모(수백~수천 건)에서 충분히 빠르다.
+   *
+   * 상태(delivery_status)는 아직 orders 컬럼을 기준으로 필터링한다 —
+   * order_shipments.delivery_status는 Phase 5에서 배송관리/기사배정/완료가
+   * 배송건 기준으로 전환되기 전까지는 라이브로 갱신되지 않는 스냅샷이라
+   * 신뢰할 수 없다(S1-1 조사 결과 명시).
+   */
+  async searchByShipmentDate({
+    page = 1,
+    pageSize = 20,
+    ownerUsername,
+    deliveryStatus,
+    bagReturned,
+    query,
+    orderSource,
+    orderDateFrom,
+    orderDateTo,
+    deliveryDateFrom,
+    deliveryDateTo,
+    sortBy = "delivery_date",
+    sortAscending = false,
+  }: OrderSearchParams): Promise<{ rows: OrderShipmentRow[]; total: number }> {
+    let sq = getSupabaseAdmin().from("order_shipments").select("id, order_id, delivery_date");
+    if (ownerUsername) sq = sq.eq("owner_username", ownerUsername);
+    if (deliveryDateFrom) sq = sq.gte("delivery_date", kstDayStartIso(deliveryDateFrom));
+    if (deliveryDateTo) sq = sq.lte("delivery_date", kstDayEndIso(deliveryDateTo));
+    const { data: shipmentRows, error: shipmentError } = await sq;
+    if (shipmentError) throw shipmentError;
+    const shipments = shipmentRows ?? [];
+    if (shipments.length === 0) return { rows: [], total: 0 };
+
+    const orderIds = Array.from(new Set(shipments.map((s) => s.order_id)));
+    const { data: orderRows, error: orderError } = await getSupabaseAdmin().from("orders").select("*").in("id", orderIds);
+    if (orderError) throw orderError;
+    const orderById = new Map((orderRows as Order[]).map((o) => [o.id, o]));
+
+    const term = query?.trim();
+    const digits = term ? digitsOnly(term) : "";
+    const phoneVariant = term && digits.length >= 8 ? formatPhoneNumber(digits) : null;
+
+    let rows: OrderShipmentRow[] = [];
+    for (const s of shipments) {
+      const order = orderById.get(s.order_id);
+      if (!order) continue; // 방어적: 삭제된 주문의 배송건이 FK cascade 반영 전에 조회된 경우
+      if (deliveryStatus && order.delivery_status !== deliveryStatus) continue;
+      if (bagReturned !== undefined && order.bag_returned !== bagReturned) continue;
+      if (orderSource && order.order_source !== orderSource) continue;
+      if (orderDateFrom && order.order_date < kstDayStartIso(orderDateFrom)) continue;
+      if (orderDateTo && order.order_date > kstDayEndIso(orderDateTo)) continue;
+      if (term) {
+        const matches =
+          order.recipient_name?.toLowerCase().includes(term.toLowerCase()) ||
+          order.phone_snapshot?.includes(term) ||
+          (phoneVariant && order.phone_snapshot?.includes(phoneVariant)) ||
+          order.order_number?.toLowerCase().includes(term.toLowerCase()) ||
+          order.internal_order_number?.toLowerCase().includes(term.toLowerCase());
+        if (!matches) continue;
+      }
+      rows.push({ ...order, shipmentId: s.id, rowKey: s.id, delivery_date: s.delivery_date });
+    }
+
+    // sortBy가 "delivery_date"면 배송건 자신의 날짜(위에서 이미 order.delivery_date
+    // 자리에 덮어썼다) 기준으로, 그 외 필드는 원래 주문 값 기준으로 정렬한다.
+    // 동률이면 search()와 동일하게 order_date 최신순으로 묶는다.
+    const dir = sortAscending ? 1 : -1;
+    rows.sort((a, b) => {
+      const av = a[sortBy as keyof Order];
+      const bv = b[sortBy as keyof Order];
+      if (av == null && bv == null) return b.order_date < a.order_date ? -1 : 1;
+      if (av == null) return 1; // nullsFirst: false와 동일하게 null은 항상 뒤로
+      if (bv == null) return -1;
+      if (av < bv) return -dir;
+      if (av > bv) return dir;
+      return b.order_date < a.order_date ? -1 : 1;
+    });
+    const total = rows.length;
+    const from = (page - 1) * pageSize;
+    rows = rows.slice(from, from + pageSize);
+    return { rows, total };
   },
 
   async findByImportId(importId: string): Promise<Order[]> {
@@ -718,6 +823,14 @@ export const ordersRepository = {
   async findItemsByOrderIds(orderIds: string[]): Promise<OrderItem[]> {
     if (orderIds.length === 0) return [];
     const { data, error } = await getSupabaseAdmin().from("order_items").select("*").in("order_id", orderIds);
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  /** S1-3: 배송건 단위 상품요약(productSummary/totalQuantity/totalAmount) 계산용 — 그 배송건에 속한 상품주문만 가져온다(주문 전체 아님). */
+  async findItemsByShipmentIds(shipmentIds: string[]): Promise<OrderItem[]> {
+    if (shipmentIds.length === 0) return [];
+    const { data, error } = await getSupabaseAdmin().from("order_items").select("*").in("shipment_id", shipmentIds);
     if (error) throw error;
     return data ?? [];
   },

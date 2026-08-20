@@ -27,29 +27,32 @@ export type MappableField =
   | "amount"
   | "bag_no";
 
-export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boolean }[] = [
-  { key: "order_number", label: "주문번호", required: true },
-  { key: "order_date", label: "주문일시(결제일)", required: true },
-  { key: "recipient_name", label: "수취인명", required: true },
-  { key: "phone", label: "수취인 연락처", required: true },
-  { key: "address", label: "배송지 주소", required: true },
-  { key: "zipcode", label: "우편번호", required: false },
-  { key: "delivery_memo", label: "배송메모", required: false },
-  { key: "order_status", label: "주문상태", required: false },
-  { key: "courier", label: "택배사", required: false },
-  { key: "tracking_number", label: "송장번호", required: false },
-  { key: "sales_channel", label: "판매채널", required: false },
-  { key: "buyer_name", label: "구매자명", required: false },
-  { key: "buyer_id", label: "구매자ID", required: false },
-  { key: "shipped_at", label: "배송완료일", required: false },
-  { key: "product_order_number", label: "상품주문번호", required: false },
-  { key: "product_code", label: "상품번호/코드", required: false },
-  { key: "product_name", label: "상품명", required: true },
-  { key: "option_name", label: "옵션명", required: false },
-  { key: "quantity", label: "수량", required: true },
-  { key: "unit_price", label: "단가", required: false },
-  { key: "amount", label: "금액", required: true },
-  { key: "bag_no", label: "가방번호", required: false },
+/** S1-6: 컬럼 매핑 화면에서 "구분"으로 묶어 보여줄 대분류 — 사장님이 이 필드가 주문/고객/배송/상품 중 어디에 속하는지 한눈에 파악하도록. */
+export type MappableFieldCategory = "주문" | "고객" | "배송" | "상품";
+
+export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boolean; category: MappableFieldCategory }[] = [
+  { key: "order_number", label: "주문번호", required: true, category: "주문" },
+  { key: "order_date", label: "주문일시(결제일)", required: true, category: "주문" },
+  { key: "recipient_name", label: "수취인명", required: true, category: "고객" },
+  { key: "phone", label: "수취인 연락처", required: true, category: "고객" },
+  { key: "address", label: "배송지 주소", required: true, category: "배송" },
+  { key: "zipcode", label: "우편번호", required: false, category: "배송" },
+  { key: "delivery_memo", label: "배송메모", required: false, category: "배송" },
+  { key: "order_status", label: "주문상태", required: false, category: "주문" },
+  { key: "courier", label: "택배사", required: false, category: "배송" },
+  { key: "tracking_number", label: "송장번호", required: false, category: "배송" },
+  { key: "sales_channel", label: "판매채널", required: false, category: "주문" },
+  { key: "buyer_name", label: "구매자명", required: false, category: "고객" },
+  { key: "buyer_id", label: "구매자ID", required: false, category: "고객" },
+  { key: "shipped_at", label: "배송완료일", required: false, category: "배송" },
+  { key: "product_order_number", label: "상품주문번호", required: false, category: "상품" },
+  { key: "product_code", label: "상품번호/코드", required: false, category: "상품" },
+  { key: "product_name", label: "상품명", required: true, category: "상품" },
+  { key: "option_name", label: "옵션명", required: false, category: "상품" },
+  { key: "quantity", label: "수량", required: true, category: "상품" },
+  { key: "unit_price", label: "단가", required: false, category: "상품" },
+  { key: "amount", label: "금액", required: true, category: "상품" },
+  { key: "bag_no", label: "가방번호", required: false, category: "배송" },
 ];
 
 export interface ParsedSheet {

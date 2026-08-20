@@ -20,7 +20,7 @@ import { listAccounts } from "@/lib/auth/credentials";
 import { isValidDateString } from "@/lib/utils/date";
 import { kstTodayIso, resolveKstQuickRange, isQuickDateFilter, type QuickDateFilterValue } from "@/lib/utils/kst-date";
 import { digitsOnly } from "@/lib/utils/phone";
-import type { Order } from "@/types/domain";
+import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 function isDeliveryFilter(value: string | undefined): value is DeliveryFilter {
   return value === "unassigned" || value === "배송중" || value === "완료";
@@ -122,7 +122,7 @@ export default async function DeliveryPage({
     { filter: "완료", label: "완료", count: doneCount, tone: "success" },
   ];
 
-  function filterOrders(list: Order[]): Order[] {
+  function filterOrders(list: OrderShipmentBoardRow[]): OrderShipmentBoardRow[] {
     if (activeFilter === "배송중" || activeFilter === "완료") return list.filter((o) => o.delivery_status === activeFilter);
     if (activeFilter === "unassigned") {
       return list.filter((o) => o.delivery_status === "배송대기" && !o.driver_id && o.fulfillment_method !== "direct_pickup");

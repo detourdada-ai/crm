@@ -16,7 +16,7 @@ import {
 } from "@/components/common/quick-date-range";
 import { DELIVERY_STATUS_OPTIONS } from "@/lib/constants/delivery-status";
 import { ORDER_SOURCE_OPTIONS } from "@/lib/constants/order-source";
-import { resolveKstQuickRange, kstTodayIso } from "@/lib/utils/kst-date";
+import { kstTodayIso } from "@/lib/utils/kst-date";
 
 const STATUS_ALL = "all";
 const SOURCE_ALL = "all";
@@ -111,13 +111,12 @@ export function OrderFilterBar({
 
   function handleReset() {
     const today = kstTodayIso();
-    const thisWeek = resolveKstQuickRange("week", today);
-    setOrderFilter("week");
-    setOrderFrom(thisWeek.start);
-    setOrderTo(thisWeek.end);
-    setDeliveryFilter("all");
-    setDeliveryFrom("");
-    setDeliveryTo("");
+    setOrderFilter("all");
+    setOrderFrom("");
+    setOrderTo("");
+    setDeliveryFilter("today");
+    setDeliveryFrom(today);
+    setDeliveryTo(today);
     setStatus(STATUS_ALL);
     setSource(SOURCE_ALL);
     setQuery("");
@@ -129,16 +128,6 @@ export function OrderFilterBar({
     <div className="space-y-3 rounded-lg border border-border bg-surface p-3">
       <div className="flex flex-wrap items-start gap-6">
         <QuickDateRange
-          label="주문일"
-          options={ORDER_DATE_QUICK_OPTIONS}
-          filter={orderFilter}
-          onFilterChange={setOrderFilter}
-          customFrom={orderFrom}
-          customTo={orderTo}
-          onCustomFromChange={setOrderFrom}
-          onCustomToChange={setOrderTo}
-        />
-        <QuickDateRange
           label="배송일"
           options={DELIVERY_DATE_QUICK_OPTIONS}
           filter={deliveryFilter}
@@ -147,6 +136,16 @@ export function OrderFilterBar({
           customTo={deliveryTo}
           onCustomFromChange={setDeliveryFrom}
           onCustomToChange={setDeliveryTo}
+        />
+        <QuickDateRange
+          label="주문일"
+          options={ORDER_DATE_QUICK_OPTIONS}
+          filter={orderFilter}
+          onFilterChange={setOrderFilter}
+          customFrom={orderFrom}
+          customTo={orderTo}
+          onCustomFromChange={setOrderFrom}
+          onCustomToChange={setOrderTo}
         />
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">상태</Label>

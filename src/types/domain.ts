@@ -232,6 +232,28 @@ export interface DeliveryGroup {
   updated_at: ISODateString;
 }
 
+// S1-1: 주문(결제 묶음, orders)과 배송건(실제 배송 운영 단위)을 분리한다.
+// 같은 주문번호 안에서도 상품주문(order_items)별 발송일이 다르면 서로 다른
+// 배송건이 된다 — 자세한 배경은 supabase/migrations/0038_order_shipments.sql
+// 참고. orders의 동명 컬럼들(driver_id 등)은 과도기 동안 병행 유지된다.
+export interface OrderShipment {
+  id: UUID;
+  order_id: UUID;
+  tenant_id: UUID;
+  owner_username: string;
+  delivery_date: ISODateString | null;
+  driver_id: UUID | null;
+  delivery_status: DeliveryStatus;
+  fulfillment_method: FulfillmentMethod;
+  bag_number: string | null;
+  bag_returned: boolean;
+  completed_at: ISODateString | null;
+  cancelled_at: ISODateString | null;
+  delivery_group_id: UUID | null;
+  created_at: ISODateString;
+  updated_at: ISODateString;
+}
+
 // Phase 3-B: 상품 카탈로그 — tenant별 완전 격리. name/unit_price는 "현재"
 // 값이며, 이미 생성된 order_items의 product_name/unit_price(주문 당시
 // 스냅샷)에는 영향을 주지 않는다.
@@ -264,6 +286,8 @@ export interface Settlement {
 export interface OrderItem {
   id: UUID;
   order_id: UUID;
+  /** S1-1: 이 상품주문이 속한 배송건. 어느 발송일 그룹에 묶였는지 — 같은 order_id라도 shipment_id가 다르면 발송일이 다르다는 뜻이다. */
+  shipment_id: UUID | null;
   product_order_number: string | null;
   product_code: string | null;
   // Phase 3-B: 상품 카탈로그에서 선택해 생성된 경우에만 채워지는 참조(nullable)
@@ -297,8 +321,12 @@ export interface ImportSummary {
   totalOrderGroups: number;
   newOrdersCreated: number;
   alreadyImportedOrders: number;
+  /** S1-4: 상품주문(엑셀 원본 행) 기준 — 주문 건수가 아니다. */
   newOrders: number;
+  /** S1-4: 상품주문(엑셀 원본 행) 기준 — 주문 건수가 아니다. */
   repeatOrders: number;
+  /** S1-4: 이번 업로드에서 실제로 새로 생성된 고객 수(기존 고객 매칭 재사용은 제외). */
+  newCustomers: number;
   duplicateCandidates: number;
   failedRows: number;
   /** P10-1.5: 생성된 주문 중 배송지 좌표가 확보된/실패한 건수 (기사후보 추천·배송그룹 클러스터링의 입력 데이터). */

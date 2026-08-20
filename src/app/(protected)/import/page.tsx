@@ -13,7 +13,7 @@ export default async function ImportPage() {
     <div className="space-y-6">
       <PageHeader
         title="엑셀 등록"
-        description="스마트스토어 주문 엑셀을 업로드하면 고객/주문/동일인 후보가 자동으로 생성됩니다."
+        description="주문 엑셀을 업로드하면 고객과 주문이 자동으로 등록됩니다. 기존 고객의 주문은 동일인 후보를 확인할 수 있습니다."
       />
 
       <ImportWorkspace />

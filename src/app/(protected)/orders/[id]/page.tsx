@@ -68,8 +68,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   ]);
   if (!detail) notFound();
 
-  const { order, items, driverName } = detail;
+  const { order, items, driverName, shipments, shipmentDriverNames } = detail;
   const regionLabel = [order.sido, order.sigungu, order.eupmyeondong].filter(Boolean).join(" ");
+  // S1-1 Phase 5: 발송일이 같은 주문은 배송건이 1개뿐이라 기존 화면과 동일하게 보인다.
+  // 발송일이 달라 배송건이 여러 개로 쪼개진 주문만 아래에서 배송건별로 따로 보여준다.
+  const singleShipment = shipments.length === 1 ? shipments[0] : null;
 
   return (
     <div className="space-y-6">
@@ -80,14 +83,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         <div className="flex items-center gap-1.5 text-sm">
           <span className="text-muted-foreground">배송 상태</span>
           <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
-          <OrderDeliveryStatusAction orderId={order.id} deliveryStatus={order.delivery_status} />
+          {singleShipment ? (
+            <OrderDeliveryStatusAction shipmentId={singleShipment.id} deliveryStatus={singleShipment.delivery_status} />
+          ) : shipments.length > 1 ? (
+            <span className="text-xs text-muted-foreground">배송건 {shipments.length}건 — 아래에서 개별 확인</span>
+          ) : null}
         </div>
-        {order.status ? (
-          <div className="flex items-center gap-1.5 text-sm">
-            <span className="text-muted-foreground">주문 상태</span>
-            <Badge variant="secondary">{order.status}</Badge>
-          </div>
-        ) : null}
         <div className="ml-auto flex gap-2">
           <ManualOrderEditDialog order={order} item={items[0] ?? null} />
           <OrderCancelButton orderId={order.id} deliveryStatus={order.delivery_status} />
@@ -138,30 +139,68 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <CardTitle>배송/결제 정보</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex justify-between gap-3 border-b py-1.5 text-sm last:border-0">
-              <span className="text-muted-foreground">배송일</span>
-              {order.delivery_date ? (
-                <span className="text-right font-medium">{formatDate(order.delivery_date)}</span>
-              ) : (
-                <span className="text-right font-medium text-warning">미지정</span>
-              )}
-            </div>
-            {!order.delivery_date ? (
-              <p className="border-b py-1.5 text-xs text-muted-foreground last:border-0">
-                ※ 배송일이 지정되지 않은 주문입니다. 상단의 &ldquo;수정&rdquo; 버튼으로 배송일을 지정할 수 있습니다.
-              </p>
-            ) : null}
-            <Field label="배송가능지역" value={order.delivery_area} />
-            <div className="flex items-center justify-between gap-3 border-b py-1.5 text-sm last:border-0">
-              <span className="text-muted-foreground">담당기사</span>
-              <OrderDriverAssign
-                orderId={order.id}
-                deliveryStatus={order.delivery_status}
-                driverId={order.driver_id}
-                driverName={driverName}
-                drivers={drivers}
-              />
-            </div>
+            {shipments.length <= 1 ? (
+              <>
+                <div className="flex justify-between gap-3 border-b py-1.5 text-sm last:border-0">
+                  <span className="text-muted-foreground">배송일</span>
+                  {(singleShipment?.delivery_date ?? order.delivery_date) ? (
+                    <span className="text-right font-medium">{formatDate((singleShipment?.delivery_date ?? order.delivery_date)!)}</span>
+                  ) : (
+                    <span className="text-right font-medium text-warning">미지정</span>
+                  )}
+                </div>
+                {!(singleShipment?.delivery_date ?? order.delivery_date) ? (
+                  <p className="border-b py-1.5 text-xs text-muted-foreground last:border-0">
+                    ※ 배송일이 지정되지 않은 주문입니다. 상단의 &ldquo;수정&rdquo; 버튼으로 배송일을 지정할 수 있습니다.
+                  </p>
+                ) : null}
+                <Field label="배송가능지역" value={order.delivery_area} />
+                <div className="flex items-center justify-between gap-3 border-b py-1.5 text-sm last:border-0">
+                  <span className="text-muted-foreground">담당기사</span>
+                  {singleShipment ? (
+                    <OrderDriverAssign
+                      shipmentId={singleShipment.id}
+                      deliveryStatus={singleShipment.delivery_status}
+                      driverId={singleShipment.driver_id}
+                      driverName={driverName}
+                      drivers={drivers}
+                    />
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2 border-b py-1.5 last:border-0">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">배송건 ({shipments.length}건)</span>
+                  <span className="text-xs text-muted-foreground">발송일이 달라 배송건이 나뉘었습니다</span>
+                </div>
+                <div className="space-y-2">
+                  {shipments.map((s) => (
+                    <div key={s.id} className="space-y-1.5 rounded-md border p-2.5 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{s.delivery_date ? formatDate(s.delivery_date) : "배송일 미지정"}</span>
+                        <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[s.delivery_status]}>{s.delivery_status}</Badge>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="shrink-0 text-xs text-muted-foreground">담당기사</span>
+                        <OrderDriverAssign
+                          shipmentId={s.id}
+                          deliveryStatus={s.delivery_status}
+                          driverId={s.driver_id}
+                          driverName={s.driver_id ? (shipmentDriverNames[s.driver_id] ?? null) : null}
+                          drivers={drivers}
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <OrderDeliveryStatusAction shipmentId={s.id} deliveryStatus={s.delivery_status} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {candidateDrivers.length > 0 ? (
               <div className="flex items-start justify-between gap-3 border-b py-1.5 text-sm last:border-0">
                 <span className="shrink-0 text-muted-foreground">담당 기사 후보</span>

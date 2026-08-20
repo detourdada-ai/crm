@@ -464,10 +464,6 @@ export function ManualOrderButton() {
                   <Label htmlFor="internalMemo">내부 메모 (고객에게 전달되지 않음)</Label>
                   <Input id="internalMemo" name="internalMemo" placeholder="직원만 보는 메모" />
                 </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="status">상태</Label>
-                  <Input id="status" name="status" placeholder="접수완료" />
-                </div>
               </CollapsibleContent>
             </Collapsible>
 

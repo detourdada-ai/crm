@@ -8,23 +8,28 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { markDeliveredAction } from "@/actions/delivery";
-import type { Order } from "@/types/domain";
+import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 /**
  * P15-B-4: 기사 화면 — "오늘 배송 전체 목록에서 1건 선택 → 아래 카드" 구조를
  * 없애고, 지도 마커(= 좌표 하나)를 선택하면 그 위치의 배송이 곧바로 카드
- * 목록으로 펼쳐지는 구조로 바꾼다. 배송완료는 여전히 각 카드에서 Order
+ * 목록으로 펼쳐지는 구조로 바꾼다. 배송완료는 여전히 각 카드에서 배송건
  * 1건씩만 처리한다(다건 동시완료 없음 — P15-B-2 확정 원칙 유지).
  *
  * 마커 좌표는 절대 임의로 움직이지 않는다 — 겹치는 좌표는 숫자 배지로
- * 표시하고, 그 배지에 속한 모든 order id를 DeliveryMap의 onGroupSelect로
- * 그대로 받아 카드로 펼친다. 좌표가 없어 지도에 표시되지 않는 주문은
- * 마커로 선택할 수 없으므로 카드 영역 하단에 항상 별도로 노출한다.
+ * 표시하고, 그 배지에 속한 모든 rowKey(=shipmentId)를 DeliveryMap의
+ * onGroupSelect로 그대로 받아 카드로 펼친다. 좌표가 없어 지도에 표시되지
+ * 않는 배송건은 마커로 선택할 수 없으므로 카드 영역 하단에 항상 별도로
+ * 노출한다.
+ *
+ * S1-1 Phase 5: order.id가 아니라 rowKey(=shipmentId)를 식별자로 쓴다 —
+ * 같은 주문이 발송일이 달라 배송건 두 개로 쪼개진 경우에도 각 배송건을
+ * 독립적으로 완료 처리할 수 있어야 하기 때문이다.
  */
-export function MyDeliveriesList({ orders: initialOrders }: { orders: Order[] }) {
+export function MyDeliveriesList({ orders: initialOrders }: { orders: OrderShipmentBoardRow[] }) {
   const [orders, setOrders] = useState(initialOrders);
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
-  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
+  const [pendingShipmentId, setPendingShipmentId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const remaining = useMemo(() => orders.filter((o) => o.delivery_status !== "완료"), [orders]);
@@ -34,14 +39,14 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: Order[] })
   const selectedOrders = useMemo(() => {
     if (!selectedIds) return null;
     const idSet = new Set(selectedIds);
-    return orders.filter((o) => idSet.has(o.id));
+    return orders.filter((o) => idSet.has(o.rowKey));
   }, [orders, selectedIds]);
 
   const markers: DeliveryMapMarker[] = useMemo(() => {
     return orders
-      .filter((o): o is Order & { latitude: number; longitude: number } => o.latitude != null && o.longitude != null)
+      .filter((o): o is OrderShipmentBoardRow & { latitude: number; longitude: number } => o.latitude != null && o.longitude != null)
       .map((o) => ({
-        id: o.id,
+        id: o.rowKey,
         lat: o.latitude,
         lng: o.longitude,
         label: o.recipient_name || o.buyer_name || "-",
@@ -58,17 +63,17 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: Order[] })
     setSelectedIds((prev) => (prev && key(prev) === key(ids) ? null : ids));
   }, []);
 
-  function handleComplete(orderId: string) {
-    setPendingOrderId(orderId);
+  function handleComplete(shipmentId: string) {
+    setPendingShipmentId(shipmentId);
     startTransition(async () => {
-      const result = await markDeliveredAction(orderId);
+      const result = await markDeliveredAction(shipmentId);
       if (!result.ok) {
         toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
       } else {
-        setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, delivery_status: "완료" as const } : o)));
+        setOrders((prev) => prev.map((o) => (o.rowKey === shipmentId ? { ...o, delivery_status: "완료" as const } : o)));
         toast.success("배송완료로 처리했습니다.");
       }
-      setPendingOrderId(null);
+      setPendingShipmentId(null);
     });
   }
 
@@ -99,7 +104,7 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: Order[] })
           {selectedOrders ? (
             <OrderCardGroup
               orders={selectedOrders}
-              pendingOrderId={isPending ? pendingOrderId : null}
+              pendingShipmentId={isPending ? pendingShipmentId : null}
               onComplete={handleComplete}
               onClose={() => setSelectedIds(null)}
             />
@@ -115,7 +120,7 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: Order[] })
         <OrderCardGroup
           title={`위치 확인 필요 ${noCoordOrders.length}건`}
           orders={noCoordOrders}
-          pendingOrderId={isPending ? pendingOrderId : null}
+          pendingShipmentId={isPending ? pendingShipmentId : null}
           onComplete={handleComplete}
         />
       ) : null}
@@ -126,14 +131,14 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: Order[] })
 function OrderCardGroup({
   title,
   orders,
-  pendingOrderId,
+  pendingShipmentId,
   onComplete,
   onClose,
 }: {
   title?: string;
-  orders: Order[];
-  pendingOrderId: string | null;
-  onComplete: (orderId: string) => void;
+  orders: OrderShipmentBoardRow[];
+  pendingShipmentId: string | null;
+  onComplete: (shipmentId: string) => void;
   onClose?: () => void;
 }) {
   const remaining = orders.filter((o) => o.delivery_status !== "완료");
@@ -164,7 +169,7 @@ function OrderCardGroup({
       {remaining.length > 0 ? (
         <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1 lg:max-h-[460px]">
           {remaining.map((o) => (
-            <OrderCard key={o.id} order={o} isPending={pendingOrderId === o.id} onComplete={onComplete} />
+            <OrderCard key={o.rowKey} order={o} isPending={pendingShipmentId === o.rowKey} onComplete={onComplete} />
           ))}
         </div>
       ) : null}
@@ -174,7 +179,7 @@ function OrderCardGroup({
           <summary className="cursor-pointer select-none px-3 py-2 text-sm text-muted-foreground">완료된 배송 {completed.length}건</summary>
           <div className="space-y-3 border-t p-3">
             {completed.map((o) => (
-              <OrderCard key={o.id} order={o} isPending={false} onComplete={onComplete} />
+              <OrderCard key={o.rowKey} order={o} isPending={false} onComplete={onComplete} />
             ))}
           </div>
         </details>
@@ -183,7 +188,15 @@ function OrderCardGroup({
   );
 }
 
-function OrderCard({ order, isPending, onComplete }: { order: Order; isPending: boolean; onComplete: (orderId: string) => void }) {
+function OrderCard({
+  order,
+  isPending,
+  onComplete,
+}: {
+  order: OrderShipmentBoardRow;
+  isPending: boolean;
+  onComplete: (shipmentId: string) => void;
+}) {
   const isDone = order.delivery_status === "완료";
   return (
     <div className={cn("space-y-2 rounded-lg border p-3", isDone ? "bg-muted/30" : "bg-background")}>
@@ -205,7 +218,7 @@ function OrderCard({ order, isPending, onComplete }: { order: Order; isPending: 
       ) : null}
       {order.delivery_memo ? <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">메모: {order.delivery_memo}</p> : null}
       {!isDone ? (
-        <Button type="button" size="lg" className="h-12 w-full gap-2" disabled={isPending} onClick={() => onComplete(order.id)}>
+        <Button type="button" size="lg" className="h-12 w-full gap-2" disabled={isPending} onClick={() => onComplete(order.rowKey)}>
           <CheckCircle2 className="size-5" />
           {isPending ? "처리하는 중..." : "배송완료"}
         </Button>

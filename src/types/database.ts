@@ -531,6 +531,7 @@ export interface Database {
         Row: {
           id: string;
           order_id: string;
+          shipment_id: string | null;
           product_order_number: string | null;
           product_code: string | null;
           product_id: string | null;
@@ -545,6 +546,7 @@ export interface Database {
         Insert: {
           id?: string;
           order_id: string;
+          shipment_id?: string | null;
           product_order_number?: string | null;
           product_code?: string | null;
           product_id?: string | null;
@@ -557,6 +559,44 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["order_items"]["Insert"]>;
+        Relationships: [];
+      };
+      order_shipments: {
+        Row: {
+          id: string;
+          order_id: string;
+          tenant_id: string;
+          owner_username: string;
+          delivery_date: string | null;
+          driver_id: string | null;
+          delivery_status: string;
+          fulfillment_method: string;
+          bag_number: string | null;
+          bag_returned: boolean;
+          completed_at: string | null;
+          cancelled_at: string | null;
+          delivery_group_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          order_id: string;
+          tenant_id: string;
+          owner_username: string;
+          delivery_date?: string | null;
+          driver_id?: string | null;
+          delivery_status?: string;
+          fulfillment_method?: string;
+          bag_number?: string | null;
+          bag_returned?: boolean;
+          completed_at?: string | null;
+          cancelled_at?: string | null;
+          delivery_group_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["order_shipments"]["Insert"]>;
         Relationships: [];
       };
       products: {

@@ -202,24 +202,24 @@ export interface QuickDateOption {
   label: string;
 }
 
-/** 주문일: 과거 위주. Phase 5 STEP3. */
+/** 주문일: 과거 위주, 기본이 전체(S1-3 — 배송일이 주 필터, 주문일은 보조). */
 export const ORDER_DATE_QUICK_OPTIONS: QuickDateOption[] = [
+  { value: "all", label: "전체" },
   { value: "today", label: "오늘" },
   { value: "yesterday", label: "어제" },
   { value: "week", label: "이번주" },
   { value: "lastWeek", label: "지난주" },
   { value: "month", label: "이번달" },
   { value: "custom", label: "기간선택" },
-  { value: "all", label: "전체" },
 ];
 
-/** 배송일: 미래 위주, 기본이 전체. Phase 5 STEP3. */
+/** 배송일: 미래 위주, 기본이 오늘(S1-3 — "오늘 발송할 상품주문"이 주문관리의 기본 화면). */
 export const DELIVERY_DATE_QUICK_OPTIONS: QuickDateOption[] = [
-  { value: "all", label: "전체" },
   { value: "today", label: "오늘" },
   { value: "tomorrow", label: "내일" },
   { value: "week", label: "이번주" },
   { value: "nextWeek", label: "다음주" },
   { value: "month", label: "이번달" },
   { value: "custom", label: "기간선택" },
+  { value: "all", label: "전체" },
 ];
