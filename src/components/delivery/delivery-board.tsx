@@ -22,12 +22,16 @@ import {
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import { kstTodayIso } from "@/lib/utils/kst-date";
-import { groupLabel } from "@/lib/utils/delivery-group";
+import { groupRegionLabel, extractComplexName, isApartmentName } from "@/lib/utils/delivery-group";
 import type { Order, Driver, DeliveryGroup, DeliveryStatus, FulfillmentMethod } from "@/types/domain";
 
 const GROUP_FILTER_ALL = "__all__";
 const GROUP_FILTER_HAS_GROUP = "__has_group__";
 const GROUP_FILTER_UNGROUPED = "__ungrouped__";
+const REGION_ALL = "__region_all__";
+const ZONE_ALL = "__zone_all__";
+const COMPLEX_ALL = "__complex_all__";
+type DeliveryTarget = "all" | "apartment" | "other";
 
 /**
  * 배송 업무 리스트 — 주문번호/고객/배송일/배송지/담당기사/상태를 항상
@@ -96,31 +100,147 @@ export function DeliveryBoard({
   const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
   const [sortField, setSortField] = useState<DeliverySortField>("delivery_group");
   const [groupFilter, setGroupFilter] = useState<string>(GROUP_FILTER_ALL);
+  // P14-B: "배송지역 → 배송구역 → 배송대상(아파트/기타) → 단지" 계층 필터.
+  // 세부 그룹(A/B/C 개별 선택)은 더 이상 존재하지 않고, 이 4단계로 대체됐다.
+  const [selectedRegionKey, setSelectedRegionKey] = useState<string | null>(null);
+  const [selectedZoneGroupId, setSelectedZoneGroupId] = useState<string | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<DeliveryTarget>("all");
+  const [selectedComplex, setSelectedComplex] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
-  const groupLabelById = useMemo(() => new Map(groups.map((g) => [g.id, groupLabel(g.group_no)])), [groups]);
-  // P13: "배송그룹 있음" 1차 탭은 세부 그룹을 하나 골라도(그 그룹도 당연히
-  // "그룹 있음"이므로) 계속 선택된 상태로 보여야 한다 — HAS_GROUP sentinel과
-  // 특정 group.id 둘 다 이 탭의 활성 조건이다.
-  const isSpecificGroupSelected = groups.some((g) => g.id === groupFilter);
-  const isHasGroupTabActive = groupFilter === GROUP_FILTER_HAS_GROUP || isSpecificGroupSelected;
+  const isHasGroupTabActive = groupFilter === GROUP_FILTER_HAS_GROUP;
   const toolbarRef = useRef<HTMLDivElement>(null);
 
-  const groupFilteredOrders = useMemo(() => {
+  /** group.representative_sido/sigungu/eupmyeondong 조합을 지역 키로 삼는다 — 라벨 문자열이 아니라 원본 3필드로 키를 만들어야 동명 시군구가 있어도 안전하다. */
+  function regionKeyOf(group: DeliveryGroup): string {
+    return `${group.representative_sido ?? ""}||${group.representative_sigungu ?? ""}||${group.representative_eupmyeondong ?? ""}`;
+  }
+
+  // P14-B 보완(CPO 반려 후 재작업): "배송지역"별로 그룹을 묶고, 그 안에서
+  // group_no 오름차순으로 "N구역" 번호를 매긴다 — 처음엔 주문 건수 내림차순으로
+  // 정렬했었는데, 같은 날 안에서도 주문이 추가/변경되며 order_count가 바뀌면
+  // 같은 공간의 구역 번호가 달라질 수 있다는 지적을 받았다. group_no는
+  // delivery-group-regeneration.service.ts의 재계산 로직이 overlap matching으로
+  // 기존 클러스터를 최대한 같은 group_no로 유지하므로(멤버 구성이 그대로면
+  // group_no/id 불변), 이 값을 정렬 키로 쓰면 같은 (tenant, 배송일) 안에서
+  // 주문 건수가 바뀌어도 "N구역" 번호가 흔들리지 않는다. group_no 자체가
+  // (tenant_id, delivery_date, group_no) 단위로 스코프돼 있어 날짜가 바뀌면
+  // 새 그룹 집합이 시작되므로 날짜를 넘어선 완전한 안정성까지는 이 방식으로
+  // 보장할 수 없다 — 이는 spatial grouping 알고리즘 자체(날짜별 독립 재계산)의
+  // 구조적 한계이며, 이번 작업지시서에서 그 알고리즘은 변경하지 않는다.
+  const regionGroups = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; groups: DeliveryGroup[]; orderCount: number }>();
+    for (const g of groups) {
+      const key = regionKeyOf(g);
+      const entry = map.get(key) ?? { key, label: groupRegionLabel(g), groups: [], orderCount: 0 };
+      entry.groups.push(g);
+      entry.orderCount += g.order_count;
+      map.set(key, entry);
+    }
+    for (const entry of map.values()) {
+      entry.groups.sort((a, b) => a.group_no - b.group_no);
+    }
+    return map;
+  }, [groups]);
+
+  const regionOptions = useMemo(
+    () => [...regionGroups.values()].sort((a, b) => b.orderCount - a.orderCount || a.label.localeCompare(b.label, "ko")),
+    [regionGroups]
+  );
+
+  const zoneLabelByGroupId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of regionGroups.values()) {
+      entry.groups.forEach((g, idx) => map.set(g.id, `${idx + 1}구역`));
+    }
+    return map;
+  }, [regionGroups]);
+
+  /** 테이블/카드의 그룹 배지 및 정렬에 쓰는 라벨 — "배송그룹 A" 대신 "망월동 · 1구역". */
+  const groupLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const g of groups) {
+      const region = groupRegionLabel(g);
+      const zone = zoneLabelByGroupId.get(g.id);
+      map.set(g.id, zone ? `${region} · ${zone}` : region);
+    }
+    return map;
+  }, [groups, zoneLabelByGroupId]);
+
+  const selectedRegionEntry = selectedRegionKey ? (regionGroups.get(selectedRegionKey) ?? null) : null;
+  const regionGroupIds = useMemo(
+    () => new Set((selectedRegionEntry?.groups ?? []).map((g) => g.id)),
+    [selectedRegionEntry]
+  );
+
+  const topTierFilteredOrders = useMemo(() => {
     if (groupFilter === GROUP_FILTER_ALL) return orders;
     if (groupFilter === GROUP_FILTER_HAS_GROUP) return orders.filter((o) => !!o.delivery_group_id);
-    if (groupFilter === GROUP_FILTER_UNGROUPED) return orders.filter((o) => !o.delivery_group_id);
-    return orders.filter((o) => o.delivery_group_id === groupFilter);
+    return orders.filter((o) => !o.delivery_group_id);
   }, [orders, groupFilter]);
 
+  const regionFilteredOrders = useMemo(() => {
+    if (!selectedRegionKey) return topTierFilteredOrders;
+    return topTierFilteredOrders.filter((o) => !!o.delivery_group_id && regionGroupIds.has(o.delivery_group_id));
+  }, [topTierFilteredOrders, selectedRegionKey, regionGroupIds]);
+
+  const zoneFilteredOrders = useMemo(() => {
+    if (!selectedZoneGroupId) return regionFilteredOrders;
+    return regionFilteredOrders.filter((o) => o.delivery_group_id === selectedZoneGroupId);
+  }, [regionFilteredOrders, selectedZoneGroupId]);
+
+  // P14-B 보완(CPO 반려 후 재작업): "건물명이 있다"와 "아파트다"는 다른
+  // 개념이다 — 오피스텔/상가/복합빌딩도 건물명을 갖는다(실제 데이터에
+  // "트리피움오피스텔", "고덕복합빌딩" 확인됨). isApartmentName()으로 건물명
+  // 문자열에 "아파트"/"APT"가 명시된 경우만 아파트로 판정하고, 판별 불가능한
+  // 경우(단지명은 있지만 "아파트"라는 단어가 없는 경우 포함) 전부 기타로
+  // 분류한다 — 억지로 아파트로 넣지 않는다.
+  function isApartmentOrder(order: Order): boolean {
+    const name = extractComplexName(order.address_snapshot);
+    return !!name && isApartmentName(name);
+  }
+
+  const targetCounts = useMemo(() => {
+    let apartment = 0;
+    for (const o of zoneFilteredOrders) {
+      if (isApartmentOrder(o)) apartment++;
+    }
+    return { all: zoneFilteredOrders.length, apartment, other: zoneFilteredOrders.length - apartment };
+  }, [zoneFilteredOrders]);
+
+  const targetFilteredOrders = useMemo(() => {
+    if (selectedTarget === "apartment") return zoneFilteredOrders.filter((o) => isApartmentOrder(o));
+    if (selectedTarget === "other") return zoneFilteredOrders.filter((o) => !isApartmentOrder(o));
+    return zoneFilteredOrders;
+  }, [zoneFilteredOrders, selectedTarget]);
+
+  // 단지 목록도 "아파트로 판정된" 건물명만 후보로 삼는다 — 기타로 분류된
+  // 오피스텔/상가 등의 건물명이 아파트 탭의 단지 목록에 섞이지 않게 한다.
+  const complexOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const o of zoneFilteredOrders) {
+      const name = extractComplexName(o.address_snapshot);
+      if (name && isApartmentName(name)) counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"));
+  }, [zoneFilteredOrders]);
+
+  const groupFilteredOrders = useMemo(() => {
+    if (selectedTarget === "apartment" && selectedComplex) {
+      return targetFilteredOrders.filter((o) => extractComplexName(o.address_snapshot) === selectedComplex);
+    }
+    return targetFilteredOrders;
+  }, [targetFilteredOrders, selectedTarget, selectedComplex]);
+
   // P14-A: 두 가지를 동시에 걸러내야 한다 — (1) 직접수령 등으로 처리된 주문이
-  // revalidate 후 orders에서 통째로 사라지는 경우(P7), (2) 그룹 필터로 화면에서
-  // 숨겨졌을 뿐 orders에는 여전히 존재하는 경우(P14-A, "선택 2건인데 101건
-  // 적용" 버그의 원인 — 이전에는 orders 전체를 기준으로 걸러서 그룹 필터가
-  // 걸러내는 대상에서 빠졌다). 따라서 기준을 orders가 아니라 "지금 화면에
-  // 보이는 집합"인 groupFilteredOrders로 삼는다 — 정렬 순서는 멤버십 판정과
-  // 무관하므로 sortedOrders 대신 이 값으로 충분하다.
+  // revalidate 후 orders에서 통째로 사라지는 경우(P7), (2) 필터(지역/구역/
+  // 대상/단지)로 화면에서 숨겨졌을 뿐 orders에는 여전히 존재하는 경우(P14-A,
+  // "선택 2건인데 101건 적용" 버그의 원인 — 이전에는 orders 전체를 기준으로
+  // 걸러서 필터가 걸러내는 대상에서 빠졌다). 따라서 기준을 orders가 아니라
+  // "지금 화면에 보이는 집합"인 groupFilteredOrders(모든 단계 필터 적용 후
+  // 최종 결과)로 삼는다 — 정렬 순서는 멤버십 판정과 무관하므로 sortedOrders
+  // 대신 이 값으로 충분하다.
   const visibleSelected = useMemo(() => {
     const currentIds = new Set(groupFilteredOrders.map((o) => o.id));
     return new Set([...selected].filter((id) => currentIds.has(id)));
@@ -180,6 +300,34 @@ export function DeliveryBoard({
 
   if (orders.length === 0) {
     return <p className="py-12 text-center text-sm text-muted-foreground">해당 날짜에 배송 예정인 주문이 없습니다.</p>;
+  }
+
+  // P14-B 원칙 8: 상위 필터가 바뀌면 하위 필터는 그 지역/구역에서 더 이상
+  // 유효하지 않을 수 있으므로 안전하게 초기화한다.
+  function handleTopTierChange(next: string) {
+    setGroupFilter(next);
+    setSelectedRegionKey(null);
+    setSelectedZoneGroupId(null);
+    setSelectedTarget("all");
+    setSelectedComplex(null);
+  }
+
+  function handleRegionChange(next: string) {
+    setSelectedRegionKey(next === REGION_ALL ? null : next);
+    setSelectedZoneGroupId(null);
+    setSelectedTarget("all");
+    setSelectedComplex(null);
+  }
+
+  function handleZoneChange(next: string) {
+    setSelectedZoneGroupId(next === ZONE_ALL ? null : next);
+    setSelectedTarget("all");
+    setSelectedComplex(null);
+  }
+
+  function handleTargetChange(next: DeliveryTarget) {
+    setSelectedTarget(next);
+    setSelectedComplex(null);
   }
 
   function toggle(id: string, checked: boolean) {
@@ -340,19 +488,22 @@ export function DeliveryBoard({
         </Select>
       </div>
 
-      {/* P13: 그룹이 많을수록(A~T 등) 칩을 전부 나열하면 특히 모바일에서
-          필터 영역이 화면 대부분을 차지하는 문제가 있었다(P12 조사 확인).
-          1차 필터(전체/배송그룹 있음/미배송그룹)는 항상 3개 칩으로 고정해
-          기존처럼 빠르게 쓸 수 있게 하고, "배송그룹 있음"을 선택했을 때만
-          세부 그룹을 이미 쓰고 있던 Select 컴포넌트로 고르게 한다 — 그룹
-          알고리즘/필터링 조건은 그대로, 노출 방식만 바꿨다. */}
+      {/* P14-B: "배송그룹 A/B/C"는 지역과 무관한 임의 명칭이라 배송담당자가
+          의미를 알 수 없다는 CEO 피드백에 따라, "배송지역 → 배송구역 →
+          배송대상(아파트/기타) → 단지" 4단계 계층 필터로 바꾼다. 1차 필터
+          (전체/배송그룹 있음/미배송그룹)는 P13 그대로 유지하고, "배송그룹
+          있음"을 선택했을 때만 지역부터 순서대로 하위 필터가 나타난다.
+          거리기반 클러스터링(100m Haversine+Union-Find) 자체는 전혀
+          건드리지 않는다 — 이미 저장된 representative_sido/sigungu/
+          eupmyeondong을 라벨로만 쓰고, 단지명은 저장하지 않고 address_snapshot에서
+          그때그때 파싱한다. */}
       {groups.length > 0 ? (
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">배송그룹 필터</p>
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setGroupFilter(GROUP_FILTER_ALL)}
+              onClick={() => handleTopTierChange(GROUP_FILTER_ALL)}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                 groupFilter === GROUP_FILTER_ALL ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
               }`}
@@ -361,7 +512,7 @@ export function DeliveryBoard({
             </button>
             <button
               type="button"
-              onClick={() => setGroupFilter(GROUP_FILTER_HAS_GROUP)}
+              onClick={() => handleTopTierChange(GROUP_FILTER_HAS_GROUP)}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                 isHasGroupTabActive ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
               }`}
@@ -370,7 +521,7 @@ export function DeliveryBoard({
             </button>
             <button
               type="button"
-              onClick={() => setGroupFilter(GROUP_FILTER_UNGROUPED)}
+              onClick={() => handleTopTierChange(GROUP_FILTER_UNGROUPED)}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                 groupFilter === GROUP_FILTER_UNGROUPED
                   ? "border-primary bg-primary-soft text-primary"
@@ -381,21 +532,77 @@ export function DeliveryBoard({
             </button>
           </div>
           {isHasGroupTabActive ? (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground">그룹 선택</span>
-              <Select value={isSpecificGroupSelected ? groupFilter : GROUP_FILTER_HAS_GROUP} onValueChange={setGroupFilter}>
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={GROUP_FILTER_HAS_GROUP}>전체 그룹</SelectItem>
-                  {groups.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {groupLabel(g.group_no)} · {g.order_count}건
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">배송지역</span>
+                <Select value={selectedRegionKey ?? REGION_ALL} onValueChange={handleRegionChange}>
+                  <SelectTrigger className="w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={REGION_ALL}>전체 지역</SelectItem>
+                    {regionOptions.map((r) => (
+                      <SelectItem key={r.key} value={r.key}>
+                        {r.label} · {r.orderCount}건
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {selectedRegionEntry ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">배송구역</span>
+                  <Select value={selectedZoneGroupId ?? ZONE_ALL} onValueChange={handleZoneChange}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ZONE_ALL}>전체 · {selectedRegionEntry.orderCount}건</SelectItem>
+                      {selectedRegionEntry.groups.map((g, idx) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {idx + 1}구역 · {g.order_count}건
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {selectedRegionEntry ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">배송대상</span>
+                  <Select value={selectedTarget} onValueChange={(v) => handleTargetChange(v as DeliveryTarget)}>
+                    <SelectTrigger className="w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체 · {targetCounts.all}건</SelectItem>
+                      <SelectItem value="apartment">아파트 · {targetCounts.apartment}건</SelectItem>
+                      <SelectItem value="other">기타 · {targetCounts.other}건</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {selectedRegionEntry && selectedTarget === "apartment" && complexOptions.length > 0 ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">단지</span>
+                  <Select
+                    value={selectedComplex ?? COMPLEX_ALL}
+                    onValueChange={(v) => setSelectedComplex(v === COMPLEX_ALL ? null : v)}
+                  >
+                    <SelectTrigger className="w-52">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={COMPLEX_ALL}>전체 단지 · {targetCounts.apartment}건</SelectItem>
+                      {complexOptions.map(([name, count]) => (
+                        <SelectItem key={name} value={name}>
+                          {name} · {count}건
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
