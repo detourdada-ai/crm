@@ -1,6 +1,6 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { kstDayStartIso, kstDayEndIso } from "@/lib/utils/kst-date";
+import { kstDayStartIso, kstDayEndIso, kstDayDateStrOf } from "@/lib/utils/kst-date";
 import { syncOrdersFromShipments } from "@/lib/services/order-shipment-sync.service";
 import type { Order, OrderShipment, FulfillmentMethod } from "@/types/domain";
 
@@ -23,6 +23,8 @@ export interface OrderShipmentInsert {
 export interface OrderShipmentBoardRow extends Order {
   shipmentId: string;
   rowKey: string;
+  /** S2-B: 기사별·배송일별 방문 순서(1부터). 미지정이면 null. */
+  route_order: number | null;
 }
 
 function toBoardRows(shipments: OrderShipment[], orders: Order[]): OrderShipmentBoardRow[] {
@@ -44,6 +46,7 @@ function toBoardRows(shipments: OrderShipment[], orders: Order[]): OrderShipment
       bag_returned: s.bag_returned,
       fulfillment_method: s.fulfillment_method,
       delivery_group_id: s.delivery_group_id,
+      route_order: s.route_order,
     });
   }
   return rows;
@@ -71,6 +74,84 @@ async function fetchShipmentsInRange(dateStr: string, ownerUsername?: string): P
   return fetchBoardRowsForShipments((data as OrderShipment[]) ?? []);
 }
 
+type AdminClient = ReturnType<typeof getSupabaseAdmin>;
+
+/**
+ * S2-B 정규화: 특정 기사·배송일(KST 달력일)의 route_order를 1..N 연속
+ * 번호로 다시 채운다(구멍 제거) — 현재 route_order(nulls last) → created_at
+ * 순으로 순번을 매긴다. 재정렬/재배정/직접수령 전환 등 기사의 경로에서
+ * 배송건이 빠질 때마다 호출한다.
+ */
+async function compactRouteOrder(admin: AdminClient, driverId: string, day: string): Promise<void> {
+  const { data, error } = await admin
+    .from("order_shipments")
+    .select("id")
+    .eq("driver_id", driverId)
+    .gte("delivery_date", kstDayStartIso(day))
+    .lte("delivery_date", kstDayEndIso(day))
+    .neq("delivery_status", "취소")
+    .order("route_order", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  await Promise.all((data ?? []).map((row, idx) => admin.from("order_shipments").update({ route_order: idx + 1 }).eq("id", row.id)));
+}
+
+/**
+ * S2-B 정규화: 기사 배정/재배정 직후 route_order를 맞춘다. 배송일(KST
+ * 달력일)별로 묶어, 대상 기사의 그 날짜 리스트 맨 뒤에 shipmentIds가 넘어온
+ * 순서(=화면에 보이던 순서) 그대로 이어붙인다(CPO 지시: 일괄배정은 표시
+ * 순서를 유지). 배송일이 없는 배송건은 route_order 개념이 없어 건드리지
+ * 않는다. 기존에 다른 기사가 배정돼 있던 배송건은 그 기사 쪽에 구멍이
+ * 남으므로 함께 압축한다.
+ */
+async function normalizeRouteOrderOnAssign(
+  admin: AdminClient,
+  targets: { id: string; driver_id: string | null; delivery_date: string | null }[],
+  targetDriverId: string,
+  shipmentIdsInDisplayOrder: string[]
+): Promise<void> {
+  const targetsById = new Map(targets.map((t) => [t.id, t]));
+
+  const byDay = new Map<string, string[]>();
+  for (const id of shipmentIdsInDisplayOrder) {
+    const t = targetsById.get(id);
+    if (!t?.delivery_date) continue;
+    const day = kstDayDateStrOf(t.delivery_date);
+    const list = byDay.get(day) ?? [];
+    list.push(id);
+    byDay.set(day, list);
+  }
+
+  const sourceDriverDays = new Set<string>();
+  for (const id of shipmentIdsInDisplayOrder) {
+    const t = targetsById.get(id);
+    if (!t?.delivery_date || !t.driver_id || t.driver_id === targetDriverId) continue;
+    sourceDriverDays.add(`${t.driver_id}::${kstDayDateStrOf(t.delivery_date)}`);
+  }
+
+  for (const [day, ids] of byDay) {
+    const idSet = new Set(ids);
+    const { data: existing, error } = await admin
+      .from("order_shipments")
+      .select("id")
+      .eq("driver_id", targetDriverId)
+      .gte("delivery_date", kstDayStartIso(day))
+      .lte("delivery_date", kstDayEndIso(day))
+      .neq("delivery_status", "취소");
+    if (error) throw error;
+    let next = (existing ?? []).filter((r) => !idSet.has(r.id)).length + 1;
+    for (const id of ids) {
+      await admin.from("order_shipments").update({ route_order: next }).eq("id", id);
+      next += 1;
+    }
+  }
+
+  for (const key of sourceDriverDays) {
+    const [srcDriverId, day] = key.split("::");
+    await compactRouteOrder(admin, srcDriverId, day);
+  }
+}
+
 export const orderShipmentsRepository = {
   async createMany(shipments: OrderShipmentInsert[]): Promise<OrderShipment[]> {
     if (shipments.length === 0) return [];
@@ -95,6 +176,21 @@ export const orderShipmentsRepository = {
       .order("delivery_date", { ascending: true, nullsFirst: false });
     if (error) throw error;
     return (data as OrderShipment[]) ?? [];
+  },
+
+  /**
+   * S2-B STEP0: 주문 배송일 수정 시 order_shipments도 함께 맞춘다 — 이전에는
+   * orders.delivery_date만 바뀌고 order_shipments는 예전 날짜로 남아
+   * 배송관리/배송일 필터 주문관리가 서로 다른 날짜를 보여주던 dual-write
+   * 결함이 있었다. dayChanged(호출자가 KST 달력일 기준으로 판정)일 때만
+   * route_order를 null로 리셋한다 — 같은 날짜 안에서의 사소한 수정으로 기사
+   * 배정 순서가 불필요하게 날아가면 안 된다(CPO 지시).
+   */
+  async updateDeliveryDateForOrder(orderId: string, deliveryDate: string | null, dayChanged: boolean): Promise<void> {
+    const update: { delivery_date: string | null; route_order?: null } = { delivery_date: deliveryDate };
+    if (dayChanged) update.route_order = null;
+    const { error } = await getSupabaseAdmin().from("order_shipments").update(update).eq("order_id", orderId);
+    if (error) throw error;
   },
 
   /** 배송그룹 재계산 시 "재계산 직전 소속"을 알아야 group_no/driver_id를 최대한 유지할 수 있다 — 그 소속 조회. */
@@ -166,7 +262,7 @@ export const orderShipmentsRepository = {
 
     const { data: targets, error: targetsError } = await admin
       .from("order_shipments")
-      .select("id, order_id, delivery_status")
+      .select("id, order_id, delivery_status, driver_id, delivery_date")
       .in("id", shipmentIds);
     if (targetsError) throw targetsError;
     const blocked = (targets ?? []).filter((s) => s.delivery_status === "완료" || s.delivery_status === "취소");
@@ -176,6 +272,11 @@ export const orderShipmentsRepository = {
 
     const { error } = await admin.from("order_shipments").update({ driver_id: driverId, delivery_status: "배송중" }).in("id", shipmentIds);
     if (error) throw error;
+
+    // S2-B: 배정된 배송건은 대상 기사의 그날 경로 맨 뒤(화면에 보이던 순서
+    // 그대로)로 붙고, 기존에 다른 기사가 배정돼 있었다면 그 기사 쪽 route_order도
+    // 압축(정규화)한다.
+    await normalizeRouteOrderOnAssign(admin, targets ?? [], driverId, shipmentIds);
 
     await syncOrdersFromShipments((targets ?? []).map((s) => s.order_id));
   },
@@ -197,7 +298,7 @@ export const orderShipmentsRepository = {
 
     const { data: targets, error: targetsError } = await admin
       .from("order_shipments")
-      .select("id, order_id, delivery_status")
+      .select("id, order_id, delivery_status, driver_id, delivery_date")
       .in("id", shipmentIds);
     if (targetsError) throw targetsError;
     const blocked = (targets ?? []).filter((s) => s.delivery_status === "완료" || s.delivery_status === "취소");
@@ -205,10 +306,60 @@ export const orderShipmentsRepository = {
       throw new Error("이미 배송완료되었거나 취소된 배송건은 배정을 해제할 수 없습니다.");
     }
 
-    const { error } = await admin.from("order_shipments").update({ driver_id: null, delivery_status: "배송대기" }).in("id", shipmentIds);
+    const { error } = await admin
+      .from("order_shipments")
+      .update({ driver_id: null, delivery_status: "배송대기", route_order: null })
+      .in("id", shipmentIds);
     if (error) throw error;
 
+    // S2-B: 배정 해제로 빠진 기사의 그날 route_order에 생긴 구멍을 압축한다.
+    const affectedDriverDays = new Set<string>();
+    for (const t of targets ?? []) {
+      if (t.driver_id && t.delivery_date) affectedDriverDays.add(`${t.driver_id}::${kstDayDateStrOf(t.delivery_date)}`);
+    }
+    for (const key of affectedDriverDays) {
+      const [driverId, day] = key.split("::");
+      await compactRouteOrder(admin, driverId, day);
+    }
+
     await syncOrdersFromShipments((targets ?? []).map((s) => s.order_id));
+  },
+
+  /**
+   * S2-B STEP3: 사장님이 배송관리 기사별 View에서 ↑/↓로 순서를 바꾸면
+   * 호출된다. orderedShipmentIds는 그 기사·그 배송일의 배송건 "전체"를 새
+   * 순서대로 넘겨받는다고 가정하고, 항상 1..N으로 다시 번호를 매긴다
+   * (정규화 — 중간 번호가 비지 않는다). 넘어온 배송건들이 실제로 같은
+   * 기사·같은 KST 달력일에 속하는지 방어적으로 검증한다.
+   */
+  async reorderForDriver(orderedShipmentIds: string[], ownerUsername?: string): Promise<void> {
+    if (orderedShipmentIds.length === 0) return;
+    const admin = getSupabaseAdmin();
+
+    const { data: rows, error } = await admin
+      .from("order_shipments")
+      .select("id, driver_id, delivery_date, owner_username")
+      .in("id", orderedShipmentIds);
+    if (error) throw error;
+    if ((rows?.length ?? 0) !== orderedShipmentIds.length) {
+      throw new Error("존재하지 않는 배송건이 포함되어 있습니다.");
+    }
+
+    const distinctDrivers = new Set((rows ?? []).map((r) => r.driver_id));
+    if (distinctDrivers.size !== 1 || [...distinctDrivers][0] === null) {
+      throw new Error("같은 기사에게 배정된 배송건끼리만 순서를 변경할 수 있습니다.");
+    }
+    const distinctDays = new Set((rows ?? []).map((r) => (r.delivery_date ? kstDayDateStrOf(r.delivery_date) : null)));
+    if (distinctDays.size !== 1 || [...distinctDays][0] === null) {
+      throw new Error("같은 배송일의 배송건끼리만 순서를 변경할 수 있습니다.");
+    }
+    if (ownerUsername && (rows ?? []).some((r) => r.owner_username !== ownerUsername)) {
+      throw new Error("순서를 변경할 권한이 없는 배송건이 포함되어 있습니다.");
+    }
+
+    await Promise.all(
+      orderedShipmentIds.map((id, idx) => admin.from("order_shipments").update({ route_order: idx + 1 }).eq("id", id))
+    );
   },
 
   async startDelivery(shipmentIds: string[], ownerUsername?: string): Promise<number> {
@@ -248,9 +399,25 @@ export const orderShipmentsRepository = {
   async setFulfillmentMethod(shipmentIds: string[], method: FulfillmentMethod, ownerUsername?: string): Promise<number> {
     if (shipmentIds.length === 0) return 0;
     const admin = getSupabaseAdmin();
+
+    // S2-B: direct_pickup으로 바뀌면 기사 경로에서 빠지므로, 압축 대상을 알기
+    // 위해 이전 driver_id/delivery_date를 미리 기억해둔다.
+    let previous: { id: string; driver_id: string | null; delivery_date: string | null }[] = [];
+    if (method === "direct_pickup") {
+      const { data, error } = await admin.from("order_shipments").select("id, driver_id, delivery_date").in("id", shipmentIds);
+      if (error) throw error;
+      previous = data ?? [];
+    }
+
     const update =
       method === "direct_pickup"
-        ? { fulfillment_method: method, driver_id: null, delivery_status: "완료" as const, completed_at: new Date().toISOString() }
+        ? {
+            fulfillment_method: method,
+            driver_id: null,
+            delivery_status: "완료" as const,
+            completed_at: new Date().toISOString(),
+            route_order: null,
+          }
         : { fulfillment_method: method };
     let q = admin
       .from("order_shipments")
@@ -261,6 +428,21 @@ export const orderShipmentsRepository = {
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     const { data, error } = await q.select("id, order_id");
     if (error) throw error;
+
+    if (method === "direct_pickup") {
+      const updatedIds = new Set((data ?? []).map((d) => d.id));
+      const affectedDriverDays = new Set<string>();
+      for (const t of previous) {
+        if (updatedIds.has(t.id) && t.driver_id && t.delivery_date) {
+          affectedDriverDays.add(`${t.driver_id}::${kstDayDateStrOf(t.delivery_date)}`);
+        }
+      }
+      for (const key of affectedDriverDays) {
+        const [driverId, day] = key.split("::");
+        await compactRouteOrder(admin, driverId, day);
+      }
+    }
+
     await syncOrdersFromShipments((data ?? []).map((s) => s.order_id));
     return data?.length ?? 0;
   },
@@ -289,7 +471,10 @@ export const orderShipmentsRepository = {
       .neq("delivery_status", "취소")
       .gte("delivery_date", kstDayStartIso(dateStr))
       .lte("delivery_date", kstDayEndIso(dateStr))
-      .order("delivery_date", { ascending: true });
+      // S2-B STEP7: 사장님이 지정한 route_order 순서 그대로 보여준다(기사는
+      // 순서를 바꿀 권한이 없다 — 표시만 한다).
+      .order("route_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true });
     if (error) throw error;
     return fetchBoardRowsForShipments((data as OrderShipment[]) ?? []);
   },

@@ -99,6 +99,33 @@ export async function unassignDriverAction(shipmentIds: string[]): Promise<Deliv
 }
 
 /**
+ * S2-B STEP3: 배송관리 기사별 View에서 ↑/↓로 순서를 바꾼 뒤 호출한다.
+ * orderedShipmentIds는 그 기사·그 배송일의 배송건 전체를 새 순서대로 담고
+ * 있어야 한다 — repository가 항상 1..N으로 다시 번호를 매긴다(정규화).
+ */
+export async function reorderShipmentsAction(orderedShipmentIds: string[]): Promise<DeliveryActionState> {
+  try {
+    const session = await requireSession();
+    if (orderedShipmentIds.length < 2) return { ok: true, error: null };
+
+    if (session.role !== "admin") {
+      const shipments = await orderShipmentsRepository.findByIds(orderedShipmentIds);
+      const allOwned = shipments.length === orderedShipmentIds.length && shipments.every((s) => s.owner_username === session.username);
+      if (!allOwned) {
+        return { ok: false, error: "권한이 없는 배송건이 포함되어 있습니다." };
+      }
+    }
+
+    await orderShipmentsRepository.reorderForDriver(orderedShipmentIds, session.role === "admin" ? undefined : session.username);
+    revalidatePath("/delivery");
+    revalidatePath("/driver");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "배송 순서 변경 중 오류가 발생했습니다.") };
+  }
+}
+
+/**
  * F13: Seller가 기사 배정 없이 직접 배송을 시작한다(배송대기→배송중). 1인
  * 사업자의 자가배송 등 기사 개념이 필요 없는 흐름을 위한 버튼용 액션.
  */

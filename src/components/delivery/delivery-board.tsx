@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   assignDriverAction,
+  reorderShipmentsAction,
   setDeliveryStatusAction,
   setFulfillmentMethodAction,
   unassignDriverAction,
@@ -145,10 +146,15 @@ export function DeliveryBoard({
     return [...drivers.filter((d) => candidateDriverIds.has(d.id)), ...drivers.filter((d) => !candidateDriverIds.has(d.id))];
   }, [drivers, candidateDriverIds]);
 
+  // S2-B STEP6: 일괄배정은 "지금 화면에 보이던 순서"를 그대로 유지해야
+  // 한다(CPO 지시) — visibleSelected는 Set이라 클릭한 순서로 순회되므로,
+  // 화면 표시 순서인 groupFilteredOrders 기준으로 다시 정렬해서 넘긴다.
+  const selectedShipmentIdsInDisplayOrder = groupFilteredOrders.filter((o) => visibleSelected.has(o.rowKey)).map((o) => o.rowKey);
+
   function handleBulkApply() {
     if (fulfillmentChoice === "direct_pickup") {
       startTransition(async () => {
-        const result = await setFulfillmentMethodAction(Array.from(visibleSelected), "direct_pickup");
+        const result = await setFulfillmentMethodAction(selectedShipmentIdsInDisplayOrder, "direct_pickup");
         if (result.ok) {
           toast.success(`${visibleSelected.size}건을 직접수령으로 설정하고 배송완료 처리했습니다.`);
           setSelected(new Set());
@@ -163,13 +169,21 @@ export function DeliveryBoard({
       return;
     }
     startTransition(async () => {
-      const result = await assignDriverAction(Array.from(visibleSelected), bulkDriverId);
+      const result = await assignDriverAction(selectedShipmentIdsInDisplayOrder, bulkDriverId);
       if (result.ok) {
         toast.success(`${visibleSelected.size}건을 배정했습니다.`);
         setSelected(new Set());
       } else {
         toast.error(result.error ?? "배정 중 오류가 발생했습니다.");
       }
+    });
+  }
+
+  /** S2-B STEP3: 기사별 View의 ↑/↓ 버튼 → 그 기사 리스트 전체를 새 순서로 서버에 반영. */
+  function handleReorder(orderedShipmentIds: string[]) {
+    startTransition(async () => {
+      const result = await reorderShipmentsAction(orderedShipmentIds);
+      if (!result.ok) toast.error(result.error ?? "순서 변경 중 오류가 발생했습니다.");
     });
   }
 
@@ -300,7 +314,13 @@ export function DeliveryBoard({
       ) : null}
 
       {viewMode === "driver" ? (
-        <DeliveryDriverView orders={groupFilteredOrders} drivers={drivers} renderRow={renderRow} />
+        <DeliveryDriverView
+          orders={groupFilteredOrders}
+          drivers={drivers}
+          renderRow={renderRow}
+          reorderEnabled={showGroupColumn}
+          onReorder={handleReorder}
+        />
       ) : (
         <div className="space-y-2">
           {groupFilteredOrders.length > 1 ? (

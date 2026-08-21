@@ -439,6 +439,9 @@ create table if not exists order_shipments (
   completed_at timestamptz,
   cancelled_at timestamptz,
   delivery_group_id uuid references delivery_groups (id) on delete set null,
+  -- S2-B(0039): 기사별 그날 방문 순서. (driver_id, delivery_date) 단위로만
+  -- 의미가 있고 1..N 연속 번호 유지는 애플리케이션 레이어가 보장한다.
+  route_order integer,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -450,6 +453,7 @@ create index if not exists idx_order_shipments_driver_id on order_shipments (dri
 create index if not exists idx_order_shipments_delivery_status on order_shipments (delivery_status);
 create index if not exists idx_order_shipments_delivery_date on order_shipments (delivery_date desc);
 create index if not exists idx_order_shipments_delivery_group_id on order_shipments (delivery_group_id);
+create index if not exists idx_order_shipments_driver_date_route on order_shipments (driver_id, delivery_date, route_order);
 
 drop trigger if exists trg_order_shipments_updated_at on order_shipments;
 create trigger trg_order_shipments_updated_at

@@ -547,6 +547,13 @@ export async function updateManualOrderAction(
       order_source: orderSourceRaw,
     }, session.role === "admin" ? undefined : session.username);
 
+    // S2-B STEP0: orders.delivery_date만 바뀌고 order_shipments.delivery_date는
+    // 예전 값으로 남아 배송관리/배송일 필터 주문관리가 서로 다른 날짜를 보여주던
+    // dual-write 결함 수정 — 이 주문의 배송건도 함께 맞춘다. 배송일이 실제로
+    // (KST 달력일 기준) 바뀐 경우에만 route_order를 리셋한다 — 같은 날짜 안에서의
+    // 사소한 수정으로 기사 배정 순서가 불필요하게 날아가면 안 된다(CPO 지시).
+    await orderShipmentsRepository.updateDeliveryDateForOrder(orderId, deliveryDate, deliveryDateChanged);
+
     const [existingItem] = await ordersRepository.findItemsByOrderIds([orderId]);
     if (existingItem) {
       await ordersRepository.updateItem(existingItem.id, {
@@ -571,6 +578,7 @@ export async function updateManualOrderAction(
 
     revalidatePath("/orders");
     revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/delivery");
     revalidatePath("/");
     return { ok: true, error: null };
   } catch (e) {

@@ -250,6 +250,8 @@ export interface OrderShipment {
   completed_at: ISODateString | null;
   cancelled_at: ISODateString | null;
   delivery_group_id: UUID | null;
+  /** S2-B: 기사별·배송일별 방문 순서(1부터). 아직 지정되지 않았으면 null. */
+  route_order: number | null;
   created_at: ISODateString;
   updated_at: ISODateString;
 }

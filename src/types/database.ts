@@ -576,6 +576,7 @@ export interface Database {
           completed_at: string | null;
           cancelled_at: string | null;
           delivery_group_id: string | null;
+          route_order: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -593,6 +594,7 @@ export interface Database {
           completed_at?: string | null;
           cancelled_at?: string | null;
           delivery_group_id?: string | null;
+          route_order?: number | null;
           created_at?: string;
           updated_at?: string;
         };

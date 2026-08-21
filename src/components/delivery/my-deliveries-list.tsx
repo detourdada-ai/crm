@@ -32,6 +32,13 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: OrderShipm
   const [pendingShipmentId, setPendingShipmentId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // S2-B STEP7: 사장님이 배송관리에서 지정한 배송 순서(route_order) 그대로
+  // 번호를 매긴다 — orders는 이미 서버에서 route_order 순으로 정렬돼 온다
+  // (order-shipments.repository.ts findByDriverIdAndDeliveryDate). 지도
+  // 마커의 숫자 배지(= 그 위치에 남은 건수)와는 완전히 다른 개념이라 절대
+  // 섞지 않는다 — 이 번호는 카드에만 붙는 "전체 배송 경로 순서"다.
+  const sequenceByRowKey = useMemo(() => new Map(orders.map((o, i) => [o.rowKey, i + 1])), [orders]);
+
   const remaining = useMemo(() => orders.filter((o) => o.delivery_status !== "완료"), [orders]);
   const completed = useMemo(() => orders.filter((o) => o.delivery_status === "완료"), [orders]);
   const noCoordOrders = useMemo(() => orders.filter((o) => o.latitude == null || o.longitude == null), [orders]);
@@ -104,6 +111,7 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: OrderShipm
           {selectedOrders ? (
             <OrderCardGroup
               orders={selectedOrders}
+              sequenceByRowKey={sequenceByRowKey}
               pendingShipmentId={isPending ? pendingShipmentId : null}
               onComplete={handleComplete}
               onClose={() => setSelectedIds(null)}
@@ -120,6 +128,7 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: OrderShipm
         <OrderCardGroup
           title={`위치 확인 필요 ${noCoordOrders.length}건`}
           orders={noCoordOrders}
+          sequenceByRowKey={sequenceByRowKey}
           pendingShipmentId={isPending ? pendingShipmentId : null}
           onComplete={handleComplete}
         />
@@ -131,12 +140,14 @@ export function MyDeliveriesList({ orders: initialOrders }: { orders: OrderShipm
 function OrderCardGroup({
   title,
   orders,
+  sequenceByRowKey,
   pendingShipmentId,
   onComplete,
   onClose,
 }: {
   title?: string;
   orders: OrderShipmentBoardRow[];
+  sequenceByRowKey: Map<string, number>;
   pendingShipmentId: string | null;
   onComplete: (shipmentId: string) => void;
   onClose?: () => void;
@@ -169,7 +180,13 @@ function OrderCardGroup({
       {remaining.length > 0 ? (
         <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1 lg:max-h-[460px]">
           {remaining.map((o) => (
-            <OrderCard key={o.rowKey} order={o} isPending={pendingShipmentId === o.rowKey} onComplete={onComplete} />
+            <OrderCard
+              key={o.rowKey}
+              order={o}
+              sequenceNumber={sequenceByRowKey.get(o.rowKey)}
+              isPending={pendingShipmentId === o.rowKey}
+              onComplete={onComplete}
+            />
           ))}
         </div>
       ) : null}
@@ -179,7 +196,7 @@ function OrderCardGroup({
           <summary className="cursor-pointer select-none px-3 py-2 text-sm text-muted-foreground">완료된 배송 {completed.length}건</summary>
           <div className="space-y-3 border-t p-3">
             {completed.map((o) => (
-              <OrderCard key={o.rowKey} order={o} isPending={false} onComplete={onComplete} />
+              <OrderCard key={o.rowKey} order={o} sequenceNumber={sequenceByRowKey.get(o.rowKey)} isPending={false} onComplete={onComplete} />
             ))}
           </div>
         </details>
@@ -190,10 +207,13 @@ function OrderCardGroup({
 
 function OrderCard({
   order,
+  sequenceNumber,
   isPending,
   onComplete,
 }: {
   order: OrderShipmentBoardRow;
+  /** S2-B: 전체 배송 경로에서 이 배송건의 순서 — 지도 마커 배지(위치별 남은 건수)와는 다른 숫자다. */
+  sequenceNumber?: number;
   isPending: boolean;
   onComplete: (shipmentId: string) => void;
 }) {
@@ -201,7 +221,14 @@ function OrderCard({
   return (
     <div className={cn("space-y-2 rounded-lg border p-3", isDone ? "bg-muted/30" : "bg-background")}>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-base font-semibold text-text-strong">{order.recipient_name || order.buyer_name || "-"}</p>
+        <p className="flex items-center gap-2 text-base font-semibold text-text-strong">
+          {sequenceNumber != null ? (
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
+              {sequenceNumber}
+            </span>
+          ) : null}
+          {order.recipient_name || order.buyer_name || "-"}
+        </p>
         <Badge variant={isDone ? "outline" : "secondary"} className="shrink-0">
           {isDone ? "완료" : "배송중"}
         </Badge>
