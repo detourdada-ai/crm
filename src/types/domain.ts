@@ -198,6 +198,25 @@ export interface Driver {
   updated_at: ISODateString;
 }
 
+/**
+ * S2-C: 기사 운행시작/운행종료 + 참고용 최근 위치. 배송 상태(order_shipments.
+ * delivery_status)를 절대 결정하지 않는다 — 기사 배정 시점에 이미 배송중으로
+ * 바뀌어 있고, 이 레코드는 그 위에 얹는 별도의 운영 기록일 뿐이다. 위치는
+ * 이력이 아니라 "가장 최근 값" 하나만 덮어쓴다.
+ */
+export interface DriverShift {
+  id: UUID;
+  driver_id: UUID;
+  shift_date: string; // "YYYY-MM-DD" (KST 달력일)
+  started_at: ISODateString | null;
+  ended_at: ISODateString | null;
+  last_latitude: number | null;
+  last_longitude: number | null;
+  last_location_at: ISODateString | null;
+  created_at: ISODateString;
+  updated_at: ISODateString;
+}
+
 // Phase 1: 기사 담당지역 — sigungu/eupmyeondong이 null이면 그 상위 단계
 // 전체를 담당한다는 뜻이다(예: sigungu=null → 시/도 전체).
 export interface DriverRegion {

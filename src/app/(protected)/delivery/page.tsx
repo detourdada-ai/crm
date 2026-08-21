@@ -8,7 +8,7 @@ import { DeliveryStatusFlow, type DeliveryFilter, type DeliveryFlowCount } from 
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
-import { Truck } from "lucide-react";
+import { Truck, Download } from "lucide-react";
 import Link from "next/link";
 import { getDeliveryBoardAction } from "@/actions/delivery";
 import { listDeliveryGroupsAction } from "@/actions/delivery-groups";
@@ -180,18 +180,40 @@ export default async function DeliveryPage({
     return qs ? `/delivery?${qs}` : "/delivery";
   }
 
+  // S2-C STEP6: 지금 화면에 적용된 필터 그대로 Excel API를 호출한다.
+  function buildExportHref() {
+    const search = new URLSearchParams();
+    if (params.dateFilter) search.set("dateFilter", params.dateFilter);
+    if (params.dateFrom) search.set("dateFrom", params.dateFrom);
+    if (params.dateTo) search.set("dateTo", params.dateTo);
+    if (params.driverId) search.set("driverId", params.driverId);
+    if (params.q) search.set("q", params.q);
+    if (params.group) search.set("group", params.group);
+    if (params.filter) search.set("filter", params.filter);
+    const qs = search.toString();
+    return qs ? `/api/delivery/export?${qs}` : "/api/delivery/export";
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="배송관리"
         description="오늘 배송할 주문을 확인하고 배정 및 배송 상태를 관리하세요."
         action={
-          <DriverManagementDialog
-            drivers={allDrivers}
-            isAdmin={isAdmin}
-            accountUsernames={accountUsernames}
-            knownRegions={knownRegions}
-          />
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <a href={buildExportHref()}>
+                <Download className="size-4" />
+                Excel 다운로드
+              </a>
+            </Button>
+            <DriverManagementDialog
+              drivers={allDrivers}
+              isAdmin={isAdmin}
+              accountUsernames={accountUsernames}
+              knownRegions={knownRegions}
+            />
+          </div>
         }
       />
 

@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, X, MapPinPlus, Pencil } from "lucide-react";
+import { Plus, Trash2, X, MapPinPlus, MapPin, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import {
 } from "@/actions/drivers";
 import type { DriverWithAccount } from "@/actions/drivers";
 import { addDriverRegionAction, deleteDriverRegionAction } from "@/actions/driver-regions";
+import { getDriverLatestLocationAction } from "@/actions/driver-shifts";
 import { LegacyAddressInput } from "@/components/common/legacy-address-input";
 import { SIDO_LIST } from "@/lib/constants/region";
 import { formatPhoneNumber } from "@/lib/utils/phone";
@@ -611,6 +612,36 @@ function DriverRegionBadge({ region }: { region: DriverWithAccount["regions"][nu
   );
 }
 
+/**
+ * S2-C: "기사님 지금 어디예요?" CS 대응용 참고 정보 — 배송 상태와 무관하게
+ * 기사가 앱에서 마지막으로 남긴 위치 하나만 보여준다(이력 아님). 클릭 시에만
+ * 조회한다(목록 진입 때마다 전체 기사 위치를 미리 불러오지 않는다).
+ */
+function DriverLocationButton({ driverId }: { driverId: string }) {
+  const [isPending, startTransition] = useTransition();
+
+  function handleClick() {
+    startTransition(async () => {
+      const shift = await getDriverLatestLocationAction(driverId);
+      if (!shift?.last_latitude || !shift?.last_longitude) {
+        toast.info("아직 기록된 위치가 없습니다. 기사가 앱에서 운행시작을 누르면 위치가 표시됩니다.");
+        return;
+      }
+      const minutesAgo = shift.last_location_at
+        ? Math.max(0, Math.round((Date.now() - new Date(shift.last_location_at).getTime()) / 60000))
+        : null;
+      toast.success(minutesAgo != null ? `${minutesAgo}분 전 위치를 지도에서 엽니다.` : "위치를 지도에서 엽니다.");
+      window.open(`https://map.kakao.com/link/map/기사 위치,${shift.last_latitude},${shift.last_longitude}`, "_blank", "noopener,noreferrer");
+    });
+  }
+
+  return (
+    <Button type="button" variant="ghost" size="icon-sm" disabled={isPending} onClick={handleClick} aria-label="최근 위치 확인">
+      <MapPin className="size-4" />
+    </Button>
+  );
+}
+
 function DriverRegionsCell({ driver, knownRegions }: { driver: DriverWithAccount; knownRegions: KnownRegion[] }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -678,6 +709,7 @@ export function DriverManagementCard({
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-2">
+                    <DriverLocationButton driverId={driver.id} />
                     <EditDriverDialog driver={driver} knownRegions={knownRegions} />
                     <DriverStatusToggle driverId={driver.id} status={driver.status} />
                     {isAdmin ? <DriverDeleteButton driverId={driver.id} /> : null}

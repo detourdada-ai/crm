@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
 import { OrderTable } from "@/components/orders/order-table";
 import { OrderFilterBar } from "@/components/orders/order-filter-bar";
 import { OrderStatusChips, type OrderStatusChipCount } from "@/components/orders/order-status-chips";
@@ -128,6 +129,27 @@ export default async function OrdersPage({
     return qs ? `/orders?${qs}` : "/orders";
   }
 
+  // S2-C STEP5: 지금 화면에 적용된 필터 그대로 Excel API를 호출하기 위한
+  // 쿼리스트링 — buildStatusHref와 같은 값들이지만 deliveryStatus는
+  // status칩이 아니라 현재 activeStatus를 그대로 넘긴다.
+  function buildExportHref() {
+    const search = new URLSearchParams();
+    if (params.orderDateFilter) search.set("orderDateFilter", params.orderDateFilter);
+    if (params.orderDateFrom) search.set("orderDateFrom", params.orderDateFrom);
+    if (params.orderDateTo) search.set("orderDateTo", params.orderDateTo);
+    if (params.deliveryDateFilter) search.set("deliveryDateFilter", params.deliveryDateFilter);
+    if (params.deliveryDateFrom) search.set("deliveryDateFrom", params.deliveryDateFrom);
+    if (params.deliveryDateTo) search.set("deliveryDateTo", params.deliveryDateTo);
+    if (params.bagReturned) search.set("bagReturned", params.bagReturned);
+    if (params.orderSource) search.set("orderSource", params.orderSource);
+    if (params.q) search.set("q", params.q);
+    if (params.sort) search.set("sort", params.sort);
+    if (params.dir) search.set("dir", params.dir);
+    if (params.deliveryStatus) search.set("deliveryStatus", params.deliveryStatus);
+    const qs = search.toString();
+    return qs ? `/api/orders/export?${qs}` : "/api/orders/export";
+  }
+
   const deliveryRangeLabel =
     deliveryDateFilter === "all"
       ? "전체 기간"
@@ -140,7 +162,17 @@ export default async function OrdersPage({
       <PageHeader
         title="주문관리"
         description={`${deliveryRangeLabel} 발송할 상품주문(배송일 기준)을 확인하고 처리하세요. 주문일 필터는 기본적으로 전체입니다.`}
-        action={<ManualOrderButton />}
+        action={
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <a href={buildExportHref()}>
+                <Download className="size-4" />
+                Excel 다운로드
+              </a>
+            </Button>
+            <ManualOrderButton />
+          </div>
+        }
       />
 
       <OrderStatusChips counts={chipCounts} active={activeStatus} buildHref={buildStatusHref} />

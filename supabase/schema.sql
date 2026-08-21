@@ -214,6 +214,29 @@ create trigger trg_drivers_updated_at
   before update on drivers
   for each row execute function set_updated_at();
 
+-- S2-C(0040): 기사 운행시작/운행종료 + 참고용 최근 위치. 배송 상태를
+-- 결정하지 않는 별도 운영 기록 — 위치는 이력이 아니라 최근 값 하나만 유지.
+create table if not exists driver_shifts (
+  id uuid primary key default gen_random_uuid(),
+  driver_id uuid not null references drivers (id) on delete cascade,
+  shift_date date not null,
+  started_at timestamptz,
+  ended_at timestamptz,
+  last_latitude double precision,
+  last_longitude double precision,
+  last_location_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (driver_id, shift_date)
+);
+
+create index if not exists idx_driver_shifts_driver_date on driver_shifts (driver_id, shift_date desc);
+
+drop trigger if exists trg_driver_shifts_updated_at on driver_shifts;
+create trigger trg_driver_shifts_updated_at
+  before update on driver_shifts
+  for each row execute function set_updated_at();
+
 -- ----------------------------------------------------------------------------
 -- driver_regions (Phase 1: 기사 담당지역 — 계층형, 기사 1명당 다중 지역 가능)
 -- ----------------------------------------------------------------------------

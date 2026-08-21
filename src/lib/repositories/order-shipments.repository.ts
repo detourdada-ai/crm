@@ -2,6 +2,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { kstDayStartIso, kstDayEndIso, kstDayDateStrOf } from "@/lib/utils/kst-date";
 import { syncOrdersFromShipments } from "@/lib/services/order-shipment-sync.service";
+import { notifyCustomerDeliveryStarted, notifyCustomerDeliveryCompleted } from "@/lib/services/customer-notification.service";
 import type { Order, OrderShipment, FulfillmentMethod } from "@/types/domain";
 
 export interface OrderShipmentInsert {
@@ -279,6 +280,7 @@ export const orderShipmentsRepository = {
     await normalizeRouteOrderOnAssign(admin, targets ?? [], driverId, shipmentIds);
 
     await syncOrdersFromShipments((targets ?? []).map((s) => s.order_id));
+    await Promise.all((targets ?? []).map((s) => notifyCustomerDeliveryStarted(s.order_id, s.id)));
   },
 
   async unassignDriver(shipmentIds: string[], ownerUsername?: string): Promise<void> {
@@ -375,6 +377,7 @@ export const orderShipmentsRepository = {
     const { data, error } = await q.select("id, order_id");
     if (error) throw error;
     await syncOrdersFromShipments((data ?? []).map((s) => s.order_id));
+    await Promise.all((data ?? []).map((s) => notifyCustomerDeliveryStarted(s.order_id, s.id)));
     return data?.length ?? 0;
   },
 
@@ -393,6 +396,11 @@ export const orderShipmentsRepository = {
     const { data, error } = await q.select("id, order_id");
     if (error) throw error;
     await syncOrdersFromShipments((data ?? []).map((s) => s.order_id));
+    if (status === "배송중") {
+      await Promise.all((data ?? []).map((s) => notifyCustomerDeliveryStarted(s.order_id, s.id)));
+    } else if (status === "완료") {
+      await Promise.all((data ?? []).map((s) => notifyCustomerDeliveryCompleted(s.order_id, s.id)));
+    }
     return data?.length ?? 0;
   },
 
@@ -444,6 +452,9 @@ export const orderShipmentsRepository = {
     }
 
     await syncOrdersFromShipments((data ?? []).map((s) => s.order_id));
+    if (method === "direct_pickup") {
+      await Promise.all((data ?? []).map((s) => notifyCustomerDeliveryCompleted(s.order_id, s.id)));
+    }
     return data?.length ?? 0;
   },
 
@@ -459,6 +470,7 @@ export const orderShipmentsRepository = {
     const { data, error } = await q.select("id, order_id");
     if (error) throw error;
     await syncOrdersFromShipments((data ?? []).map((s) => s.order_id));
+    await Promise.all((data ?? []).map((s) => notifyCustomerDeliveryCompleted(s.order_id, s.id)));
     return data?.length ?? 0;
   },
 
@@ -509,6 +521,7 @@ export const orderShipmentsRepository = {
     if (error) throw error;
     if (!data) throw new Error("이미 취소된 배송건이거나 처리 권한이 없습니다.");
     await syncOrdersFromShipments([data.order_id]);
+    await notifyCustomerDeliveryCompleted(data.order_id, data.id);
     return data as OrderShipment;
   },
 };

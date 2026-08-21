@@ -347,6 +347,34 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["drivers"]["Insert"]>;
         Relationships: [];
       };
+      driver_shifts: {
+        Row: {
+          id: string;
+          driver_id: string;
+          shift_date: string;
+          started_at: string | null;
+          ended_at: string | null;
+          last_latitude: number | null;
+          last_longitude: number | null;
+          last_location_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          driver_id: string;
+          shift_date: string;
+          started_at?: string | null;
+          ended_at?: string | null;
+          last_latitude?: number | null;
+          last_longitude?: number | null;
+          last_location_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["driver_shifts"]["Insert"]>;
+        Relationships: [];
+      };
       driver_regions: {
         Row: {
           id: string;
