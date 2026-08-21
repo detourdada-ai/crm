@@ -20,10 +20,11 @@ import { listAccounts } from "@/lib/auth/credentials";
 import { isValidDateString } from "@/lib/utils/date";
 import { kstTodayIso, resolveKstQuickRange, isQuickDateFilter, type QuickDateFilterValue } from "@/lib/utils/kst-date";
 import { digitsOnly } from "@/lib/utils/phone";
+import { buildGroupBuildingLabels } from "@/lib/utils/delivery-group";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 function isDeliveryFilter(value: string | undefined): value is DeliveryFilter {
-  return value === "unassigned" || value === "배송중" || value === "완료";
+  return value === "unassigned" || value === "assigned" || value === "배송중" || value === "완료";
 }
 
 export default async function DeliveryPage({
@@ -36,6 +37,7 @@ export default async function DeliveryPage({
     driverId?: string;
     q?: string;
     filter?: string;
+    group?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -102,22 +104,23 @@ export default async function DeliveryPage({
     );
   }
 
-  // P6 3번: 한 줄(전체/배정필요/배송중/완료)로 되돌리되, 세 하위 버킷이
-  // 겹치지 않도록 "배정필요"를 명확히 정의한다 — 배송중/완료로 이미 넘어간
-  // 주문은 기사가 없어도(예: 배송중 상태로 되돌리기 전에 배정 해제한 경우는
-  // 없지만 방어적으로) 배정필요에 넣지 않고, 직접수령(애초에 기사가 필요
-  // 없음)도 배정필요에서 제외한다. "배송대기 상태인데 기사가 이미 배정된"
-  // 주문(상태만 되돌린 경우)은 배정필요도 아니고 배송중/완료도 아니므로 세
-  // 버킷 합이 전체보다 작을 수 있다 — CPO가 명시적으로 허용한 예외.
+  // S2-A §4: 배정필요/배정완료/배송중/완료 네 버킷이 서로 완전히 배타적이고
+  // 항상 전체와 합이 같도록 확정했다 — "배송대기인데 기사가 이미 배정된"
+  // 경우(과거엔 세 버킷 어디에도 안 들어가던 예외)를 이제 "배정완료"가
+  // 정확히 흡수한다.
   const inProgressCount = orders.filter((o) => o.delivery_status === "배송중").length;
   const doneCount = orders.filter((o) => o.delivery_status === "완료").length;
   const needsDriverCount = orders.filter(
     (o) => o.delivery_status === "배송대기" && !o.driver_id && o.fulfillment_method !== "direct_pickup"
   ).length;
+  const assignedCount = orders.filter(
+    (o) => o.delivery_status === "배송대기" && (!!o.driver_id || o.fulfillment_method === "direct_pickup")
+  ).length;
 
   const flowCounts: DeliveryFlowCount[] = [
     { filter: "all", label: "전체", count: orders.length, tone: "neutral" },
     { filter: "unassigned", label: "배정 필요", count: needsDriverCount, tone: "warning", emphasize: true },
+    { filter: "assigned", label: "배정 완료", count: assignedCount, tone: "neutral" },
     { filter: "배송중", label: "배송중", count: inProgressCount, tone: "info" },
     { filter: "완료", label: "완료", count: doneCount, tone: "success" },
   ];
@@ -127,10 +130,42 @@ export default async function DeliveryPage({
     if (activeFilter === "unassigned") {
       return list.filter((o) => o.delivery_status === "배송대기" && !o.driver_id && o.fulfillment_method !== "direct_pickup");
     }
+    if (activeFilter === "assigned") {
+      return list.filter((o) => o.delivery_status === "배송대기" && (!!o.driver_id || o.fulfillment_method === "direct_pickup"));
+    }
     return list;
   }
 
   const visibleOrders = filterOrders(orders);
+
+  // 배송그룹 필터(그룹 URL param)는 DeliveryBoard가 client에서 자체적으로
+  // 적용한다(§6 설명) — 여기서는 그룹 select/카드에 쓸 라벨·건수만
+  // 계산한다. driverCounts는 검색/기사 필터와 무관하게 "오늘 전체" 기준이어야
+  // 하므로 좁혀지기 전인 fetchedOrders에서 뽑는다.
+  const driverCounts: Record<string, number> = {};
+  for (const o of fetchedOrders) {
+    if (o.driver_id) driverCounts[o.driver_id] = (driverCounts[o.driver_id] ?? 0) + 1;
+  }
+
+  const groupOptions = groupResult
+    ? (() => {
+        const memberAddresses = new Map<string, (string | null)[]>();
+        for (const o of orders) {
+          if (!o.delivery_group_id) continue;
+          const list = memberAddresses.get(o.delivery_group_id) ?? [];
+          list.push(o.address_snapshot);
+          memberAddresses.set(o.delivery_group_id, list);
+        }
+        const labels = buildGroupBuildingLabels(groupResult.groups, memberAddresses);
+        const counts = new Map<string, number>();
+        for (const o of orders) {
+          if (o.delivery_group_id) counts.set(o.delivery_group_id, (counts.get(o.delivery_group_id) ?? 0) + 1);
+        }
+        return groupResult.groups
+          .map((g) => ({ id: g.id, label: labels.get(g.id)?.full ?? `그룹 ${g.group_no}`, count: counts.get(g.id) ?? 0 }))
+          .filter((g) => g.count > 0);
+      })()
+    : [];
 
   function buildFilterHref(next: DeliveryFilter) {
     const search = new URLSearchParams();
@@ -139,6 +174,7 @@ export default async function DeliveryPage({
     if (params.dateTo) search.set("dateTo", params.dateTo);
     if (params.driverId) search.set("driverId", params.driverId);
     if (params.q) search.set("q", params.q);
+    if (params.group) search.set("group", params.group);
     if (next !== "all") search.set("filter", next);
     const qs = search.toString();
     return qs ? `/delivery?${qs}` : "/delivery";
@@ -166,6 +202,7 @@ export default async function DeliveryPage({
         dateFrom={range?.start ?? today}
         dateTo={range?.end ?? today}
         drivers={drivers}
+        groupOptions={groupOptions}
       />
 
       {orders.length === 0 ? (
@@ -200,6 +237,7 @@ export default async function DeliveryPage({
                   groups={groupResult?.groups ?? []}
                   showGroupColumn={isSingleDay}
                   bagManagementEnabled={features.bagManagement}
+                  driverCounts={driverCounts}
                 />
               }
               mapView={<DeliveryMapView orders={visibleOrders} drivers={drivers} groups={groupResult?.groups ?? []} />}

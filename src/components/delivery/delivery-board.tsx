@@ -1,18 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
-import Link from "next/link";
+import { useMemo, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
-import { formatCurrency, formatDate } from "@/lib/constants/order-status";
-import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
 import {
   assignDriverAction,
   setDeliveryStatusAction,
@@ -22,53 +13,31 @@ import {
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
-import { kstTodayIso } from "@/lib/utils/kst-date";
-import { groupRegionLabel, extractComplexName, isApartmentName } from "@/lib/utils/delivery-group";
+import { buildGroupBuildingLabels, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import { DeliveryViewTabs, type DeliveryViewMode } from "@/components/delivery/delivery-view-tabs";
+import { DeliveryGroupCards } from "@/components/delivery/delivery-group-cards";
+import { DeliveryDriverView } from "@/components/delivery/delivery-driver-view";
+import { DeliveryOrderRow } from "@/components/delivery/delivery-order-row";
+import { BulkAssignBar } from "@/components/delivery/bulk-assign-bar";
 import type { Driver, DeliveryGroup, DeliveryStatus, FulfillmentMethod } from "@/types/domain";
 
-const GROUP_FILTER_ALL = "__all__";
-const GROUP_FILTER_HAS_GROUP = "__has_group__";
-const GROUP_FILTER_UNGROUPED = "__ungrouped__";
-const REGION_ALL = "__region_all__";
-const ZONE_ALL = "__zone_all__";
-const COMPLEX_ALL = "__complex_all__";
-type DeliveryTarget = "all" | "apartment" | "other";
+const UNGROUPED_SENTINEL = "__ungrouped__";
 
 /**
- * 배송 업무 리스트 — 주문번호/고객/배송일/배송지/담당기사/상태를 항상
- * 보여주고, 연락처·금액은 상세 정보로 lg 이상에서만 노출한다.
- * 375px에서는 테이블 대신 카드형 Row로 전환.
- * 기사 배정은 기존 assignDriverAction을 그대로 재사용 — 다건 선택 배정 툴바는
- * 유지하고, "배정 필요" 행에는 그 행만 바로 선택해 툴바로 안내하는 보조
- * 버튼을 추가했다. Phase 2: 이미 배정된 행에는 "변경"(같은 툴바 흐름 재사용,
- * assignDriverAction이 덮어쓰기를 허용하므로 새 코드 없이 재배정됨)과
- * "해제"(unassignDriverAction) 버튼을 추가. 완료된 주문은 잠긴 표시만.
- * 취소된 주문은 애초에 이 보드 쿼리에서 제외된다(findByDeliveryDate 참고).
+ * S2-A: 배송관리를 "조회 화면"에서 "오늘 배송을 운영하는 화면"으로 재설계 —
+ * 전체/지역별/기사별 3개 View를 이 컴포넌트가 오케스트레이션한다. 서버
+ * 액션(assignDriverAction 등)과 배송그룹 판정 로직(extractComplexName/
+ * isApartmentName/groupRegionLabel)은 전혀 손대지 않고 그대로 재사용 —
+ * 이번 개편은 UI 구조 변경이다.
  *
- * F13: 기사 배정 없이도(1인 자가배송 등) 배송대기→배송중→완료를 바로 전환할
- * 수 있도록 "배송 시작"/"배송 완료" 버튼을 상태별로 바로 노출한다(드롭다운
- * 없음). 배송지는 스냅샷 필드를 재가공 없이 그대로(우편번호/도로명/상세)
- * 구조화해 보여주고, 배송메모는 breakpoint 숨김 없이 항상 강조 표시하며,
- * 주소복사/전화/지도(카카오맵 검색 링크, API 키 불필요) 퀵액션을 더했다.
+ * 배송그룹 필터는 group URL query param으로 관리(§6) — DeliveryFilterBar의
+ * "배송그룹" select와 이 컴포넌트의 그룹 카드 클릭이 같은 param을 공유해
+ * 별도 상태 공유 장치 없이 동기화된다. View 모드(전체/지역별/기사별)는
+ * 반대로 URL에 남기지 않고 순수 client state로 관리한다(§14, CPO 지시) —
+ * 탭 전환이 서버 재조회 없이 즉시 이뤄져야 하고, 이 상태가 그대로 유지되는
+ * 덕에 선택 상태(selected)도 View 전환 시 리마운트 없이 보존된다(P12 재발
+ * 방지 — §15).
  */
-type DeliverySortField = "order_number" | "recipient_name" | "driver_name" | "delivery_status" | "address" | "delivery_group";
-
-// CEO 요청: 배송일순은 별도 배송일 필터가 이미 있어 정렬 옵션에서는 중복이라
-// 제거하고, 기본 정렬을 배송그룹순으로 바꾼다(가까운 배송지끼리 먼저 보이게).
-const SORT_OPTIONS: { value: DeliverySortField; label: string }[] = [
-  { value: "delivery_group", label: "배송그룹순" },
-  { value: "order_number", label: "주문번호순" },
-  { value: "recipient_name", label: "고객명순" },
-  { value: "driver_name", label: "담당기사순" },
-  { value: "delivery_status", label: "상태순" },
-  { value: "address", label: "배송지순" },
-];
-
-function composeAddressCopyText(order: OrderShipmentBoardRow): string {
-  const road = order.road_address_snapshot ?? order.address_snapshot;
-  return [order.zipcode ? `[${order.zipcode}]` : null, road, order.detail_address_snapshot].filter(Boolean).join(" ");
-}
-
 export function DeliveryBoard({
   orders,
   drivers,
@@ -76,267 +45,82 @@ export function DeliveryBoard({
   groups = [],
   showGroupColumn = groups.length > 0,
   bagManagementEnabled = false,
+  driverCounts,
 }: {
-  /** S1-1 Phase 5: 배송건(order_shipments) 기준 — 같은 주문이라도 발송일이 다르면 서로 다른 행으로 나타난다. */
+  /** S1-1 Phase 5: 배송건(order_shipments) 기준 — 이미 배송일 범위/상태 필터가 적용된 상태로 들어온다. */
   orders: OrderShipmentBoardRow[];
   drivers: Driver[];
   itemSummaries: Record<string, OrderItemSummary>;
-  /**
-   * P5: 배송그룹은 별도 카드/섹션이 아니라 이 리스트의 "그룹" 컬럼 +
-   * 필터/정렬로만 노출한다(작업지시서 14-21번). 단일 배송일 조회가 아니면
-   * 페이지에서 빈 배열을 넘겨 필터 칩을 자연히 숨긴다.
-   */
   groups?: DeliveryGroup[];
-  /**
-   * P7 7-4번: "그룹 컬럼은 항상 노출"— 그날 실제로 묶인 그룹이 하나도
-   * 없어도(groups=[]) 컬럼 자체는 사라지지 않고 각 행에 "미배송그룹"을 보여준다.
-   * 그룹 개념 자체가 없는 기간 조회(이번주/이번달/전체)에서만 페이지가
-   * false를 넘겨 컬럼을 숨긴다.
-   */
+  /** 그룹 개념 자체가 없는 기간 조회(이번주/이번달/전체)에서는 지역별 View를 비활성 안내로 대체한다. */
   showGroupColumn?: boolean;
-  /** Phase 10: 가방 관리 미사용 사업장에서는 가방 상태 컬럼/표시를 숨긴다. */
   bagManagementEnabled?: boolean;
+  /** 기사별 "오늘 N건" 표시용 — 배송그룹/검색 필터와 무관하게 그날 전체 기준(page.tsx에서 계산). */
+  driverCounts: Record<string, number>;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const [viewMode, setViewMode] = useState<DeliveryViewMode>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [driverId, setDriverId] = useState<string>("");
+  const [bulkDriverId, setBulkDriverId] = useState("");
   const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
-  const [sortField, setSortField] = useState<DeliverySortField>("delivery_group");
-  const [groupFilter, setGroupFilter] = useState<string>(GROUP_FILTER_ALL);
-  // P14-B: "배송지역 → 배송구역 → 배송대상(아파트/기타) → 단지" 계층 필터.
-  // 세부 그룹(A/B/C 개별 선택)은 더 이상 존재하지 않고, 이 4단계로 대체됐다.
-  const [selectedRegionKey, setSelectedRegionKey] = useState<string | null>(null);
-  const [selectedZoneGroupId, setSelectedZoneGroupId] = useState<string | null>(null);
-  const [selectedTarget, setSelectedTarget] = useState<DeliveryTarget>("all");
-  const [selectedComplex, setSelectedComplex] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
-  const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
-  const isHasGroupTabActive = groupFilter === GROUP_FILTER_HAS_GROUP;
-  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [pendingRowId, setPendingRowId] = useState<string | null>(null);
+  const [candidateDriverIds, setCandidateDriverIds] = useState<Set<string>>(new Set());
+  const [, startCandidateLookup] = useTransition();
 
-  /** group.representative_sido/sigungu/eupmyeondong 조합을 지역 키로 삼는다 — 라벨 문자열이 아니라 원본 3필드로 키를 만들어야 동명 시군구가 있어도 안전하다. */
-  function regionKeyOf(group: DeliveryGroup): string {
-    return `${group.representative_sido ?? ""}||${group.representative_sigungu ?? ""}||${group.representative_eupmyeondong ?? ""}`;
+  const driverNames = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d.name])), [drivers]);
+  const activeGroupId = searchParams.get("group");
+
+  function setActiveGroupId(next: string | null) {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set("group", next);
+    else params.delete("group");
+    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
   }
-
-  // P14-B 보완(CPO 반려 후 재작업): "배송지역"별로 그룹을 묶고, 그 안에서
-  // group_no 오름차순으로 "N구역" 번호를 매긴다 — 처음엔 주문 건수 내림차순으로
-  // 정렬했었는데, 같은 날 안에서도 주문이 추가/변경되며 order_count가 바뀌면
-  // 같은 공간의 구역 번호가 달라질 수 있다는 지적을 받았다. group_no는
-  // delivery-group-regeneration.service.ts의 재계산 로직이 overlap matching으로
-  // 기존 클러스터를 최대한 같은 group_no로 유지하므로(멤버 구성이 그대로면
-  // group_no/id 불변), 이 값을 정렬 키로 쓰면 같은 (tenant, 배송일) 안에서
-  // 주문 건수가 바뀌어도 "N구역" 번호가 흔들리지 않는다. group_no 자체가
-  // (tenant_id, delivery_date, group_no) 단위로 스코프돼 있어 날짜가 바뀌면
-  // 새 그룹 집합이 시작되므로 날짜를 넘어선 완전한 안정성까지는 이 방식으로
-  // 보장할 수 없다 — 이는 spatial grouping 알고리즘 자체(날짜별 독립 재계산)의
-  // 구조적 한계이며, 이번 작업지시서에서 그 알고리즘은 변경하지 않는다.
-  const regionGroups = useMemo(() => {
-    const map = new Map<string, { key: string; label: string; groups: DeliveryGroup[]; orderCount: number }>();
-    for (const g of groups) {
-      const key = regionKeyOf(g);
-      const entry = map.get(key) ?? { key, label: groupRegionLabel(g), groups: [], orderCount: 0 };
-      entry.groups.push(g);
-      entry.orderCount += g.order_count;
-      map.set(key, entry);
-    }
-    for (const entry of map.values()) {
-      entry.groups.sort((a, b) => a.group_no - b.group_no);
-    }
-    return map;
-  }, [groups]);
-
-  const regionOptions = useMemo(
-    () => [...regionGroups.values()].sort((a, b) => b.orderCount - a.orderCount || a.label.localeCompare(b.label, "ko")),
-    [regionGroups]
-  );
-
-  const zoneLabelByGroupId = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const entry of regionGroups.values()) {
-      entry.groups.forEach((g, idx) => map.set(g.id, `${idx + 1}구역`));
-    }
-    return map;
-  }, [regionGroups]);
-
-  /** 테이블/카드의 그룹 배지 및 정렬에 쓰는 라벨 — "배송그룹 A" 대신 "망월동 · 1구역". */
-  const groupLabelById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const g of groups) {
-      const region = groupRegionLabel(g);
-      const zone = zoneLabelByGroupId.get(g.id);
-      map.set(g.id, zone ? `${region} · ${zone}` : region);
-    }
-    return map;
-  }, [groups, zoneLabelByGroupId]);
-
-  const selectedRegionEntry = selectedRegionKey ? (regionGroups.get(selectedRegionKey) ?? null) : null;
-  const regionGroupIds = useMemo(
-    () => new Set((selectedRegionEntry?.groups ?? []).map((g) => g.id)),
-    [selectedRegionEntry]
-  );
-
-  const topTierFilteredOrders = useMemo(() => {
-    if (groupFilter === GROUP_FILTER_ALL) return orders;
-    if (groupFilter === GROUP_FILTER_HAS_GROUP) return orders.filter((o) => !!o.delivery_group_id);
-    return orders.filter((o) => !o.delivery_group_id);
-  }, [orders, groupFilter]);
-
-  const regionFilteredOrders = useMemo(() => {
-    if (!selectedRegionKey) return topTierFilteredOrders;
-    return topTierFilteredOrders.filter((o) => !!o.delivery_group_id && regionGroupIds.has(o.delivery_group_id));
-  }, [topTierFilteredOrders, selectedRegionKey, regionGroupIds]);
-
-  const zoneFilteredOrders = useMemo(() => {
-    if (!selectedZoneGroupId) return regionFilteredOrders;
-    return regionFilteredOrders.filter((o) => o.delivery_group_id === selectedZoneGroupId);
-  }, [regionFilteredOrders, selectedZoneGroupId]);
-
-  // P14-B 보완(CPO 반려 후 재작업): "건물명이 있다"와 "아파트다"는 다른
-  // 개념이다 — 오피스텔/상가/복합빌딩도 건물명을 갖는다(실제 데이터에
-  // "트리피움오피스텔", "고덕복합빌딩" 확인됨). isApartmentName()으로 건물명
-  // 문자열에 "아파트"/"APT"가 명시된 경우만 아파트로 판정하고, 판별 불가능한
-  // 경우(단지명은 있지만 "아파트"라는 단어가 없는 경우 포함) 전부 기타로
-  // 분류한다 — 억지로 아파트로 넣지 않는다.
-  function isApartmentOrder(order: OrderShipmentBoardRow): boolean {
-    const name = extractComplexName(order.address_snapshot);
-    return !!name && isApartmentName(name);
-  }
-
-  const targetCounts = useMemo(() => {
-    let apartment = 0;
-    for (const o of zoneFilteredOrders) {
-      if (isApartmentOrder(o)) apartment++;
-    }
-    return { all: zoneFilteredOrders.length, apartment, other: zoneFilteredOrders.length - apartment };
-  }, [zoneFilteredOrders]);
-
-  const targetFilteredOrders = useMemo(() => {
-    if (selectedTarget === "apartment") return zoneFilteredOrders.filter((o) => isApartmentOrder(o));
-    if (selectedTarget === "other") return zoneFilteredOrders.filter((o) => !isApartmentOrder(o));
-    return zoneFilteredOrders;
-  }, [zoneFilteredOrders, selectedTarget]);
-
-  // 단지 목록도 "아파트로 판정된" 건물명만 후보로 삼는다 — 기타로 분류된
-  // 오피스텔/상가 등의 건물명이 아파트 탭의 단지 목록에 섞이지 않게 한다.
-  const complexOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const o of zoneFilteredOrders) {
-      const name = extractComplexName(o.address_snapshot);
-      if (name && isApartmentName(name)) counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"));
-  }, [zoneFilteredOrders]);
 
   const groupFilteredOrders = useMemo(() => {
-    if (selectedTarget === "apartment" && selectedComplex) {
-      return targetFilteredOrders.filter((o) => extractComplexName(o.address_snapshot) === selectedComplex);
-    }
-    return targetFilteredOrders;
-  }, [targetFilteredOrders, selectedTarget, selectedComplex]);
+    if (!activeGroupId) return orders;
+    if (activeGroupId === UNGROUPED_SENTINEL) return orders.filter((o) => !o.delivery_group_id);
+    return orders.filter((o) => o.delivery_group_id === activeGroupId);
+  }, [orders, activeGroupId]);
 
-  // P14-A: 두 가지를 동시에 걸러내야 한다 — (1) 직접수령 등으로 처리된 주문이
-  // revalidate 후 orders에서 통째로 사라지는 경우(P7), (2) 필터(지역/구역/
-  // 대상/단지)로 화면에서 숨겨졌을 뿐 orders에는 여전히 존재하는 경우(P14-A,
-  // "선택 2건인데 101건 적용" 버그의 원인 — 이전에는 orders 전체를 기준으로
-  // 걸러서 필터가 걸러내는 대상에서 빠졌다). 따라서 기준을 orders가 아니라
-  // "지금 화면에 보이는 집합"인 groupFilteredOrders(모든 단계 필터 적용 후
-  // 최종 결과)로 삼는다 — 정렬 순서는 멤버십 판정과 무관하므로 sortedOrders
-  // 대신 이 값으로 충분하다.
+  // §7/§13: 그룹 대표 건물명 — 그룹 자체가 아니라 그 그룹에 실제로 속한
+  // 배송건들의 address_snapshot에서 다수결로 계산한다(delivery-group.ts,
+  // 기존 P14-B 판정 재사용). 카드/select 어디서든 동일한 라벨을 쓰도록
+  // 여기 한 번만 계산해서 아래로 내려보낸다.
+  const groupLabels = useMemo(() => {
+    if (groups.length === 0) return new Map<string, GroupBuildingLabel>();
+    const memberAddresses = new Map<string, (string | null)[]>();
+    for (const o of orders) {
+      if (!o.delivery_group_id) continue;
+      const list = memberAddresses.get(o.delivery_group_id) ?? [];
+      list.push(o.address_snapshot);
+      memberAddresses.set(o.delivery_group_id, list);
+    }
+    return buildGroupBuildingLabels(groups, memberAddresses);
+  }, [groups, orders]);
+
+  const countsByGroupId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const o of orders) {
+      if (o.delivery_group_id) map.set(o.delivery_group_id, (map.get(o.delivery_group_id) ?? 0) + 1);
+    }
+    return map;
+  }, [orders]);
+  const ungroupedCount = useMemo(() => orders.filter((o) => !o.delivery_group_id).length, [orders]);
+
+  // P14-A 원칙 유지: "화면에 지금 보이는 집합"(groupFilteredOrders) 기준으로
+  // 선택을 좁힌다 — 필터/그룹 변경으로 화면에서 사라진 항목은 선택에서도
+  // 빠져야 "선택 2건인데 101건 적용" 버그(P12)가 재발하지 않는다.
   const visibleSelected = useMemo(() => {
     const currentIds = new Set(groupFilteredOrders.map((o) => o.rowKey));
     return new Set([...selected].filter((id) => currentIds.has(id)));
   }, [selected, groupFilteredOrders]);
 
-  // S1-1 Phase 5: 선택 상태(visibleSelected)는 이제 배송건(shipmentId)을
-  // 담고 있다 — 기사 후보 지역조회는 여전히 "주문"의 주소를 봐야 하므로
-  // (배송건은 주소를 따로 갖지 않는다), 선택된 배송건들이 속한 실제
-  // 주문 id로 되돌려서 넘긴다.
   const orderById = useMemo(() => new Map(orders.map((o) => [o.rowKey, o.id])), [orders]);
-
-  // P0(기사관리 3건) 3번: 선택된 주문들의 배송지를 담당하는 기사 후보를
-  // 담당 기사 선택 드롭다운을 열 때만 조회한다(선택이 바뀔 때마다 매번
-  // 서버를 부르지 않고, 실제로 드롭다운을 여는 시점에만 배치 조회).
-  // 자동배정에는 쓰지 않고, 정렬 + "추천" 라벨 힌트로만 사용한다.
-  const [candidateDriverIds, setCandidateDriverIds] = useState<Set<string>>(new Set());
-  const [, startCandidateLookup] = useTransition();
-
-  function handleDriverSelectOpenChange(nextOpen: boolean) {
-    if (!nextOpen || visibleSelected.size === 0) return;
-    const orderIds = Array.from(new Set(Array.from(visibleSelected).map((shipmentId) => orderById.get(shipmentId)).filter((id): id is string => !!id)));
-    startCandidateLookup(async () => {
-      const ids = await listCandidateDriverIdsForOrdersAction(orderIds);
-      setCandidateDriverIds(new Set(ids));
-    });
-  }
-
-  const sortedDriversForAssign = useMemo(() => {
-    if (candidateDriverIds.size === 0) return drivers;
-    const candidates = drivers.filter((d) => candidateDriverIds.has(d.id));
-    const rest = drivers.filter((d) => !candidateDriverIds.has(d.id));
-    return [...candidates, ...rest];
-  }, [drivers, candidateDriverIds]);
-
-  const sortedOrders = useMemo(() => {
-    const list = [...groupFilteredOrders];
-    switch (sortField) {
-      case "order_number":
-        return list.sort((a, b) => a.internal_order_number.localeCompare(b.internal_order_number, "ko"));
-      case "recipient_name":
-        return list.sort((a, b) => a.recipient_name.localeCompare(b.recipient_name, "ko"));
-      case "driver_name":
-        return list.sort((a, b) =>
-          (a.driver_id ? driverNames[a.driver_id] : "").localeCompare(b.driver_id ? driverNames[b.driver_id] : "", "ko")
-        );
-      case "delivery_status":
-        return list.sort((a, b) => a.delivery_status.localeCompare(b.delivery_status, "ko"));
-      case "address":
-        return list.sort((a, b) => (a.address_snapshot ?? "").localeCompare(b.address_snapshot ?? "", "ko"));
-      case "delivery_group":
-      default:
-        // 미배송그룹(null)은 뒤로 — group_no가 없는 주문을 정렬 맨 뒤에 모은다.
-        return list.sort((a, b) => {
-          const ga = a.delivery_group_id ? (groupLabelById.get(a.delivery_group_id) ?? "") : null;
-          const gb = b.delivery_group_id ? (groupLabelById.get(b.delivery_group_id) ?? "") : null;
-          if (ga === null && gb === null) return 0;
-          if (ga === null) return 1;
-          if (gb === null) return -1;
-          return ga.localeCompare(gb, "ko");
-        });
-    }
-  }, [groupFilteredOrders, sortField, driverNames, groupLabelById]);
-
-  if (orders.length === 0) {
-    return <p className="py-12 text-center text-sm text-muted-foreground">해당 날짜에 배송 예정인 주문이 없습니다.</p>;
-  }
-
-  // P14-B 원칙 8: 상위 필터가 바뀌면 하위 필터는 그 지역/구역에서 더 이상
-  // 유효하지 않을 수 있으므로 안전하게 초기화한다.
-  function handleTopTierChange(next: string) {
-    setGroupFilter(next);
-    setSelectedRegionKey(null);
-    setSelectedZoneGroupId(null);
-    setSelectedTarget("all");
-    setSelectedComplex(null);
-  }
-
-  function handleRegionChange(next: string) {
-    setSelectedRegionKey(next === REGION_ALL ? null : next);
-    setSelectedZoneGroupId(null);
-    setSelectedTarget("all");
-    setSelectedComplex(null);
-  }
-
-  function handleZoneChange(next: string) {
-    setSelectedZoneGroupId(next === ZONE_ALL ? null : next);
-    setSelectedTarget("all");
-    setSelectedComplex(null);
-  }
-
-  function handleTargetChange(next: DeliveryTarget) {
-    setSelectedTarget(next);
-    setSelectedComplex(null);
-  }
 
   function toggle(id: string, checked: boolean) {
     setSelected((prev) => {
@@ -347,20 +131,21 @@ export function DeliveryBoard({
     });
   }
 
-  // P14-A: "전체 선택"은 orders(그날 전체)가 아니라 sortedOrders(현재 그룹
-  // 필터로 화면에 보이는 집합)를 기준으로 삼는다 — 이전에는 화면에 2건만
-  // 보여도 실제로는 101건 전체가 선택되어 "선택한 101건 적용"으로 잘못
-  // 배정될 수 있었다.
-  function toggleAll(checked: boolean) {
-    setSelected(checked ? new Set(sortedOrders.map((o) => o.rowKey)) : new Set());
+  function handleBulkDriverSelectOpenChange(open: boolean) {
+    if (!open || visibleSelected.size === 0) return;
+    const orderIds = Array.from(new Set(Array.from(visibleSelected).map((id) => orderById.get(id)).filter((v): v is string => !!v)));
+    startCandidateLookup(async () => {
+      const ids = await listCandidateDriverIdsForOrdersAction(orderIds);
+      setCandidateDriverIds(new Set(ids));
+    });
   }
 
-  function quickSelectForAssign(id: string) {
-    setSelected(new Set([id]));
-    toolbarRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
+  const sortedDriversForBulk = useMemo(() => {
+    if (candidateDriverIds.size === 0) return drivers;
+    return [...drivers.filter((d) => candidateDriverIds.has(d.id)), ...drivers.filter((d) => !candidateDriverIds.has(d.id))];
+  }, [drivers, candidateDriverIds]);
 
-  function handleAssign() {
+  function handleBulkApply() {
     if (fulfillmentChoice === "direct_pickup") {
       startTransition(async () => {
         const result = await setFulfillmentMethodAction(Array.from(visibleSelected), "direct_pickup");
@@ -373,12 +158,12 @@ export function DeliveryBoard({
       });
       return;
     }
-    if (!driverId) {
+    if (!bulkDriverId) {
       toast.error("배정할 기사를 선택해주세요.");
       return;
     }
     startTransition(async () => {
-      const result = await assignDriverAction(Array.from(visibleSelected), driverId);
+      const result = await assignDriverAction(Array.from(visibleSelected), bulkDriverId);
       if (result.ok) {
         toast.success(`${visibleSelected.size}건을 배정했습니다.`);
         setSelected(new Set());
@@ -388,611 +173,132 @@ export function DeliveryBoard({
     });
   }
 
-  function handleUnassign(shipmentId: string) {
-    setPendingOrderId(shipmentId);
-    startTransition(async () => {
-      const result = await unassignDriverAction([shipmentId]);
-      if (result.ok) {
-        toast.success("배정을 해제했습니다.");
-      } else {
-        toast.error(result.error ?? "배정 해제 중 오류가 발생했습니다.");
-      }
-      setPendingOrderId(null);
-    });
-  }
-
-  /**
-   * F-P5(11번): 상태 표시를 클릭하면 뜨는 메뉴에서 배송대기/배송중/완료
-   * 어디로든 바로 전환한다(되돌리기 포함). 배송중으로 가는데 기사도
-   * 없고 직접수령도 아니면 서버가 거부 — 에러 메시지를 그대로 보여준다.
-   */
   function handleSetStatus(shipmentId: string, status: DeliveryStatus) {
-    setPendingOrderId(shipmentId);
+    setPendingRowId(shipmentId);
     startTransition(async () => {
       const result = await setDeliveryStatusAction([shipmentId], status as "배송대기" | "배송중" | "완료");
-      if (result.ok) {
-        toast.success(`상태를 ${status}(으)로 변경했습니다.`);
-      } else {
-        toast.error(result.error ?? "상태 변경 중 오류가 발생했습니다.");
-      }
-      setPendingOrderId(null);
+      if (result.ok) toast.success(`상태를 ${status}(으)로 변경했습니다.`);
+      else toast.error(result.error ?? "상태 변경 중 오류가 발생했습니다.");
+      setPendingRowId(null);
     });
   }
 
-  /** 직접수령 해제 — fulfillment_method를 delivery로 되돌린다(다시 미배정 상태가 됨). */
-  function handleClearDirectPickup(shipmentId: string) {
-    setPendingOrderId(shipmentId);
+  function handleAssign(shipmentId: string, targetDriverId: string) {
+    setPendingRowId(shipmentId);
     startTransition(async () => {
-      const result = await setFulfillmentMethodAction([shipmentId], "delivery");
-      if (!result.ok) toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
-      setPendingOrderId(null);
+      const result = await assignDriverAction([shipmentId], targetDriverId);
+      if (result.ok) toast.success("기사를 배정했습니다.");
+      else toast.error(result.error ?? "기사 배정 중 오류가 발생했습니다.");
+      setPendingRowId(null);
     });
+  }
+
+  function handleUnassign(shipmentId: string) {
+    setPendingRowId(shipmentId);
+    startTransition(async () => {
+      const result = await unassignDriverAction([shipmentId]);
+      if (result.ok) toast.success("배정을 해제했습니다.");
+      else toast.error(result.error ?? "배정 해제 중 오류가 발생했습니다.");
+      setPendingRowId(null);
+    });
+  }
+
+  function handleSetDirectPickup(shipmentId: string) {
+    setPendingRowId(shipmentId);
+    startTransition(async () => {
+      const result = await setFulfillmentMethodAction([shipmentId], "direct_pickup");
+      if (result.ok) toast.success("직접수령으로 설정하고 배송완료 처리했습니다.");
+      else toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
+      setPendingRowId(null);
+    });
+  }
+
+  if (orders.length === 0) {
+    return <p className="py-12 text-center text-sm text-muted-foreground">해당 조건의 배송건이 없습니다.</p>;
+  }
+
+  function renderRow(order: OrderShipmentBoardRow) {
+    return (
+      <DeliveryOrderRow
+        key={order.rowKey}
+        order={order}
+        drivers={drivers}
+        driverNames={driverNames}
+        driverCounts={driverCounts}
+        groupLabel={order.delivery_group_id ? (groupLabels.get(order.delivery_group_id)?.full ?? null) : null}
+        selected={selected.has(order.rowKey)}
+        onToggleSelect={(checked) => toggle(order.rowKey, checked)}
+        isPending={isPending}
+        showSpinner={isPending && pendingRowId === order.rowKey}
+        onSetStatus={(next) => handleSetStatus(order.rowKey, next)}
+        onAssign={(id) => handleAssign(order.rowKey, id)}
+        onSetDirectPickup={() => handleSetDirectPickup(order.rowKey)}
+        onUnassign={() => handleUnassign(order.rowKey)}
+        itemSummary={itemSummaries[order.rowKey]}
+        bagManagementEnabled={bagManagementEnabled}
+      />
+    );
   }
 
   return (
     <div className="space-y-4">
-      <div ref={toolbarRef} className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* P6 5번: 기사 선택 목록에 "직접수령"을 항목으로 끼워넣지 않고,
-              배송방식(배송기사/직접수령)을 먼저 고르게 분리한다 — 직접수령을
-              고르면 기사 선택 자체가 필요 없다는 걸 구조로 드러낸다. */}
-          <div className="inline-flex items-center rounded-md border border-border p-0.5">
-            <button
-              type="button"
-              onClick={() => setFulfillmentChoice("delivery")}
-              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                fulfillmentChoice === "delivery" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              배송기사
-            </button>
-            <button
-              type="button"
-              onClick={() => setFulfillmentChoice("direct_pickup")}
-              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                fulfillmentChoice === "direct_pickup" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              직접수령
-            </button>
-          </div>
-          <Select
-            value={driverId}
-            onValueChange={setDriverId}
-            onOpenChange={handleDriverSelectOpenChange}
-            disabled={fulfillmentChoice === "direct_pickup"}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="담당 기사 선택" />
-            </SelectTrigger>
-            <SelectContent>
-              {sortedDriversForAssign.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                  {candidateDriverIds.has(d.id) ? (
-                    <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px]">
-                      추천
-                    </Badge>
-                  ) : null}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button size="sm" disabled={visibleSelected.size === 0 || isPending} onClick={handleAssign}>
-            {isPending ? "처리하는 중..." : `선택한 ${visibleSelected.size}건 적용`}
-          </Button>
-        </div>
-        <Select value={sortField} onValueChange={(v) => setSortField(v as DeliverySortField)}>
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SORT_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* P14-B: "배송그룹 A/B/C"는 지역과 무관한 임의 명칭이라 배송담당자가
-          의미를 알 수 없다는 CEO 피드백에 따라, "배송지역 → 배송구역 →
-          배송대상(아파트/기타) → 단지" 4단계 계층 필터로 바꾼다. 1차 필터
-          (전체/배송그룹 있음/미배송그룹)는 P13 그대로 유지하고, "배송그룹
-          있음"을 선택했을 때만 지역부터 순서대로 하위 필터가 나타난다.
-          거리기반 클러스터링(100m Haversine+Union-Find) 자체는 전혀
-          건드리지 않는다 — 이미 저장된 representative_sido/sigungu/
-          eupmyeondong을 라벨로만 쓰고, 단지명은 저장하지 않고 address_snapshot에서
-          그때그때 파싱한다. */}
-      {groups.length > 0 ? (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">배송그룹 필터</p>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => handleTopTierChange(GROUP_FILTER_ALL)}
-              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                groupFilter === GROUP_FILTER_ALL ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              전체
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTopTierChange(GROUP_FILTER_HAS_GROUP)}
-              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                isHasGroupTabActive ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              배송그룹 있음
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTopTierChange(GROUP_FILTER_UNGROUPED)}
-              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                groupFilter === GROUP_FILTER_UNGROUPED
-                  ? "border-primary bg-primary-soft text-primary"
-                  : "border-border text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              미배송그룹
-            </button>
-          </div>
-          {isHasGroupTabActive ? (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-muted-foreground">배송지역</span>
-                <Select value={selectedRegionKey ?? REGION_ALL} onValueChange={handleRegionChange}>
-                  <SelectTrigger className="w-44">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={REGION_ALL}>전체 지역</SelectItem>
-                    {regionOptions.map((r) => (
-                      <SelectItem key={r.key} value={r.key}>
-                        {r.label} · {r.orderCount}건
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {selectedRegionEntry ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">배송구역</span>
-                  <Select value={selectedZoneGroupId ?? ZONE_ALL} onValueChange={handleZoneChange}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ZONE_ALL}>전체 · {selectedRegionEntry.orderCount}건</SelectItem>
-                      {selectedRegionEntry.groups.map((g, idx) => (
-                        <SelectItem key={g.id} value={g.id}>
-                          {idx + 1}구역 · {g.order_count}건
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-              {selectedRegionEntry ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">배송대상</span>
-                  <Select value={selectedTarget} onValueChange={(v) => handleTargetChange(v as DeliveryTarget)}>
-                    <SelectTrigger className="w-36">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">전체 · {targetCounts.all}건</SelectItem>
-                      <SelectItem value="apartment">아파트 · {targetCounts.apartment}건</SelectItem>
-                      <SelectItem value="other">기타 · {targetCounts.other}건</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-              {selectedRegionEntry && selectedTarget === "apartment" && complexOptions.length > 0 ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">단지</span>
-                  <Select
-                    value={selectedComplex ?? COMPLEX_ALL}
-                    onValueChange={(v) => setSelectedComplex(v === COMPLEX_ALL ? null : v)}
-                  >
-                    <SelectTrigger className="w-52">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={COMPLEX_ALL}>전체 단지 · {targetCounts.apartment}건</SelectItem>
-                      {complexOptions.map(([name, count]) => (
-                        <SelectItem key={name} value={name}>
-                          {name} · {count}건
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Desktop/Tablet: 테이블 */}
-      <div className="hidden overflow-x-auto md:block">
-        <Table>
-          {/* P8 1-1번: "사장님이 가장 먼저 봐야 하는 정보" 순서 — 그룹→상태→
-              배송기사→배송지→고객→상품/주문. 정보를 지우지 않고 순서만
-              바꾼다 — 주문번호/배송일은 식별용 보조 정보로 뒤에 남긴다. */}
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={visibleSelected.size === sortedOrders.length && sortedOrders.length > 0}
-                  onCheckedChange={(checked) => toggleAll(checked === true)}
-                />
-              </TableHead>
-              {showGroupColumn ? <TableHead>배송그룹</TableHead> : null}
-              <TableHead>상태</TableHead>
-              <TableHead>담당기사</TableHead>
-              <TableHead className="w-80">배송지</TableHead>
-              <TableHead>고객</TableHead>
-              <TableHead className="w-56">상품/주문 요약</TableHead>
-              <TableHead>주문번호</TableHead>
-              <TableHead>배송일</TableHead>
-              {bagManagementEnabled ? <TableHead>가방 상태</TableHead> : null}
-              <TableHead className="hidden lg:table-cell">연락처</TableHead>
-              <TableHead className="hidden lg:table-cell text-right">금액</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sortedOrders.map((order) => (
-              <TableRow key={order.rowKey} className="hover:bg-muted/40">
-                <TableCell>
-                  <Checkbox
-                    checked={selected.has(order.rowKey)}
-                    onCheckedChange={(checked) => toggle(order.rowKey, checked === true)}
-                  />
-                </TableCell>
-                {showGroupColumn ? (
-                  <TableCell>
-                    {/* delivery_group_id가 있는데 groupLabelById에 없는 경우는
-                        "그룹 없음"이 아니라 "그룹은 있는데 방금 재계산되어
-                        아직 못 찾은" 상태다 — "미배송그룹"이라고 하면 실제로는
-                        그룹이 있는 주문을 없다고 잘못 알리게 된다. */}
-                    {order.delivery_group_id ? (
-                      <Badge variant="secondary">{groupLabelById.get(order.delivery_group_id) ?? "그룹 정보 확인 중"}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">미배송그룹</span>
-                    )}
-                  </TableCell>
-                ) : null}
-                <TableCell>
-                  <DeliveryStatusControl
-                    status={order.delivery_status}
-                    canProgress={!!order.driver_id || order.fulfillment_method === "direct_pickup"}
-                    disabled={isPending}
-                    showSpinner={isPending && pendingOrderId === order.rowKey}
-                    onChange={(next) => handleSetStatus(order.rowKey, next)}
-                  />
-                </TableCell>
-                <TableCell>
-                  <DriverCell
-                    name={order.driver_id ? driverNames[order.driver_id] : undefined}
-                    fulfillmentMethod={order.fulfillment_method}
-                    locked={order.delivery_status === "완료"}
-                    disabled={isPending}
-                    onAssign={() => quickSelectForAssign(order.rowKey)}
-                    onUnassign={() => handleUnassign(order.rowKey)}
-                    onClearDirectPickup={() => handleClearDirectPickup(order.rowKey)}
-                  />
-                </TableCell>
-                <TableCell className="w-80 align-top">
-                  <DeliveryAddressBlock order={order} />
-                </TableCell>
-                <TableCell className="font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</TableCell>
-                <TableCell className="w-56 max-w-56 align-top whitespace-normal">
-                  <ItemSummaryBlock summary={itemSummaries[order.rowKey]} />
-                </TableCell>
-                <TableCell className="font-medium">
-                  <Link href={`/orders/${order.id}`} className="mr-1.5 hover:underline">
-                    {order.internal_order_number}
-                  </Link>
-                  <Badge variant="outline" className="text-muted-foreground">
-                    {ORDER_SOURCE_LABELS[order.order_source]}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <DeliveryDateLabel isoDate={order.delivery_date} />
-                </TableCell>
-                {bagManagementEnabled ? (
-                  <TableCell>
-                    {order.bag_number ? (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <span>{order.bag_number}</span>
-                        <Badge variant={order.bag_returned ? "secondary" : "outline"}>
-                          {order.bag_returned ? "회수완료" : "미회수"}
-                        </Badge>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                ) : null}
-                <TableCell className="hidden lg:table-cell text-muted-foreground">{order.phone_snapshot ?? "-"}</TableCell>
-                <TableCell className="hidden lg:table-cell text-right text-muted-foreground">
-                  {formatCurrency(Number(order.total_amount))}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Mobile: 카드형 Row */}
-      <div className="space-y-3 md:hidden">
-        {sortedOrders.map((order) => (
-          <div key={order.rowKey} className="rounded-xl border border-border bg-surface p-4">
-            <div className="flex items-start gap-3">
-              <Checkbox
-                className="mt-1"
-                checked={selected.has(order.rowKey)}
-                onCheckedChange={(checked) => toggle(order.rowKey, checked === true)}
-              />
-              {/* P8 1-1번: 모바일 카드도 데스크톱과 같은 우선순위 — 그룹/상태를
-                  맨 위, 배송기사를 바로 아래, 주문번호/배송일은 카드 하단의
-                  보조 정보로 내린다. */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  {showGroupColumn ? (
-                    <Badge variant="secondary">
-                      {order.delivery_group_id ? (groupLabelById.get(order.delivery_group_id) ?? "그룹 정보 확인 중") : "미배송그룹"}
-                    </Badge>
-                  ) : (
-                    <span />
-                  )}
-                  <DeliveryStatusControl
-                    status={order.delivery_status}
-                    canProgress={!!order.driver_id || order.fulfillment_method === "direct_pickup"}
-                    disabled={isPending}
-                    showSpinner={isPending && pendingOrderId === order.rowKey}
-                    onChange={(next) => handleSetStatus(order.rowKey, next)}
-                  />
-                </div>
-                <div className="mt-2">
-                  <DriverCell
-                    name={order.driver_id ? driverNames[order.driver_id] : undefined}
-                    fulfillmentMethod={order.fulfillment_method}
-                    locked={order.delivery_status === "완료"}
-                    disabled={isPending}
-                    onAssign={() => quickSelectForAssign(order.rowKey)}
-                    onUnassign={() => handleUnassign(order.rowKey)}
-                    onClearDirectPickup={() => handleClearDirectPickup(order.rowKey)}
-                  />
-                </div>
-                <div className="mt-2">
-                  <DeliveryAddressBlock order={order} />
-                </div>
-                <p className="mt-2 font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</p>
-                <div className="mt-2">
-                  <ItemSummaryBlock summary={itemSummaries[order.rowKey]} />
-                </div>
-                {bagManagementEnabled && order.bag_number ? (
-                  <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>가방 {order.bag_number}</span>
-                    <Badge variant={order.bag_returned ? "secondary" : "outline"}>
-                      {order.bag_returned ? "회수완료" : "미회수"}
-                    </Badge>
-                  </div>
-                ) : null}
-                <div className="mt-3 flex items-center gap-2 border-t border-border pt-2 text-xs text-muted-foreground">
-                  <Link href={`/orders/${order.id}`} className="flex items-center gap-1.5 hover:underline">
-                    {order.internal_order_number}
-                    <Badge variant="outline" className="text-muted-foreground">
-                      {ORDER_SOURCE_LABELS[order.order_source]}
-                    </Badge>
-                  </Link>
-                  <DeliveryDateLabel isoDate={order.delivery_date} />
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * F-P4UX: 상품/주문 요약 — 배송지 컬럼과 겹쳐 보이던 문제의 절반은 이 컬럼도
- * max-w만 있고 whitespace-normal이 없어 사실상 무시되고 있었기 때문이다.
- * 상품명(1순위, 1줄 말줄임)과 수량(2순위, 항상 보임)을 시각적으로 분리해
- * 우선순위를 명확히 한다 — productSummary 자체는 기존 buildOrderItemSummaries
- * 로직(상품명 우선, 여러 건이면 "외 N건") 그대로 재사용, 표시만 바꾼다.
- */
-function ItemSummaryBlock({ summary }: { summary: OrderItemSummary | undefined }) {
-  if (!summary) return <span className="text-sm text-muted-foreground">-</span>;
-  return (
-    <div className="w-full space-y-0.5 text-sm md:w-56 md:max-w-56">
-      <p className="line-clamp-1 break-words text-text-strong" title={summary.productSummary}>
-        {summary.productSummary}
-      </p>
-      <p className="text-xs text-muted-foreground">총 {summary.totalQuantity}개</p>
-    </div>
-  );
-}
-
-/**
- * P5 7번: 리스트에서는 요약만 보여준다 — 행정구역(시/도 시/군/구 읍/면/동)
- * 한 줄 + 도로명 주소 한 줄(1줄 말줄임, "..." 처리). 전체 주소는 hover
- * title과 주문 상세 페이지에서 확인한다. 전화 버튼은 배송관리 리스트에서
- * 제공하지 않는다(작업지시서 7번) — 필요하면 주문 상세에서 확인.
- */
-function DeliveryAddressBlock({ order }: { order: OrderShipmentBoardRow }) {
-  const road = order.road_address_snapshot ?? order.address_snapshot;
-  const regionSummary = [order.sido, order.sigungu, order.eupmyeondong].filter(Boolean).join(" ");
-  const fullText = composeAddressCopyText(order);
-
-  function copyAddress() {
-    if (!fullText) return;
-    navigator.clipboard
-      .writeText(fullText)
-      .then(() => toast.success("주소를 복사했습니다."))
-      .catch(() => toast.error("주소 복사에 실패했습니다."));
-  }
-
-  return (
-    <div className="w-full space-y-1.5 text-sm md:w-80 md:max-w-80">
-      <div className="space-y-0.5 whitespace-normal" title={fullText || undefined}>
-        {regionSummary ? <p className="text-xs font-medium text-muted-foreground">{regionSummary}</p> : null}
-        <p className="line-clamp-2 break-words text-text-strong">{road ?? "-"}</p>
-      </div>
-      {order.delivery_memo ? (
-        <p className="flex items-start gap-1 whitespace-normal rounded-md bg-warning-soft px-1.5 py-1 text-xs text-warning">
-          <MessageSquare className="mt-0.5 size-3 shrink-0" />
-          <span className="line-clamp-2 break-words">{order.delivery_memo}</span>
-        </p>
-      ) : null}
-      <div className="flex items-center gap-1">
-        <Button type="button" size="icon" variant="ghost" className="size-6" onClick={copyAddress} aria-label="주소 복사">
-          <Copy className="size-3.5" />
-        </Button>
-        {fullText ? (
-          <Button asChild type="button" size="icon" variant="ghost" className="size-6" aria-label="지도에서 보기">
-            <a href={`https://map.kakao.com/link/search/${encodeURIComponent(fullText)}`} target="_blank" rel="noopener noreferrer">
-              <MapPin className="size-3.5" />
-            </a>
-          </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <DeliveryViewTabs value={viewMode} onChange={setViewMode} />
+        {activeGroupId ? (
+          <button type="button" onClick={() => setActiveGroupId(null)} className="text-xs text-muted-foreground hover:underline">
+            그룹 필터 해제
+          </button>
         ) : null}
       </div>
+
+      <BulkAssignBar
+        selectedCount={visibleSelected.size}
+        fulfillmentChoice={fulfillmentChoice}
+        onFulfillmentChoiceChange={setFulfillmentChoice}
+        driverId={bulkDriverId}
+        onDriverIdChange={setBulkDriverId}
+        onDriverSelectOpenChange={handleBulkDriverSelectOpenChange}
+        drivers={sortedDriversForBulk}
+        candidateDriverIds={candidateDriverIds}
+        isPending={isPending}
+        onApply={handleBulkApply}
+      />
+
+      {viewMode === "region" ? (
+        showGroupColumn ? (
+          <DeliveryGroupCards
+            groups={groups}
+            labelById={groupLabels}
+            countsByGroupId={countsByGroupId}
+            ungroupedCount={ungroupedCount}
+            activeGroupId={activeGroupId}
+            onSelectGroup={setActiveGroupId}
+          />
+        ) : (
+          <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            지역별 보기는 특정 배송일을 선택했을 때만 사용할 수 있습니다.
+          </p>
+        )
+      ) : null}
+
+      {viewMode === "driver" ? (
+        <DeliveryDriverView orders={groupFilteredOrders} drivers={drivers} renderRow={renderRow} />
+      ) : (
+        <div className="space-y-2">
+          {groupFilteredOrders.length > 1 ? (
+            <label className="flex items-center gap-2 pb-1 text-sm text-muted-foreground">
+              <Checkbox
+                checked={visibleSelected.size === groupFilteredOrders.length}
+                onCheckedChange={(checked) =>
+                  setSelected(checked === true ? new Set(groupFilteredOrders.map((o) => o.rowKey)) : new Set())
+                }
+              />
+              전체 선택({groupFilteredOrders.length}건)
+            </label>
+          ) : null}
+          {groupFilteredOrders.map((o) => renderRow(o))}
+        </div>
+      )}
     </div>
   );
-}
-
-const STATUS_MENU_OPTIONS: { value: "배송대기" | "배송중" | "완료"; label: string }[] = [
-  { value: "배송대기", label: "배송대기" },
-  { value: "배송중", label: "배송중" },
-  { value: "완료", label: "완료" },
-];
-
-/**
- * P5 10/11번: 상태를 "현재 상태 하나"로 통합해 보여주고, 클릭하면(우클릭 아님,
- * 모바일 고려) 배송대기/배송중/완료 사이를 바로 전환하는 메뉴를 연다 — 되돌리기
- * (완료→배송중 등)도 같은 메뉴에서 그대로 가능하다. 취소된 주문은 이 보드
- * 쿼리 자체에서 제외되지만, 방어적으로 취소 상태는 배지만(변경 불가) 보여준다.
- * P9 2번: 클릭한 뒤 서버에서 거부당해 토스트로만 알게 하지 않고, 애초에
- * 선택 불가능한 항목(기사 미배정 + 직접수령 아님 상태에서 배송중/완료)은
- * 메뉴에서 바로 disabled로 보여준다 — 서버 쪽 검증(orders.repository의
- * driver_id/direct_pickup 조건)과 동일한 규칙을 클라이언트에도 반영.
- */
-function DeliveryStatusControl({
-  status,
-  canProgress,
-  disabled,
-  showSpinner,
-  onChange,
-}: {
-  status: DeliveryStatus;
-  /** 기사 배정됨 또는 직접수령 — false면 배송중/완료로 진행 불가(배송대기로 되돌리기는 항상 가능). */
-  canProgress: boolean;
-  disabled: boolean;
-  showSpinner: boolean;
-  onChange: (next: "배송대기" | "배송중" | "완료") => void;
-}) {
-  if (status === "취소") {
-    return <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[status]}>{status}</Badge>;
-  }
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={disabled}>
-        <button type="button" className="inline-flex items-center gap-1 disabled:opacity-60" disabled={disabled}>
-          <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[status]} className="cursor-pointer">
-            {showSpinner ? <Loader2 className="size-3 animate-spin" /> : status}
-          </Badge>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {STATUS_MENU_OPTIONS.map((opt) => {
-          const blockedByAssignment = opt.value !== "배송대기" && !canProgress;
-          return (
-            <DropdownMenuItem
-              key={opt.value}
-              disabled={opt.value === status || blockedByAssignment}
-              onSelect={() => onChange(opt.value)}
-              className="gap-2"
-            >
-              {opt.value === status ? <Check className="size-3.5" /> : <span className="size-3.5" />}
-              {opt.label}
-              {blockedByAssignment ? <span className="ml-auto text-xs text-muted-foreground">기사 필요</span> : null}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-/**
- * P5 13번: 기사배정/미배정/직접수령은 서로 배타적인 세 상태다(driver_id와
- * fulfillment_method가 독립 컬럼이지만, direct_pickup으로 바꿀 때 driver_id를
- * 같이 비우는 repository 규칙 덕에 실제로는 겹치지 않는다). direct_pickup을
- * 최우선으로 체크해 항상 딱 하나의 상태만 보여준다.
- */
-function DriverCell({
-  name,
-  fulfillmentMethod,
-  locked,
-  disabled,
-  onAssign,
-  onUnassign,
-  onClearDirectPickup,
-}: {
-  name: string | undefined;
-  fulfillmentMethod: FulfillmentMethod;
-  locked: boolean;
-  disabled: boolean;
-  onAssign: () => void;
-  onUnassign: () => void;
-  onClearDirectPickup: () => void;
-}) {
-  if (fulfillmentMethod === "direct_pickup") {
-    if (locked) return <span className="text-info">직접수령</span>;
-    return (
-      <div className="flex items-center gap-2">
-        <span className="font-medium text-info">직접수령</span>
-        <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" disabled={disabled} onClick={onClearDirectPickup}>
-          해제
-        </Button>
-      </div>
-    );
-  }
-  if (name) {
-    if (locked) return <span className="text-text-strong">{name}</span>;
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-text-strong">{name}</span>
-        <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" disabled={disabled} onClick={onAssign}>
-          변경
-        </Button>
-        <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" disabled={disabled} onClick={onUnassign}>
-          해제
-        </Button>
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-center gap-2">
-      <span className="font-medium text-warning">배정 필요</span>
-      <Button size="sm" variant="outline" disabled={disabled} onClick={onAssign}>
-        배정
-      </Button>
-    </div>
-  );
-}
-
-function DeliveryDateLabel({ isoDate }: { isoDate: string | null }) {
-  if (!isoDate) return <span className="text-muted-foreground">미지정</span>;
-  // Phase 7 STEP2: "오늘" 배지는 KST 달력일 기준 — UTC 날짜와 비교하면 KST
-  // 00:00~09:00 사이 이 배지가 하루 어긋난다(kst-date.ts와 동일 버그 클래스).
-  const isToday = isoDate.slice(0, 10) === kstTodayIso();
-  if (isToday) return <span className="font-medium text-primary">오늘</span>;
-  return <span className="text-muted-foreground">{formatDate(isoDate)}</span>;
 }

@@ -3,13 +3,18 @@ import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * P6: 한 줄(전체/배정필요/배송중/완료)로 되돌린다 — P5에서 배송상태/기사배정을
- * 두 줄로 분리했더니 오히려 더 혼란스럽다는 CPO 피드백. 대신 "배정필요"의
- * 정의를 겹치지 않게 고친다: 배송중/완료로 이미 넘어간 주문, 그리고 직접수령
- * (기사가 애초에 필요 없음)은 배정필요에서 제외한다 — 정확한 정의는
- * delivery/page.tsx의 needsDriverCount 계산 참고.
+ * P6: 한 줄(전체/배정필요/배정완료/배송중/완료)로 되돌린다 — P5에서 배송상태/
+ * 기사배정을 두 줄로 분리했더니 오히려 더 혼란스럽다는 CPO 피드백.
+ *
+ * S2-A §4: "배정완료"를 신설해 4개 버킷(배정필요/배정완료/배송중/완료)이
+ * 서로 완전히 배타적이도록 정의를 확정했다 — 배정필요는 "배송대기 + 기사
+ * 없음 + 직접수령 아님", 배정완료는 "배송대기 + (기사있음 OR 직접수령)".
+ * 기존에는 "배송대기인데 기사가 이미 배정된" 경우가 세 버킷 어디에도 속하지
+ * 않는 예외로 남아 합계가 전체보다 작을 수 있었는데(정확한 정의는 이전
+ * delivery/page.tsx의 needsDriverCount 계산 참고), 이제 그 빈틈을 배정완료가
+ * 정확히 메워 네 버킷의 합이 항상 전체와 같다.
  */
-export type DeliveryFilter = "all" | "unassigned" | "배송중" | "완료";
+export type DeliveryFilter = "all" | "unassigned" | "assigned" | "배송중" | "완료";
 
 export interface DeliveryFlowCount {
   filter: DeliveryFilter;

@@ -54,3 +54,56 @@ export function extractComplexName(addressSnapshot: string | null | undefined): 
 export function isApartmentName(complexName: string): boolean {
   return /아파트|APT/i.test(complexName);
 }
+
+export interface GroupBuildingLabel {
+  /** 카드/select 안에 쓰는 짧은 부분 — 건물명 확정 시 "○○아파트", 아니면 "N구역" fallback. */
+  suffix: string;
+  /** 지역 헤딩("망월동")과 합친 전체 라벨 — "망월동 · ○○아파트". */
+  full: string;
+}
+
+/**
+ * S2-A: 배송그룹 카드/필터에 쓰는 최종 표시 라벨 — "망월동 · ○○아파트" 또는
+ * (건물명이 확실하지 않으면) "망월동 · 1구역". 그룹 자체는 건물명을 저장하지
+ * 않으므로(100m 반경 클러스터일 뿐), 그 그룹에 실제로 속한 배송건들의
+ * address_snapshot에서 extractComplexName/isApartmentName으로 이미 뽑아낸
+ * 이름 중 가장 많이 겹치는 것을 그 그룹의 대표 건물명으로 쓴다 — 새로운
+ * 추정 로직이 아니라 기존 P14-B 판정을 그룹 구성원 전체에 적용해 다수결로
+ * 대표값 하나를 고르는 것뿐이다. 겹치는 아파트명이 하나도 없으면(기타 건물,
+ * 판별 불가 등) 억지로 만들지 않고 "지역 · N구역" fallback을 그대로 쓴다.
+ */
+export function buildGroupBuildingLabels(
+  groups: Pick<DeliveryGroup, "id" | "group_no" | "representative_sido" | "representative_sigungu" | "representative_eupmyeondong">[],
+  memberAddressesByGroupId: Map<string, (string | null)[]>
+): Map<string, GroupBuildingLabel> {
+  const byRegion = new Map<string, typeof groups>();
+  for (const g of groups) {
+    const key = regionKeyOf(g);
+    const list = byRegion.get(key) ?? [];
+    list.push(g);
+    byRegion.set(key, list);
+  }
+
+  const labelById = new Map<string, GroupBuildingLabel>();
+  for (const list of byRegion.values()) {
+    const sorted = [...list].sort((a, b) => a.group_no - b.group_no);
+    const region = groupRegionLabel(sorted[0]);
+    sorted.forEach((g, idx) => {
+      const addresses = memberAddressesByGroupId.get(g.id) ?? [];
+      const nameCounts = new Map<string, number>();
+      for (const addr of addresses) {
+        const name = extractComplexName(addr);
+        if (name && isApartmentName(name)) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+      }
+      const topName = [...nameCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      const suffix = topName ?? `${idx + 1}구역`;
+      labelById.set(g.id, { suffix, full: `${region} · ${suffix}` });
+    });
+  }
+  return labelById;
+}
+
+/** group.representative_sido/sigungu/eupmyeondong 조합을 지역 키로 삼는다 — buildGroupBuildingLabels 전용 헬퍼. */
+function regionKeyOf(g: Pick<DeliveryGroup, "representative_sido" | "representative_sigungu" | "representative_eupmyeondong">): string {
+  return `${g.representative_sido ?? ""}||${g.representative_sigungu ?? ""}||${g.representative_eupmyeondong ?? ""}`;
+}

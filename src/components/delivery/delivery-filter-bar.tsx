@@ -9,27 +9,41 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QuickDateRange, DELIVERY_DATE_QUICK_OPTIONS, type QuickDateFilterValue } from "@/components/common/quick-date-range";
 import { kstTodayIso } from "@/lib/utils/kst-date";
+import type { DeliveryFilter } from "@/components/delivery/delivery-status-flow";
 import type { Driver } from "@/types/domain";
 
 const DRIVER_ALL = "all";
+const GROUP_ALL = "all";
+
+const STATUS_OPTIONS: { value: DeliveryFilter; label: string }[] = [
+  { value: "all", label: "전체" },
+  { value: "unassigned", label: "배정 필요" },
+  { value: "assigned", label: "배정 완료" },
+  { value: "배송중", label: "배송중" },
+  { value: "완료", label: "완료" },
+];
 
 /**
- * Phase 4-B STEP8/9: Orders와 동일한 "필터 설정 → [조회] → 결과 갱신" 패턴.
- * 배송일 빠른 필터(전체/오늘/이번주/이번달/기간선택) + 담당기사 + 고객/주문
- * 검색. 상태(배정필요/배송중/완료) 필터는 기존 DeliveryStatusFlow 칩이 이미
- * 담당하므로 중복 UI를 만들지 않는다 — 취소 주문은 Phase 2 설계상 배송보드
- * 쿼리 자체에서 항상 제외되므로 이 필터에는 "취소" 옵션이 없다.
+ * S2-A §5/§6: 배송일/상태/배송그룹/기사/검색 5개 핵심 필터만 남긴다("정렬"
+ * 라벨/UI는 제거 — 기존 DeliveryBoard 내부 정렬 select도 이번 개편에서
+ * 함께 없앴다). 상태는 기존 DeliveryStatusFlow(칩)와 이 select가 동일한
+ * `filter` URL param을 공유한다 — OrderStatusChips/OrderFilterBar가 이미
+ * 쓰는 이중 진입점 패턴 그대로. 배송그룹도 마찬가지로 `group` param을
+ * DeliveryBoard의 그룹 카드와 공유한다(§6).
  */
 export function DeliveryFilterBar({
   dateFilter,
   dateFrom,
   dateTo,
   drivers,
+  groupOptions,
 }: {
   dateFilter: QuickDateFilterValue;
   dateFrom: string;
   dateTo: string;
   drivers: Driver[];
+  /** 단일 배송일 조회일 때만 값이 있음(그룹은 날짜 단위 개념) — 기간 조회에서는 빈 배열. */
+  groupOptions: { id: string; label: string; count: number }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -41,6 +55,8 @@ export function DeliveryFilterBar({
   const [to, setTo] = useState(dateTo);
   const [driverId, setDriverId] = useState(searchParams.get("driverId") ?? DRIVER_ALL);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [status, setStatus] = useState<DeliveryFilter>((searchParams.get("filter") as DeliveryFilter) ?? "all");
+  const [groupId, setGroupId] = useState(searchParams.get("group") ?? GROUP_ALL);
 
   function buildParams(): URLSearchParams {
     const params = new URLSearchParams();
@@ -51,8 +67,8 @@ export function DeliveryFilterBar({
     }
     if (driverId !== DRIVER_ALL) params.set("driverId", driverId);
     if (query.trim()) params.set("q", query.trim());
-    const statusFilter = searchParams.get("filter");
-    if (statusFilter) params.set("filter", statusFilter);
+    if (status !== "all") params.set("filter", status);
+    if (groupId !== GROUP_ALL) params.set("group", groupId);
     return params;
   }
 
@@ -67,6 +83,8 @@ export function DeliveryFilterBar({
     setTo(today);
     setDriverId(DRIVER_ALL);
     setQuery("");
+    setStatus("all");
+    setGroupId(GROUP_ALL);
     startTransition(() => router.push(pathname));
   }
 
@@ -83,6 +101,39 @@ export function DeliveryFilterBar({
           onCustomFromChange={setFrom}
           onCustomToChange={setTo}
         />
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">상태</Label>
+          <Select value={status} onValueChange={(v) => setStatus(v as DeliveryFilter)}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {groupOptions.length > 0 ? (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">배송그룹</Label>
+            <Select value={groupId} onValueChange={setGroupId}>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={GROUP_ALL}>전체</SelectItem>
+                {groupOptions.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.label} · {g.count}건
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">담당기사</Label>
           <Select value={driverId} onValueChange={setDriverId}>
@@ -101,7 +152,7 @@ export function DeliveryFilterBar({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="deliverySearch" className="text-xs text-muted-foreground">
-            고객 검색
+            검색
           </Label>
           <Input
             id="deliverySearch"
