@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { ordersRepository, type OrderSortField } from "@/lib/repositories/orders.repository";
 import { orderShipmentsRepository } from "@/lib/repositories/order-shipments.repository";
@@ -389,9 +390,29 @@ export async function createManualOrderAction(
       },
     ]);
 
+    // P0: 엑셀 임포트(import.service.ts)는 주문마다 order_shipments를 1건씩
+    // 만드는데, 수동 주문 생성 경로는 이 배송건을 만들지 않아 배송관리/배송일
+    // 필터가 걸린 주문관리(둘 다 order_shipments 기준으로 조회) 양쪽에서
+    // 수동 주문이 보이지 않는 결함이 있었다. 엑셀 경로와 동일한 최소 필드
+    // (id/order_id/tenant_id/owner_username/delivery_date)만 채우고 나머지
+    // 운영 필드(driver_id/delivery_status/fulfillment_method 등)는 컬럼
+    // 기본값에 맡긴다 — import.service.ts의 newShipmentInserts.push(...)와
+    // 완전히 동일한 패턴.
+    const shipmentId = randomUUID();
+    await orderShipmentsRepository.createMany([
+      {
+        id: shipmentId,
+        order_id: order.id,
+        tenant_id: tenantId,
+        owner_username: session.username,
+        delivery_date: deliveryDate,
+      },
+    ]);
+
     await ordersRepository.createItems([
       {
         order_id: order.id,
+        shipment_id: shipmentId,
         product_id: productId,
         product_name: productName,
         option_name: optionName,
