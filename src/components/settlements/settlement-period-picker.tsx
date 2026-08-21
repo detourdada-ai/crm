@@ -53,54 +53,56 @@ export function SettlementPeriodPicker({
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">정산 주기</Label>
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-32">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PERIOD_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="settlementDate" className="text-xs text-muted-foreground">
-          기준일
-        </Label>
-        <Input id="settlementDate" type="date" className="w-44" value={refDate} onChange={(e) => setRefDate(e.target.value)} />
-      </div>
-      {accountUsernames ? (
+    <div className="rounded-lg border border-border bg-surface p-3">
+      <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">계정 필터</Label>
-          <Select value={owner} onValueChange={setOwner}>
-            <SelectTrigger className="w-40">
+          <Label className="text-xs text-muted-foreground">정산 주기</Label>
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">전체 계정</SelectItem>
-              {accountUsernames.map((username) => (
-                <SelectItem key={username} value={username}>
-                  {username}
+              {PERIOD_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-      ) : null}
-      <div className="flex items-center gap-2">
-        <Button size="sm" disabled={isPending} onClick={handleApply} className="gap-1.5">
-          {isPending ? <Loader2 className="size-4 animate-spin" /> : null}
-          조회
-        </Button>
-        <Button type="button" variant="ghost" size="sm" disabled={isPending} onClick={handleReset}>
-          초기화
-        </Button>
+        <div className="space-y-1.5">
+          <Label htmlFor="settlementDate" className="text-xs text-muted-foreground">
+            기준일
+          </Label>
+          <Input id="settlementDate" type="date" className="w-44" value={refDate} onChange={(e) => setRefDate(e.target.value)} />
+        </div>
+        {accountUsernames ? (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">계정 필터</Label>
+            <Select value={owner} onValueChange={setOwner}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 계정</SelectItem>
+                {accountUsernames.map((username) => (
+                  <SelectItem key={username} value={username}>
+                    {username}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+        <div className="flex items-center gap-2">
+          <Button size="sm" disabled={isPending} onClick={handleApply} className="gap-1.5">
+            {isPending ? <Loader2 className="size-4 animate-spin" /> : null}
+            조회
+          </Button>
+          <Button type="button" variant="ghost" size="sm" disabled={isPending} onClick={handleReset}>
+            초기화
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -68,7 +68,7 @@ export function DeliveryOrderRow({
   const locked = order.delivery_status === "완료";
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 md:flex-row md:items-start md:gap-4 md:rounded-lg md:p-3">
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:bg-muted/40 md:flex-row md:items-start md:gap-4 md:rounded-lg md:p-3">
       <Checkbox className="mt-1 md:mt-2" checked={selected} onCheckedChange={(checked) => onToggleSelect(checked === true)} />
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">

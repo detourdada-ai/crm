@@ -101,14 +101,15 @@ export default async function SettlementsPage({
 
       <SummaryFlow items={summaryItems} />
 
+      <SettlementPeriodPicker
+        periodType={periodType}
+        date={referenceDate}
+        ownerFilter={ownerFilter}
+        accountUsernames={accountUsernames}
+      />
+
       <Card id="list">
         <CardContent className="space-y-4 pt-6">
-          <SettlementPeriodPicker
-            periodType={periodType}
-            date={referenceDate}
-            ownerFilter={ownerFilter}
-            accountUsernames={accountUsernames}
-          />
           <CardDescription>
             정산 기간: {periodStart} ~ {periodEnd}
           </CardDescription>

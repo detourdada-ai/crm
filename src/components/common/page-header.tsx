@@ -18,7 +18,7 @@ export function PageHeader({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-text-strong">{title}</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-text-strong">{title}</h1>
         {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}

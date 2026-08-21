@@ -23,14 +23,16 @@ export function CustomerSearchBar() {
   }
 
   return (
-    <div className="relative max-w-sm">
-      <Search className="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
-      <Input
-        defaultValue={searchParams.get("q") ?? ""}
-        onChange={(e) => handleChange(e.target.value)}
-        placeholder="이름, 전화번호, 주소, 고객번호 검색"
-        className="pl-8"
-      />
+    <div className="rounded-lg border border-border bg-surface p-3">
+      <div className="relative max-w-sm">
+        <Search className="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
+        <Input
+          defaultValue={searchParams.get("q") ?? ""}
+          onChange={(e) => handleChange(e.target.value)}
+          placeholder="이름, 전화번호, 주소, 고객번호 검색"
+          className="pl-8"
+        />
+      </div>
     </div>
   );
 }
