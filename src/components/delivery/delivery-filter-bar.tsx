@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -61,13 +61,17 @@ export function DeliveryFilterBar({
   // §6: 상태/배송그룹은 이 컴포넌트 밖(DeliveryStatusFlow 칩, DeliveryBoard의
   // 그룹 카드)에서도 같은 URL param을 바꿀 수 있다 — useState의 초기값은
   // 최초 마운트 시 한 번만 반영되므로, 다른 곳에서 URL이 바뀌면 이 select들이
-  // "전체"로 보이는 것처럼 멈춰있는 것처럼 보이는 문제가 있었다(값 자체는
-  // 실제로 필터링에 반영되지만 select 표시만 안 따라감). searchParams가 바뀔
-  // 때마다 두 값을 다시 동기화한다.
-  useEffect(() => {
+  // "전체"로 멈춰있는 것처럼 보이는 문제가 있었다(값 자체는 실제로 필터링에
+  // 반영되지만 select 표시만 안 따라감). useEffect로 동기화하면 커밋 후 추가
+  // 렌더가 발생하므로(react-hooks/set-state-in-effect), 렌더 중 비교해
+  // searchParams가 바뀐 프레임에만 맞춰 조정한다.
+  const searchParamsKey = searchParams.toString();
+  const [prevSearchParamsKey, setPrevSearchParamsKey] = useState(searchParamsKey);
+  if (searchParamsKey !== prevSearchParamsKey) {
+    setPrevSearchParamsKey(searchParamsKey);
     setStatus((searchParams.get("filter") as DeliveryFilter) ?? "all");
     setGroupId(searchParams.get("group") ?? GROUP_ALL);
-  }, [searchParams]);
+  }
 
   function buildParams(): URLSearchParams {
     const params = new URLSearchParams();
