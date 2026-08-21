@@ -42,6 +42,7 @@ export function DeliveryOrderRow({
   onAssign,
   onSetDirectPickup,
   onUnassign,
+  onClearDirectPickup,
   itemSummary,
   bagManagementEnabled,
 }: {
@@ -59,6 +60,8 @@ export function DeliveryOrderRow({
   onAssign: (driverId: string) => void;
   onSetDirectPickup: () => void;
   onUnassign: () => void;
+  /** P1-B 회귀 복구: 직접수령을 일반 배송으로 되돌린다("배정 해제"와 별개 개념). */
+  onClearDirectPickup: () => void;
   itemSummary: OrderItemSummary | undefined;
   bagManagementEnabled: boolean;
 }) {
@@ -95,6 +98,7 @@ export function DeliveryOrderRow({
             onAssign={onAssign}
             onSetDirectPickup={onSetDirectPickup}
             onUnassign={onUnassign}
+            onClearDirectPickup={onClearDirectPickup}
           />
         </div>
 

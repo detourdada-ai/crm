@@ -213,6 +213,23 @@ export function DeliveryBoard({
     });
   }
 
+  /**
+   * P1-B 회귀 복구: S2-A 이전 DriverCell에 있던 "직접수령 해제"
+   * (handleClearDirectPickup → setFulfillmentMethodAction(..., "delivery"))가
+   * DriverAssignInline 통합 과정에서 이관되지 않아, direct_pickup으로 바뀐
+   * 배송건을 되돌릴 UI 경로가 없었다. "배정 해제"(driver_id 제거)와는 별개
+   * 개념이므로 별도 핸들러/메뉴 항목으로 분리해 복구한다.
+   */
+  function handleClearDirectPickup(shipmentId: string) {
+    setPendingRowId(shipmentId);
+    startTransition(async () => {
+      const result = await setFulfillmentMethodAction([shipmentId], "delivery");
+      if (result.ok) toast.success("직접수령을 해제했습니다.");
+      else toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
+      setPendingRowId(null);
+    });
+  }
+
   if (orders.length === 0) {
     return <p className="py-12 text-center text-sm text-muted-foreground">해당 조건의 배송건이 없습니다.</p>;
   }
@@ -234,6 +251,7 @@ export function DeliveryBoard({
         onAssign={(id) => handleAssign(order.rowKey, id)}
         onSetDirectPickup={() => handleSetDirectPickup(order.rowKey)}
         onUnassign={() => handleUnassign(order.rowKey)}
+        onClearDirectPickup={() => handleClearDirectPickup(order.rowKey)}
         itemSummary={itemSummaries[order.rowKey]}
         bagManagementEnabled={bagManagementEnabled}
       />

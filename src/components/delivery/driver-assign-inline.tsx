@@ -19,6 +19,12 @@ import type { Driver, FulfillmentMethod } from "@/types/domain";
  * 담당하고 실제 호출은 부모(DeliveryOrderRow → DeliveryBoard)가 한다.
  * 낙관적 업데이트는 쓰지 않는다 — 서버 액션 성공 후 revalidatePath로 내려오는
  * 새 props를 그대로 반영한다(기존 F13/P5 패턴 그대로).
+ *
+ * P1-B 회귀 복구: "배정 해제"(driver_id 제거, onUnassign)와 "직접수령 해제"
+ * (fulfillment_method를 delivery로 되돌림, onClearDirectPickup)는 서로 다른
+ * 개념이라 별도 메뉴 항목으로 분리한다 — S2-A 이전에는 DriverCell에 두
+ * 콜백이 나뉘어 있었는데, 이 컴포넌트로 통합되며 onClearDirectPickup이
+ * 누락되고 onUnassign 하나로 합쳐졌던 것이 원인이었다.
  */
 export function DriverAssignInline({
   driverId,
@@ -31,6 +37,7 @@ export function DriverAssignInline({
   onAssign,
   onSetDirectPickup,
   onUnassign,
+  onClearDirectPickup,
 }: {
   driverId: string | null;
   driverName: string | null;
@@ -43,7 +50,10 @@ export function DriverAssignInline({
   disabled: boolean;
   onAssign: (driverId: string) => void;
   onSetDirectPickup: () => void;
+  /** 기사 배정 해제(driver_id만 제거) — direct_pickup 건에는 노출하지 않는다. */
   onUnassign: () => void;
+  /** 직접수령 해제(fulfillment_method를 delivery로 복원) — driver_id는 건드리지 않는다. */
+  onClearDirectPickup: () => void;
 }) {
   const isDirectPickup = fulfillmentMethod === "direct_pickup";
 
@@ -84,10 +94,16 @@ export function DriverAssignInline({
           {isDirectPickup ? <Check className="size-3.5" /> : <span className="size-3.5" />}
           직접수령
         </DropdownMenuItem>
-        {driverId || isDirectPickup ? (
+        {driverId ? (
           <DropdownMenuItem onSelect={onUnassign} className="gap-2 text-muted-foreground">
             <span className="size-3.5" />
             배정 해제
+          </DropdownMenuItem>
+        ) : null}
+        {isDirectPickup ? (
+          <DropdownMenuItem onSelect={onClearDirectPickup} className="gap-2 text-muted-foreground">
+            <span className="size-3.5" />
+            직접수령 해제
           </DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>
