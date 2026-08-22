@@ -87,6 +87,11 @@ export function DeliveryFilterStack({
     return buildGroupBuildingLabels(groups, memberAddresses);
   }, [groups, orders]);
 
+  // 배송관리 목록/지도 완전 동일화: 목록 카드(DeliveryOrderRow)가 배송건의
+  // 유일한 표준 UI이고, 지도는 그 카드를 그대로 재사용한다 — driverNames도
+  // 두 화면이 각자 계산하지 않도록 여기 한 번만 계산해서 내려준다.
+  const driverNames = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d.name])), [drivers]);
+
   const countsByGroupId = useMemo(() => {
     const map = new Map<string, number>();
     for (const o of orders) {
@@ -150,8 +155,9 @@ export function DeliveryFilterStack({
           <DeliveryBoard
             orders={filteredOrders}
             drivers={drivers}
+            driverNames={driverNames}
+            groupLabels={groupLabels}
             itemSummaries={itemSummaries}
-            groups={groups}
             bagManagementEnabled={bagManagementEnabled}
             driverCounts={driverCounts}
             activeDriverId={activeDriverId}
@@ -162,6 +168,9 @@ export function DeliveryFilterStack({
           <DeliveryMapView
             orders={filteredOrders}
             drivers={drivers}
+            driverNames={driverNames}
+            groupLabels={groupLabels}
+            itemSummaries={itemSummaries}
             driverCounts={driverCounts}
             bagManagementEnabled={bagManagementEnabled}
             activeDriverId={activeDriverId}

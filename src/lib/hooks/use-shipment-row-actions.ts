@@ -7,7 +7,7 @@ import type { DeliveryStatus } from "@/types/domain";
 
 /**
  * 배송관리 목록/지도 완전 동일화 PART 3: 배송건 하나에 대한 기사배정/배송상태
- * 변경 액션 호출 로직을 목록(DeliveryBoard)과 지도(DeliveryShipmentPanel)가
+ * 변경 액션 호출 로직을 목록(DeliveryBoard)과 지도(DeliveryMapView)가
  * 각자 다시 구현하지 않고 이 훅 하나로 공유한다 — 서버 액션과 토스트 문구가
  * 두 화면에서 갈라지는 것을 구조적으로 막는다(reorder는 화면마다 대상
  * 배송건 순서가 달라 각자 계산해야 하므로 이 훅에 포함하지 않는다).

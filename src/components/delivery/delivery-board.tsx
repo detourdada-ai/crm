@@ -8,13 +8,13 @@ import { assignDriverAction, reorderShipmentsAction, setFulfillmentMethodAction 
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
-import { buildGroupBuildingLabels, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import type { GroupBuildingLabel } from "@/lib/utils/delivery-group";
 import { DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
 import { useShipmentRowActions } from "@/lib/hooks/use-shipment-row-actions";
 import { DeliveryOrderRow } from "@/components/delivery/delivery-order-row";
 import { BulkAssignBar } from "@/components/delivery/bulk-assign-bar";
-import type { Driver, DeliveryGroup, FulfillmentMethod } from "@/types/domain";
+import type { Driver, FulfillmentMethod } from "@/types/domain";
 
 /**
  * S2-A: 배송관리를 "조회 화면"에서 "오늘 배송을 운영하는 화면"으로 재설계 —
@@ -30,8 +30,9 @@ import type { Driver, DeliveryGroup, FulfillmentMethod } from "@/types/domain";
 export function DeliveryBoard({
   orders,
   drivers,
+  driverNames,
+  groupLabels,
   itemSummaries,
-  groups = [],
   bagManagementEnabled = false,
   driverCounts,
   activeDriverId = null,
@@ -40,9 +41,12 @@ export function DeliveryBoard({
   /** 이미 배송상태·배송그룹·기사 필터가 모두 적용된 최종 목록. */
   orders: OrderShipmentBoardRow[];
   drivers: Driver[];
+  /** 배송관리 목록/지도 완전 동일화: 목록/지도가 각자 계산하지 않도록 상위
+   *  DeliveryFilterStack이 한 번만 계산해서 내려준다. */
+  driverNames: Record<string, string>;
+  /** §7/§13: 그룹 대표 건물명(delivery-group.ts) — 카드 배지에 그대로 쓴다. */
+  groupLabels: Map<string, GroupBuildingLabel>;
   itemSummaries: Record<string, OrderItemSummary>;
-  /** 행의 배송그룹 라벨 표시용(필터링에는 쓰지 않음). */
-  groups?: DeliveryGroup[];
   bagManagementEnabled?: boolean;
   /** 기사별 "오늘 N건" 표시용 — 배송그룹/검색 필터와 무관하게 그날 전체 기준(page.tsx에서 계산). */
   driverCounts: Record<string, number>;
@@ -59,29 +63,12 @@ export function DeliveryBoard({
   const [, startCandidateLookup] = useTransition();
   const rowActions = useShipmentRowActions();
 
-  const driverNames = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d.name])), [drivers]);
   // 배송관리 핵심 UX 재설계: 기사 필터로 특정 기사 한 명만 골랐을 때는
   // route_order(nulls last) 순으로 정렬해 ↑/↓ 재배치를 붙인다 — "기사별"
   // 탭이 없어진 뒤에도 배송 순서 조정 기능(S2-B) 자체는 유지해야 한다(PART 12).
   const isSingleDriverSelected = !!activeDriverId && activeDriverId !== DRIVER_UNASSIGNED_SENTINEL;
   const showReorderControls = isSingleDriverSelected && reorderEnabled;
   const currentlyDisplayedOrders = showReorderControls ? sortByRouteOrder(orders) : orders;
-
-  // §7/§13: 그룹 대표 건물명 — 그룹 자체가 아니라 그 그룹에 실제로 속한
-  // 배송건들의 address_snapshot에서 다수결로 계산한다(delivery-group.ts,
-  // 기존 P14-B 판정 재사용). 카드/select 어디서든 동일한 라벨을 쓰도록
-  // 여기 한 번만 계산해서 아래로 내려보낸다.
-  const groupLabels = useMemo(() => {
-    if (groups.length === 0) return new Map<string, GroupBuildingLabel>();
-    const memberAddresses = new Map<string, (string | null)[]>();
-    for (const o of orders) {
-      if (!o.delivery_group_id) continue;
-      const list = memberAddresses.get(o.delivery_group_id) ?? [];
-      list.push(o.address_snapshot);
-      memberAddresses.set(o.delivery_group_id, list);
-    }
-    return buildGroupBuildingLabels(groups, memberAddresses);
-  }, [groups, orders]);
 
   // P14-A 원칙 유지: "화면에 지금 보이는 집합"(currentlyDisplayedOrders) 기준으로
   // 선택을 좁힌다 — 필터/그룹/기사 변경으로 화면에서 사라진 항목은 선택에서도
