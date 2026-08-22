@@ -111,8 +111,9 @@ export async function createDriverAction(
 }
 
 /**
- * P5: 기사 정보(이름/연락처/주소/차량번호) 수정 — 로그인 아이디는 최초 생성 후
- * 변경 불가(폼에 필드 자체를 두지 않음, updateDriver는 그 필드를 받지도 않음).
+ * P5/인터뷰8-21: 기사 정보(이름/연락처/주소/차량번호/건당 배송비) 수정 — 로그인
+ * 아이디는 최초 생성 후 변경 불가(폼에 필드 자체를 두지 않음, updateDriver는
+ * 그 필드를 받지도 않음).
  */
 export async function updateDriverInfoAction(
   driverId: string,
@@ -128,10 +129,11 @@ export async function updateDriverInfoAction(
     const phone = String(formData.get("phone") || "").trim() || null;
     const address = String(formData.get("address") || "").trim() || null;
     const vehicleNumber = String(formData.get("vehicleNumber") || "").trim() || null;
+    const ratePerDelivery = Math.max(0, Number(formData.get("ratePerDelivery")) || 0);
 
     await updateDriver(
       driverId,
-      { name, phone, address, vehicle_number: vehicleNumber },
+      { name, phone, address, vehicle_number: vehicleNumber, rate_per_delivery: ratePerDelivery },
       session.role === "admin" ? undefined : session.username
     );
     revalidatePath("/settings");

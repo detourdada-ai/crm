@@ -262,9 +262,19 @@ function EditDriverDialog({ driver, knownRegions }: { driver: DriverWithAccount;
             <Label htmlFor={`edit-address-${driver.id}`}>주소</Label>
             <LegacyAddressInput id={`edit-address-${driver.id}`} name="address" defaultValue={driver.address ?? ""} />
           </div>
-          <div className="space-y-2 sm:col-span-2">
+          <div className="space-y-2">
             <Label htmlFor={`edit-vehicle-${driver.id}`}>차량번호</Label>
             <Input id={`edit-vehicle-${driver.id}`} name="vehicleNumber" defaultValue={driver.vehicle_number ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`edit-rate-${driver.id}`}>건당 배송비</Label>
+            <Input
+              id={`edit-rate-${driver.id}`}
+              name="ratePerDelivery"
+              type="number"
+              min={0}
+              defaultValue={driver.rate_per_delivery}
+            />
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>담당지역</Label>

@@ -206,21 +206,18 @@ export function OrderFilterBar({
             초기화
           </Button>
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">정렬</Label>
-          <Select value={sortValue} onValueChange={handleSortChange}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SORT_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <Select value={sortValue} onValueChange={handleSortChange}>
+          <SelectTrigger className="w-40" aria-label="정렬">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );

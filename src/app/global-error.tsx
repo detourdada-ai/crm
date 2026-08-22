@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { shouldAutoRetryOnce } from "@/lib/utils/error-boundary";
 
 /**
  * F15: 루트 레이아웃 자체가 렌더링에 실패하는 최악의 경우를 위한 최후의
@@ -9,24 +10,35 @@ import { useEffect } from "react";
  * global-error는 자체 html/body를 렌더링해야 한다(Next.js 컨벤션).
  */
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  const [autoRetrying] = useState(() => shouldAutoRetryOnce("global"));
+
   useEffect(() => {
     console.error(error);
-  }, [error]);
+    if (!autoRetrying) return;
+    const timer = setTimeout(reset, 800);
+    return () => clearTimeout(timer);
+  }, [error, reset, autoRetrying]);
 
   return (
     <html lang="ko">
       <body>
         <div style={{ display: "flex", minHeight: "100vh", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24, textAlign: "center", fontFamily: "sans-serif" }}>
           <p style={{ fontWeight: 600, fontSize: 16 }}>문제가 발생했습니다.</p>
-          <p style={{ maxWidth: 400, fontSize: 14, color: "#666" }}>
-            일시적인 오류일 수 있습니다. 다시 시도해도 계속되면 잠시 후 다시 이용해주세요.
-          </p>
-          <button
-            onClick={reset}
-            style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}
-          >
-            다시 시도
-          </button>
+          {autoRetrying ? (
+            <p style={{ maxWidth: 400, fontSize: 14, color: "#666" }}>잠시 후 다시 시도합니다...</p>
+          ) : (
+            <>
+              <p style={{ maxWidth: 400, fontSize: 14, color: "#666" }}>
+                일시적인 오류일 수 있습니다. 다시 시도해도 계속되면 잠시 후 다시 이용해주세요.
+              </p>
+              <button
+                onClick={reset}
+                style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}
+              >
+                다시 시도
+              </button>
+            </>
+          )}
         </div>
       </body>
     </html>

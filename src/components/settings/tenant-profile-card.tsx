@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useTransition } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { updateTenantIndustryAction, updateBagManagementAction, type UpdateTenantProfileActionState } from "@/actions/tenant";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ export function TenantProfileCard({
 }) {
   const [state, formAction, isPending] = useActionState(updateTenantIndustryAction, initialState);
   const [isBagPending, startBagTransition] = useTransition();
+  const [bagManagementOn, setBagManagementOn] = useState(bagManagement);
 
   useEffect(() => {
     if (state.ok) toast.success("업종 정보가 저장되었습니다.");
@@ -29,7 +30,7 @@ export function TenantProfileCard({
   // 현재 업종의 추천값과 실제 설정이 다를 때만 안내 문구를 보여준다 — 자동
   // 변경은 하지 않는다(Phase 10 STEP5: 업종은 추천, 강제 아님).
   const recommended = industry && INDUSTRY_OPTIONS.includes(industry as Industry) ? INDUSTRY_BAG_MANAGEMENT_RECOMMENDATION[industry as Industry] : null;
-  const showMismatchHint = recommended !== null && recommended !== bagManagement;
+  const showMismatchHint = recommended !== null && recommended !== bagManagementOn;
 
   function toggleBagManagement(next: boolean) {
     startBagTransition(async () => {
@@ -38,6 +39,7 @@ export function TenantProfileCard({
         toast.error(res.error ?? "저장 중 오류가 발생했습니다.");
         return;
       }
+      setBagManagementOn(next);
       toast.success(next ? "가방 관리 기능을 켰습니다." : "가방 관리 기능을 껐습니다.");
     });
   }
@@ -80,11 +82,11 @@ export function TenantProfileCard({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className={bagManagement ? "text-sm font-medium text-text-strong" : "text-sm text-muted-foreground"}>
-              {bagManagement ? "ON" : "OFF"}
+            <span className={bagManagementOn ? "text-sm font-medium text-text-strong" : "text-sm text-muted-foreground"}>
+              {bagManagementOn ? "ON" : "OFF"}
             </span>
             <Switch
-              checked={bagManagement}
+              checked={bagManagementOn}
               disabled={isBagPending}
               onCheckedChange={(next) => toggleBagManagement(next)}
               aria-label="가방 관리 기능 사용 여부"
