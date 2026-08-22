@@ -663,6 +663,8 @@ function DriverRegionsCell({ driver, knownRegions }: { driver: DriverWithAccount
   );
 }
 
+const OWNER_FILTER_ALL = "__all__";
+
 export function DriverManagementCard({
   drivers,
   isAdmin,
@@ -674,12 +676,35 @@ export function DriverManagementCard({
   accountUsernames: string[];
   knownRegions: KnownRegion[];
 }) {
+  // admin은 여러 사장님 계정의 기사를 한 화면에서 본다 — 계정이 많아지면
+  // "담당 계정" 배지만으로는 원하는 기사를 찾기 어려워 select 필터를 둔다.
+  // 담당자(비-admin) 계정은 어차피 본인 기사만 보이므로 필터 자체가 무의미해 숨긴다.
+  const [ownerFilter, setOwnerFilter] = useState(OWNER_FILTER_ALL);
+  const filteredDrivers = isAdmin && ownerFilter !== OWNER_FILTER_ALL ? drivers.filter((d) => d.owner_username === ownerFilter) : drivers;
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {isAdmin ? (
+          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+            <SelectTrigger className="w-full sm:w-56">
+              <SelectValue placeholder="전체 계정" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={OWNER_FILTER_ALL}>전체 계정</SelectItem>
+              {accountUsernames.map((username) => (
+                <SelectItem key={username} value={username}>
+                  {username}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <div />
+        )}
         <CreateDriverDialog isAdmin={isAdmin} accountUsernames={accountUsernames} knownRegions={knownRegions} />
       </div>
-      {drivers.length === 0 ? (
+      {filteredDrivers.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">등록된 배송 기사가 없습니다.</p>
       ) : (
         <Table>
@@ -697,7 +722,7 @@ export function DriverManagementCard({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {drivers.map((driver) => (
+            {filteredDrivers.map((driver) => (
               <TableRow key={driver.id}>
                 {isAdmin ? (
                   <TableCell>

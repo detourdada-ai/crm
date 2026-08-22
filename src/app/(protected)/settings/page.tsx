@@ -8,6 +8,7 @@ import { getVipCriteria } from "@/lib/services/vip.service";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
 import { DriverManagementCard } from "@/components/settings/driver-management-card";
+import { AccountRoleFilter } from "@/components/settings/account-role-filter";
 import { ProductManagementCard } from "@/components/settings/product-management-card";
 import { TenantProfileCard } from "@/components/settings/tenant-profile-card";
 import { GoogleEmailCell } from "@/components/settings/google-email-cell";
@@ -27,6 +28,7 @@ import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { computeAccessStatus } from "@/lib/auth/access-control";
 import { formatKstDateDotted } from "@/lib/utils/kst-date";
 import type { EffectiveAccessStatus, Tenant } from "@/types/domain";
+import type { Role } from "@/lib/auth/credentials";
 
 const ACCESS_LABELS: Record<EffectiveAccessStatus, string> = {
   ACTIVE_BETA: "BETA",
@@ -36,7 +38,12 @@ const ACCESS_LABELS: Record<EffectiveAccessStatus, string> = {
   SUSPENDED: "중지",
 };
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ roleFilter?: string }>;
+}) {
+  const { roleFilter } = await searchParams;
   const session = await requireSession();
   const isAdmin = session.role === "admin";
   const [accounts, drivers, knownRegions, products] = await Promise.all([
@@ -153,6 +160,8 @@ export default async function SettingsPage() {
   );
   const sellerAccounts = accounts.filter((a) => a.role === "user");
   const pendingApprovalCount = sellerAccounts.filter((a) => accessStatusByUsername.get(a.username) === "NONE").length;
+  const isValidRole = (r: string | undefined): r is Role => r === "admin" || r === "user" || r === "driver";
+  const filteredAccounts = isValidRole(roleFilter) ? accounts.filter((a) => a.role === roleFilter) : accounts;
 
   return (
     <div className="space-y-6">
@@ -197,7 +206,8 @@ export default async function SettingsPage() {
                 있습니다. Google 이메일을 연결하면 해당 계정으로 Google 로그인이 가능합니다. (기사 계정 제외)
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              <AccountRoleFilter />
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -210,7 +220,7 @@ export default async function SettingsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {accounts.map((account) => (
+                  {filteredAccounts.map((account) => (
                     <TableRow key={account.username}>
                       <TableCell className="font-medium">{account.username}</TableCell>
                       <TableCell>
