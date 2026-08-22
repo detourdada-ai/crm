@@ -32,6 +32,10 @@ function coordKey(lat: number, lng: number): string {
   return `${lat},${lng}`;
 }
 
+/** 선택 강조용 색상 — 기사 배정색(primary/sky/emerald/amber/violet/rose)·미배정(slate-400)·
+ *  완료(muted-foreground)와 겹치지 않는, 지도에서 안 쓰는 색(fuchsia)으로 고정한다. */
+const HIGHLIGHT_COLOR = "#c026d3";
+
 /**
  * P15-B-2: 카카오가 동일한 건물/단지 도로명주소에 여러 동/호를 하나의
  * 좌표로 묶어 반환하는 경우가 매우 흔하다(Discovery에서 실측 확인 —
@@ -268,9 +272,11 @@ export function DeliveryMap({
   }, [openGroupKey, status, markers]);
 
   // P15-B-3: 지도 밖 목록에서 주문을 선택하면 그 주문의 마커를 강조한다.
+  // 링(원) 테두리 대신 마커 자체 배경색을 다른 곳에서 안 쓰는 색으로 바꿔 표시한다.
   useEffect(() => {
     if (highlightedElRef.current) {
-      highlightedElRef.current.classList.remove("ring-4", "ring-offset-2", "ring-warning", "scale-125", "z-10");
+      highlightedElRef.current.style.backgroundColor = "";
+      highlightedElRef.current.classList.remove("scale-125", "z-10");
       highlightedElRef.current = null;
     }
     if (!highlightId || status !== "ready" || !mapRef.current || !window.kakao) return;
@@ -284,7 +290,8 @@ export function DeliveryMap({
       } else {
         const el = pinElementsRef.current.get(key);
         if (el) {
-          el.classList.add("ring-4", "ring-offset-2", "ring-warning", "scale-125", "z-10");
+          el.style.backgroundColor = HIGHLIGHT_COLOR;
+          el.classList.add("scale-125", "z-10");
           highlightedElRef.current = el;
         }
       }
