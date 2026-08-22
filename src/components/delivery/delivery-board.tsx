@@ -307,8 +307,12 @@ export function DeliveryBoard({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <DeliveryViewTabs value={viewMode} onChange={setViewMode} />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">보기</span>
+          <DeliveryViewTabs value={viewMode} onChange={setViewMode} />
+        </div>
         <div className="flex flex-wrap items-center gap-3">
+          {viewMode !== "all" ? <span className="text-xs font-medium text-muted-foreground">필터</span> : null}
           {viewMode === "region" && showGroupColumn ? (
             <DeliveryRegionFilter
               groups={groups}

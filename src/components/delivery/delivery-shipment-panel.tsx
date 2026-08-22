@@ -2,11 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { assignDriverAction, reorderShipmentsAction } from "@/actions/delivery";
+import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 import { kstDayDateStrOf } from "@/lib/utils/kst-date";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
@@ -105,7 +107,10 @@ export function DeliveryShipmentPanel({
     <div className="space-y-3 rounded-lg border bg-card p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-medium text-text-strong">{shipment.recipient_name || shipment.buyer_name || "-"}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium text-text-strong">{shipment.recipient_name || shipment.buyer_name || "-"}</p>
+            <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[shipment.delivery_status]}>{shipment.delivery_status}</Badge>
+          </div>
           <p className="mt-0.5 text-sm text-muted-foreground">{shipment.address_snapshot ?? "-"}</p>
           {shipment.phone_snapshot ? <p className="text-sm text-muted-foreground">{shipment.phone_snapshot}</p> : null}
         </div>

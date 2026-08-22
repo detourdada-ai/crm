@@ -241,6 +241,15 @@ export const customersRepository = {
     if (!data || data.length === 0) throw new Error("고객을 찾을 수 없거나 권한이 없습니다.");
   },
 
+  /** 배송관리 UX 회귀 복구 + 엑셀 안정화 PART 2: import 배치 쓰기 실패 시 이번
+   * 실행에서 새로 만든 고객들을 되돌리는 용도(존재하지 않는 id는 조용히
+   * 무시된다 — orders.deleteMany와 동일한 안전한 no-op 패턴). */
+  async deleteMany(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const { error } = await getSupabaseAdmin().from("customers").delete().in("id", ids);
+    if (error) throw error;
+  },
+
   async findByCreatedByImportId(importId: string): Promise<Customer[]> {
     const { data, error } = await getSupabaseAdmin().from("customers").select("*").eq("created_by_import_id", importId);
     if (error) throw error;

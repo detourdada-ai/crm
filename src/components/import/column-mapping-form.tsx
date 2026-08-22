@@ -53,14 +53,13 @@ export function ColumnMappingForm({
         </p>
       )}
 
-      {/* S1-6: "구분 | 업로드 파일 컬럼 | 데이터" — 컬럼명만 보고는 실제로 어떤
-          값이 들어오는지 알기 어려워 Import 오류가 잦았다. 세 번째 열에 첫
-          번째 행의 실제 값을 그대로 보여줘서 "이 컬럼이 실제로 이런 값이
-          들어오는구나"를 매핑을 바꾸지 않고도 바로 확인할 수 있게 한다. */}
+      {/* 배송관리 UX 회귀 복구 + 엑셀 안정화 PART 1: "업로드 파일 컬럼 | 데이터"
+          두 컬럼 구조로 복원 — 데이터 컬럼은 첫 번째 행의 실제 값을 그대로
+          보여줘서 "이 컬럼이 실제로 이런 값이 들어오는구나"를 매핑을 바꾸지
+          않고도 바로 확인할 수 있게 한다. */}
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-20">구분</TableHead>
             <TableHead className="w-56">업로드 파일 컬럼</TableHead>
             <TableHead>데이터</TableHead>
           </TableRow>
@@ -71,11 +70,6 @@ export function ColumnMappingForm({
             const sampleValue = selectedHeader ? cellPreview(parsed.rows[0]?.[selectedHeader]) : null;
             return (
               <TableRow key={field.key}>
-                <TableCell className="align-top">
-                  <Badge variant="outline" className="font-normal">
-                    {field.category}
-                  </Badge>
-                </TableCell>
                 <TableCell className="align-top">
                   <div className="space-y-1">
                     <p className="text-sm font-medium">

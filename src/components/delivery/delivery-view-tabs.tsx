@@ -15,11 +15,24 @@ const TABS: { value: DeliveryViewMode; label: string }[] = [
  * 완성 Sprint부터 DeliveryBoard와 DeliveryMapView 둘 다 이 값을 URL의
  * viewMode 파라미터에 연결해서 쓴다(§2/§13) — 목록/지도가 완전히 같은
  * View 선택을 공유하기 위함이며, 이 컴포넌트 자체는 그 사실을 몰라도 된다.
+ *
+ * 배송관리 UX 회귀 복구 PART 7: 지도는 지역별 필터를 아예 제공하지 않는다
+ * (전체|기사별만) — `tabs`로 노출할 옵션을 좁힐 수 있게 했다. 목록은 이
+ * prop을 넘기지 않아 기존 3개(전체/지역별/기사별) 그대로 유지된다.
  */
-export function DeliveryViewTabs({ value, onChange }: { value: DeliveryViewMode; onChange: (next: DeliveryViewMode) => void }) {
+export function DeliveryViewTabs({
+  value,
+  onChange,
+  tabs = TABS.map((t) => t.value),
+}: {
+  value: DeliveryViewMode;
+  onChange: (next: DeliveryViewMode) => void;
+  tabs?: DeliveryViewMode[];
+}) {
+  const visibleTabs = TABS.filter((t) => tabs.includes(t.value));
   return (
     <div className="inline-flex items-center rounded-lg border border-border bg-surface p-1">
-      {TABS.map((tab) => (
+      {visibleTabs.map((tab) => (
         <button
           key={tab.value}
           type="button"

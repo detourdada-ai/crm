@@ -4,16 +4,15 @@ import { useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
-import { DeliveryRegionFilter } from "@/components/delivery/delivery-region-filter";
-import { DeliveryDriverFilter } from "@/components/delivery/delivery-driver-filter";
+import { DeliveryDriverChips } from "@/components/delivery/delivery-driver-chips";
 import { DeliveryViewTabs, type DeliveryViewMode } from "@/components/delivery/delivery-view-tabs";
 import { DeliveryShipmentPanel } from "@/components/delivery/delivery-shipment-panel";
-import { buildGroupBuildingLabels, filterOrdersByGroup, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import { filterOrdersByGroup } from "@/lib/utils/delivery-group";
 import { filterOrdersByDriver, DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
 import { cn } from "@/lib/utils";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
-import type { Driver, DeliveryGroup } from "@/types/domain";
+import type { Driver } from "@/types/domain";
 
 const DRIVER_COLOR_CLASSES = ["bg-primary", "bg-sky-600", "bg-emerald-600", "bg-amber-600", "bg-violet-600", "bg-rose-600"];
 const UNASSIGNED_COLOR = "bg-slate-400";
@@ -25,11 +24,19 @@ const COMPLETED_COLOR = "bg-muted-foreground";
  * 불러온 orders/drivers/groups를 그대로 받아쓸 뿐 이 컴포넌트 자체는 어떤
  * 조회도, 배송그룹 재계산도 하지 않는다(성능 원칙).
  *
- * 배송관리 운영 플로우 완성 Sprint: 전체/지역별/기사별은 DeliveryBoard와
- * 완전히 같은 DeliveryViewTabs + URL param(viewMode/group/driverFilter)으로
+ * 배송관리 운영 플로우 완성 Sprint: 전체/기사별은 DeliveryBoard와 완전히
+ * 같은 DeliveryViewTabs + URL param(viewMode/group/driverFilter)으로
  * 동작한다 — 지도만의 독립된 탭-행 UI(예전 P15-B-2)는 더 이상 쓰지 않는다.
  * 목록에서 고른 필터가 지도에도, 지도에서 고른 필터가 목록에도 그대로
  * 보이는 것이 핵심(memo §2/§4).
+ *
+ * 배송관리 UX 회귀 복구 PART 7: 지도는 지역별(region) 필터 UI를 아예
+ * 제공하지 않는다 — DeliveryViewTabs에 tabs=["all","driver"]만 넘긴다.
+ * 다만 목록에서 지역을 골라둔 채로 지도로 넘어온 경우(URL의 group
+ * 파라미터)는 그 필터 결과를 계속 존중한다 — filterOrdersByGroup은
+ * viewMode가 아니라 activeGroupId만 보고 걸러내므로 결과는 그대로
+ * 유지되고, 지도에는 그 지역을 "해제"하는 링크만 남긴다(재생성/선택 UI는
+ * 목록에만 있음).
  *
  * P15-B-3: 지도 아래에 선택한 기사(또는 전체/미배정)의 배송목록을 추가한다.
  * 목록은 지도 markers와 완전히 같은 filteredOrders에서 파생되므로("지도에는
@@ -47,11 +54,9 @@ const COMPLETED_COLOR = "bg-muted-foreground";
 export function DeliveryMapView({
   orders,
   drivers,
-  groups,
 }: {
   orders: OrderShipmentBoardRow[];
   drivers: Driver[];
-  groups: DeliveryGroup[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -99,27 +104,6 @@ export function DeliveryMapView({
   }, [drivers]);
 
   const driverNameById = useMemo(() => new Map(drivers.map((d) => [d.id, d.name])), [drivers]);
-
-  const groupLabels = useMemo(() => {
-    if (groups.length === 0) return new Map<string, GroupBuildingLabel>();
-    const memberAddresses = new Map<string, (string | null)[]>();
-    for (const o of orders) {
-      if (!o.delivery_group_id) continue;
-      const list = memberAddresses.get(o.delivery_group_id) ?? [];
-      list.push(o.address_snapshot);
-      memberAddresses.set(o.delivery_group_id, list);
-    }
-    return buildGroupBuildingLabels(groups, memberAddresses);
-  }, [groups, orders]);
-
-  const countsByGroupId = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const o of orders) {
-      if (o.delivery_group_id) map.set(o.delivery_group_id, (map.get(o.delivery_group_id) ?? 0) + 1);
-    }
-    return map;
-  }, [orders]);
-  const ungroupedCount = useMemo(() => orders.filter((o) => !o.delivery_group_id).length, [orders]);
 
   const groupFilteredOrders = useMemo(() => filterOrdersByGroup(orders, activeGroupId), [orders, activeGroupId]);
 
@@ -180,37 +164,32 @@ export function DeliveryMapView({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <DeliveryViewTabs value={viewMode} onChange={setViewMode} />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">보기</span>
+          <DeliveryViewTabs value={viewMode} onChange={setViewMode} tabs={["all", "driver"]} />
+          {activeGroupId ? (
+            <button type="button" onClick={() => setActiveGroupId(null)} className="text-xs text-muted-foreground hover:underline">
+              지역 필터 해제
+            </button>
+          ) : null}
+        </div>
         <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <input type="checkbox" className="size-4" checked={hideCompleted} onChange={(e) => setHideCompleted(e.target.checked)} />
           완료 숨기기
         </label>
       </div>
 
-      {viewMode === "region" ? (
-        groups.length > 0 ? (
-          <DeliveryRegionFilter
-            groups={groups}
-            labelById={groupLabels}
-            countsByGroupId={countsByGroupId}
-            ungroupedCount={ungroupedCount}
-            activeGroupId={activeGroupId}
-            onSelectGroup={setActiveGroupId}
-          />
-        ) : (
-          <p className="rounded-lg border border-dashed border-border p-3 text-center text-sm text-muted-foreground">
-            지역별 보기는 특정 배송일을 선택했을 때만 사용할 수 있습니다.
-          </p>
-        )
-      ) : null}
       {viewMode === "driver" ? (
-        <DeliveryDriverFilter
-          drivers={drivers}
-          countsByDriverId={countsByDriverId}
-          unassignedCount={unassignedDriverCount}
-          activeDriverId={activeDriverId}
-          onSelectDriver={setActiveDriverId}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="shrink-0 text-xs font-medium text-muted-foreground">필터</span>
+          <DeliveryDriverChips
+            drivers={drivers}
+            countsByDriverId={countsByDriverId}
+            unassignedCount={unassignedDriverCount}
+            activeDriverId={activeDriverId}
+            onSelectDriver={setActiveDriverId}
+          />
+        </div>
       ) : null}
 
       <DeliveryMap markers={markers} className="h-[420px] sm:h-[520px]" highlightId={highlightedOrderId} emptyMessage="표시할 배송지가 없습니다." />

@@ -270,7 +270,7 @@ export default async function DeliveryPage({
                   driverCounts={driverCounts}
                 />
               }
-              mapView={<DeliveryMapView orders={visibleOrders} drivers={drivers} groups={groupResult?.groups ?? []} />}
+              mapView={<DeliveryMapView orders={visibleOrders} drivers={drivers} />}
             />
           </CardContent>
         </Card>

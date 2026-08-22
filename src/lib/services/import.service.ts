@@ -562,46 +562,83 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     else if (o.geocode_status === "failed") geocodeFailed += 1;
   }
 
-  // Phase 5: 내부 주문번호를 이 시점에 한 번에 배정한다 — 위 루프(zero DB calls)를
-  // 지키기 위해 루프 안에서는 채번하지 않고, 여기서 KST 캘린더일 단위로 묶어
-  // next_order_seq_batch를 날짜 종류 수만큼만 호출한다(건마다 왕복하지 않음).
-  if (newOrderInserts.length > 0) {
-    const internalNumbers = await allocateOrderNumbers(tenant.id, newOrderInserts.map((o) => o.order_date));
-    newOrderInserts.forEach((o, i) => {
-      o.internal_order_number = internalNumbers[i];
-    });
-  }
-
-  // ---------- Phase 3: flush everything in a handful of batch writes (customers -> orders -> items, in FK order) ----------
-  if (newCustomerInserts.length > 0) {
-    await customersRepository.createMany(newCustomerInserts);
-  }
-  if (newOrderInserts.length > 0) {
-    await ordersRepository.createMany(newOrderInserts);
-    // P15-A: 150건이 들어와도 "건마다"가 아니라 이번 import에 포함된 배송일
-    // 종류 수만큼만(보통 1~수 회) 재계산한다 — CPO 방침(P15-A 2번, Excel Import).
-    const distinctDateStrs = new Set(
-      newOrderInserts
-        .filter((o): o is typeof o & { delivery_date: string } => !!o.delivery_date)
-        .map((o) => kstDayDateStrOf(o.delivery_date))
-    );
-    for (const dateStr of distinctDateStrs) {
-      await triggerDeliveryGroupRegeneration(tenant.id, dateStr, ownerUsername);
-    }
-  }
-  if (newShipmentInserts.length > 0) {
-    await orderShipmentsRepository.createMany(newShipmentInserts);
-  }
-  if (newItemInserts.length > 0) {
-    await ordersRepository.createItems(newItemInserts);
-  }
+  // 배송관리 UX 회귀 복구 + 엑셀 안정화 PART 2: 채번/배치쓰기 어느 단계에서든
+  // 예외가 던져지면 이 함수가 그대로 throw했고, importsRepository.update(...,
+  // status:"completed")가 끝까지 실행되지 못해 import 기록이 "처리중"에
+  // 영구히 멈춰 있었다 — 실패 원인도 어디에도 남지 않았다(imports.status의
+  // "failed" 값은 스키마/타입에는 있었지만 실제로 세팅하는 코드가 없었다).
+  // 이 블록 전체를 try/catch로 감싸서: (1) 실패 시 이번 실행에서 만든
+  // 고객/주문을 되돌리고(고객→customer_notification/duplicate_candidates,
+  // 주문→order_items/order_shipments는 FK cascade로 함께 삭제된다),
+  // (2) status="failed"와 실제 원인을 error_log에 남긴 뒤, (3) 호출자가
+  // 알 수 있도록 다시 throw한다.
   let duplicateCandidateCount = 0;
-  if (newDuplicateInserts.length > 0) {
-    const created = await duplicatesRepository.createMany(newDuplicateInserts);
-    duplicateCandidateCount = created.length;
-  }
-  for (const u of bagNoUpdates) {
-    await customersRepository.update(u.id, { bag_no: u.bagNo });
+  try {
+    // Phase 5: 내부 주문번호를 이 시점에 한 번에 배정한다 — 위 루프(zero DB calls)를
+    // 지키기 위해 루프 안에서는 채번하지 않고, 여기서 KST 캘린더일 단위로 묶어
+    // next_order_seq_batch를 날짜 종류 수만큼만 호출한다(건마다 왕복하지 않음).
+    if (newOrderInserts.length > 0) {
+      const internalNumbers = await allocateOrderNumbers(tenant.id, newOrderInserts.map((o) => o.order_date));
+      newOrderInserts.forEach((o, i) => {
+        o.internal_order_number = internalNumbers[i];
+      });
+    }
+
+    // ---------- Phase 3: flush everything in a handful of batch writes (customers -> orders -> items, in FK order) ----------
+    if (newCustomerInserts.length > 0) {
+      await customersRepository.createMany(newCustomerInserts);
+    }
+    if (newOrderInserts.length > 0) {
+      await ordersRepository.createMany(newOrderInserts);
+      // P15-A: 150건이 들어와도 "건마다"가 아니라 이번 import에 포함된 배송일
+      // 종류 수만큼만(보통 1~수 회) 재계산한다 — CPO 방침(P15-A 2번, Excel Import).
+      const distinctDateStrs = new Set(
+        newOrderInserts
+          .filter((o): o is typeof o & { delivery_date: string } => !!o.delivery_date)
+          .map((o) => kstDayDateStrOf(o.delivery_date))
+      );
+      for (const dateStr of distinctDateStrs) {
+        await triggerDeliveryGroupRegeneration(tenant.id, dateStr, ownerUsername);
+      }
+    }
+    if (newShipmentInserts.length > 0) {
+      await orderShipmentsRepository.createMany(newShipmentInserts);
+    }
+    if (newItemInserts.length > 0) {
+      await ordersRepository.createItems(newItemInserts);
+    }
+    if (newDuplicateInserts.length > 0) {
+      const created = await duplicatesRepository.createMany(newDuplicateInserts);
+      duplicateCandidateCount = created.length;
+    }
+    for (const u of bagNoUpdates) {
+      await customersRepository.update(u.id, { bag_no: u.bagNo });
+    }
+  } catch (e) {
+    // 되돌리기: orders를 지우면 order_items/order_shipments는 FK cascade로
+    // 함께 삭제된다(schema.sql: on delete cascade). customers를 지우면
+    // duplicate_candidates도 마찬가지로 cascade된다. 아직 DB에 실제로
+    // 쓰이지 못한 id를 지우는 것은 안전한 no-op이다 — 이 rollback 자체가
+    // 실패해도 원래 오류를 가리지 않도록 별도로 감싼다.
+    try {
+      await ordersRepository.deleteMany(newOrderInserts.map((o) => o.id!));
+      await customersRepository.deleteMany(newCustomerInserts.map((c) => c.id!));
+    } catch {
+      // rollback 실패는 무시 — 아래에서 원래 오류를 그대로 기록/전파한다.
+    }
+    const reason = e instanceof Error ? e.message : "알 수 없는 오류";
+    await importsRepository.update(importRecord.id, {
+      status: "failed",
+      success_rows: 0,
+      failed_rows: parsed.rows.length,
+      new_customers: 0,
+      existing_customers: 0,
+      duplicate_candidates: 0,
+      already_imported_rows: 0,
+      column_mapping: mapping as Record<string, string>,
+      error_log: [...errors, { row: 0, code: "processing_error", reason: `배치 저장 중 오류로 전체 업로드가 취소되었습니다: ${reason}`, raw: {} }],
+    });
+    throw e;
   }
 
   // P5: 더 이상 "총 행수 - 성공 행수"로 역산하지 않는다 — 그룹화 단계 탈락분과
@@ -670,16 +707,35 @@ export async function deleteImport(importId: string, ownerUsername?: string): Pr
     await triggerDeliveryGroupRegeneration(tenantId, dateStr, owner);
   }
 
+  // 배송관리 UX 회귀 복구 + 엑셀 안정화 PART 2 현상 A: 이전엔 후보 고객
+  // 한 명당 aggregateStatsByCustomer + delete로 순차 DB 왕복 2회를 돌았다
+  // (300명이면 600회 왕복) — "업로드 파일(이력) 삭제가 너무 오래 걸림"의
+  // 실제 원인이다. findOrderCounts(이미 import.service.ts의 runImport가
+  // 쓰던 것과 같은 배치 뷰 조회)로 전체 후보의 주문 수를 한 번에 가져오고,
+  // 주문이 0건인 id만 모아 한 번에 delete한다 — 매칭/삭제 판정 규칙은
+  // 그대로, 왕복 횟수만 O(N)에서 O(1)로 줄인다.
   const candidateCustomers = await customersRepository.findByCreatedByImportId(importId);
   let deletedCustomers = 0;
-  for (const customer of candidateCustomers) {
-    const stats = await ordersRepository.aggregateStatsByCustomer(customer.id);
-    if (stats.totalOrders > 0) continue;
-    try {
-      await customersRepository.delete(customer.id, ownerUsername);
-      deletedCustomers += 1;
-    } catch {
-      // Referenced elsewhere (e.g. kept side of a merge) — leave it in place.
+  if (candidateCustomers.length > 0) {
+    const orderCounts = await customersRepository.findOrderCounts(candidateCustomers.map((c) => c.id));
+    const deletableIds = candidateCustomers.filter((c) => (orderCounts.get(c.id) ?? 0) === 0).map((c) => c.id);
+    if (deletableIds.length > 0) {
+      // merge의 "유지된 쪽" 등 다른 곳에서 참조 중이면 FK 제약으로 그 건만
+      // 개별적으로 실패할 수 있다 — 기존과 동일하게 그런 경우는 건너뛰고
+      // 나머지는 지운다(전체를 한 번에 시도해 실패하면 하나씩 재시도).
+      try {
+        await customersRepository.deleteMany(deletableIds);
+        deletedCustomers = deletableIds.length;
+      } catch {
+        for (const id of deletableIds) {
+          try {
+            await customersRepository.delete(id, ownerUsername);
+            deletedCustomers += 1;
+          } catch {
+            // Referenced elsewhere (e.g. kept side of a merge) — leave it in place.
+          }
+        }
+      }
     }
   }
 
