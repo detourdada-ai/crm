@@ -289,6 +289,9 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   let geocodeSuccess = 0;
   let geocodeFailed = 0;
   let duplicateCandidateCount = 0;
+  // 엑셀 등록 안정화 최종 정리 PART 5: 실패 시 "어느 단계에서" 실패했는지도
+  // error_log에 남긴다 — 완료 조건이 요구하는 "실패 단계" 항목.
+  let currentStage: "배치 조회" | "고객/주문 생성" | "좌표 처리" | "주문번호 채번" | "DB 저장" = "배치 조회";
 
   try {
     // ---------- Phase 1: batch-fetch everything the per-row logic used to query individually ----------
@@ -302,6 +305,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     // 뷰) — 이 파일 안에서 같은 고객이 여러 번 주문하면 첫 등장만 신규로
     // 세고 그 다음부터는 즉시 반복으로 넘어가도록 처리 중에 카운트를 올린다.
     priorOrderCounts = await customersRepository.findOrderCounts(ownerCustomers.map((c) => c.id));
+    currentStage = "고객/주문 생성";
 
     // ---------- Phase 2: pure in-memory pass over every group — zero DB calls in this loop ----------
     // P10-1.5: Excel 주문은 geocoding이 아예 빠져 있어 기사후보 추천/배송그룹
@@ -577,6 +581,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     // geocode하고, 신규 고객/주문 insert 객체에 결과를 채워 넣는다.
     // geocodeBatch는 절대 throw하지 않으므로 이 단계가 실패해도 import
     // 자체는 계속 진행된다(실패한 주소는 geocode_status="failed"로 남을 뿐).
+    currentStage = "좌표 처리";
     if (addressQueries.size > 0) {
       const geocodeResults = await geocodeBatch(addressQueries);
       for (const { insert, addressKey } of pendingCustomerGeocode) {
@@ -596,6 +601,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     // Phase 5: 내부 주문번호를 이 시점에 한 번에 배정한다 — 위 루프(zero DB calls)를
     // 지키기 위해 루프 안에서는 채번하지 않고, 여기서 KST 캘린더일 단위로 묶어
     // next_order_seq_batch를 날짜 종류 수만큼만 호출한다(건마다 왕복하지 않음).
+    currentStage = "주문번호 채번";
     if (newOrderInserts.length > 0) {
       const internalNumbers = await allocateOrderNumbers(tenant.id, newOrderInserts.map((o) => o.order_date));
       newOrderInserts.forEach((o, i) => {
@@ -604,6 +610,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     }
 
     // ---------- Phase 3: flush everything in a handful of batch writes (customers -> orders -> items, in FK order) ----------
+    currentStage = "DB 저장";
     if (newCustomerInserts.length > 0) {
       await customersRepository.createMany(newCustomerInserts);
     }
@@ -657,7 +664,10 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       duplicate_candidates: 0,
       already_imported_rows: 0,
       column_mapping: mapping as Record<string, string>,
-      error_log: [...errors, { row: 0, code: "processing_error", reason: `배치 저장 중 오류로 전체 업로드가 취소되었습니다: ${reason}`, raw: {} }],
+      error_log: [
+        ...errors,
+        { row: 0, code: "processing_error", reason: `[실패 단계: ${currentStage}] 오류로 전체 업로드가 취소되었습니다: ${reason}`, raw: {} },
+      ],
     });
     throw e;
   }

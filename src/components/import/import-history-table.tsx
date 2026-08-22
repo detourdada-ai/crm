@@ -39,9 +39,19 @@ export function ImportHistoryTable({ imports, showOwner = false }: { imports: Im
                 )}
               </TableCell>
               <TableCell>
-                <Badge variant={imp.status === "completed" ? "secondary" : "outline"}>
+                <Badge
+                  variant={imp.status === "completed" ? "secondary" : imp.status === "failed" ? "destructive" : "outline"}
+                  title={
+                    imp.status === "failed" && imp.error_log && imp.error_log.length > 0
+                      ? imp.error_log[imp.error_log.length - 1].reason
+                      : undefined
+                  }
+                >
                   {imp.status === "completed" ? "완료" : imp.status === "failed" ? "실패" : "처리중"}
                 </Badge>
+                {imp.status === "failed" && imp.error_log && imp.error_log.length > 0 ? (
+                  <p className="mt-1 max-w-xs text-xs text-destructive">{imp.error_log[imp.error_log.length - 1].reason}</p>
+                ) : null}
               </TableCell>
               {showOwner ? <TableCell className="text-muted-foreground">{imp.owner_username}</TableCell> : null}
               <TableCell>
