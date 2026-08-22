@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
@@ -12,6 +13,7 @@ import { formatCurrency, formatDate } from "@/lib/constants/order-status";
 import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import { DriverAssignInline } from "@/components/delivery/driver-assign-inline";
+import { updateShipmentBagAction } from "@/actions/delivery";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import type { Driver, DeliveryStatus } from "@/types/domain";
@@ -108,12 +110,7 @@ export function DeliveryOrderRow({
           <ItemSummaryBlock summary={itemSummary} />
           <div className="flex flex-wrap items-center gap-2">
             {bagManagementEnabled && order.bag_number ? (
-              <span className="flex items-center gap-1">
-                가방 {order.bag_number}
-                <Badge variant={order.bag_returned ? "secondary" : "outline"} className="px-1.5 py-0 text-[10px]">
-                  {order.bag_returned ? "회수완료" : "미회수"}
-                </Badge>
-              </span>
+              <ShipmentBagToggle shipmentId={order.rowKey} bagNumber={order.bag_number} bagReturned={order.bag_returned} />
             ) : null}
             <Link href={`/orders/${order.id}`} className="hover:underline">
               {order.internal_order_number}
@@ -128,6 +125,39 @@ export function DeliveryOrderRow({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * 배송관리 UX 최종화 실사용 피드백: 가방 회수 여부를 주문관리로 건너가지
+ * 않고 배송관리 화면에서 바로 클릭 한 번으로 토글한다(배송건 단위,
+ * updateShipmentBagAction — 주문관리의 가방 관리와는 별개 컬럼).
+ */
+function ShipmentBagToggle({ shipmentId, bagNumber, bagReturned }: { shipmentId: string; bagNumber: string; bagReturned: boolean }) {
+  const [returned, setReturned] = useState(bagReturned);
+  const [isPending, startTransition] = useTransition();
+
+  function toggle() {
+    const next = !returned;
+    setReturned(next);
+    startTransition(async () => {
+      const result = await updateShipmentBagAction(shipmentId, { bagNumber, bagReturned: next });
+      if (!result.ok) {
+        setReturned(!next);
+        toast.error(result.error ?? "가방 회수 상태 저장 중 오류가 발생했습니다.");
+      }
+    });
+  }
+
+  return (
+    <span className="flex items-center gap-1">
+      가방 {bagNumber}
+      <button type="button" onClick={toggle} disabled={isPending} className="disabled:opacity-60">
+        <Badge variant={returned ? "secondary" : "outline"} className="cursor-pointer px-1.5 py-0 text-[10px]">
+          {isPending ? <Loader2 className="size-2.5 animate-spin" /> : returned ? "회수완료" : "미회수"}
+        </Badge>
+      </button>
+    </span>
   );
 }
 

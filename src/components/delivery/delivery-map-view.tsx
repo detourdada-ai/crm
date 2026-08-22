@@ -61,7 +61,6 @@ export function DeliveryMapView({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [hideCompleted, setHideCompleted] = useState(false);
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -121,15 +120,17 @@ export function DeliveryMapView({
   // 갖지 않으므로 표시하지 않는다.
   const showRank = !!activeDriverId && activeDriverId !== DRIVER_UNASSIGNED_SENTINEL;
 
+  // 배송관리 UX 최종화 실사용 피드백: "완료 숨기기"가 지도에만 있는 로컬
+  // state였던 탓에 지도를 필터링해서 보다가 목록으로 돌아가면(또는 그
+  // 반대) 같은 조건인데도 표시되는 배송건 수가 달라 보이는 문제가 있었다
+  // — 목록/지도는 "같은 데이터의 다른 표현"이어야 하므로(View 원칙),
+  // 지도만의 별도 필터를 두지 않고 그룹/기사 필터링 결과를 그대로 쓴다.
   const filteredOrders = useMemo(() => {
-    const filtered = filterOrdersByDriver(groupFilteredOrders, activeDriverId).filter((o) => {
-      if (hideCompleted && o.delivery_status === "완료") return false;
-      return true;
-    });
+    const filtered = filterOrdersByDriver(groupFilteredOrders, activeDriverId);
     // 인터뷰 8/21 Sprint2b §7: 기사 한 명으로 좁혀 볼 때는 지도 마커 순번(①②③...)과
     // 이 아래 목록의 표시 순서가 반드시 같아야 한다 — route_order로 정렬한다.
     return showRank ? sortByRouteOrder(filtered) : filtered;
-  }, [groupFilteredOrders, activeDriverId, hideCompleted, showRank]);
+  }, [groupFilteredOrders, activeDriverId, showRank]);
 
   function selectOrder(id: string) {
     setHighlightedOrderId(id);
@@ -173,10 +174,6 @@ export function DeliveryMapView({
             </button>
           ) : null}
         </div>
-        <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <input type="checkbox" className="size-4" checked={hideCompleted} onChange={(e) => setHideCompleted(e.target.checked)} />
-          완료 숨기기
-        </label>
       </div>
 
       {viewMode === "driver" ? (

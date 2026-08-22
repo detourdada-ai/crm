@@ -195,6 +195,9 @@ export async function updateOrderBagAction(
     session.role === "admin" ? undefined : session.username
   );
   revalidatePath("/orders");
+  // 배송관리 화면에서도 가방 회수 여부를 바로 토글할 수 있어야 한다는
+  // 실사용 피드백 반영 — 이 액션을 배송관리에서도 재사용하므로 그 화면도 갱신한다.
+  revalidatePath("/delivery");
   return { ok: true, error: null };
 }
 

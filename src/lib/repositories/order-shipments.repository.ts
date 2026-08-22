@@ -509,6 +509,25 @@ export const orderShipmentsRepository = {
     return count ?? 0;
   },
 
+  /**
+   * 배송관리 UX 최종화 실사용 피드백: 가방 회수 여부는 배송건(그날 그
+   * 배송) 단위 개념인데도 그동안 쓰기 경로가 전혀 없었다(화면에는
+   * order_shipments.bag_number/bag_returned를 표시만 하고 있었음, 주문관리의
+   * updateOrderBagAction/markBagReturnedAction은 orders 테이블의 별도
+   * bag_number/bag_returned를 갱신할 뿐 여기로 반영되지 않았다) — 배송관리
+   * 화면에서 직접 회수 여부를 토글할 수 있도록 배송건 단위 쓰기를 추가한다.
+   */
+  async updateBag(shipmentId: string, input: { bagNumber: string | null; bagReturned: boolean }, ownerUsername?: string): Promise<void> {
+    let q = getSupabaseAdmin()
+      .from("order_shipments")
+      .update({ bag_number: input.bagNumber, bag_returned: input.bagReturned })
+      .eq("id", shipmentId);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("id");
+    if (error) throw error;
+    if (!data || data.length === 0) throw new Error("배송건을 찾을 수 없거나 권한이 없습니다.");
+  },
+
   /** 기사 세션에서 배송건 하나를 완료 처리한다. driverId가 주어지면 본인에게 배정된 배송건만 대상이 된다. */
   async markDelivered(shipmentId: string, driverId?: string): Promise<OrderShipment> {
     let q = getSupabaseAdmin()

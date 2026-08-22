@@ -245,6 +245,27 @@ export async function setDeliveryStatusAction(
 }
 
 /**
+ * 배송관리 UX 최종화 실사용 피드백: 가방 회수 관리는 배송관리 화면에서
+ * 바로 처리할 수 있어야 한다 — 배송건(order_shipments) 단위 bag_number/
+ * bag_returned를 갱신한다. 주문관리의 updateOrderBagAction과는 별개
+ * 컬럼(테이블)이라 서로 덮어쓰지 않는다.
+ */
+export async function updateShipmentBagAction(
+  shipmentId: string,
+  input: { bagNumber: string | null; bagReturned: boolean }
+): Promise<DeliveryActionState> {
+  try {
+    const session = await requireSession();
+    await orderShipmentsRepository.updateBag(shipmentId, input, session.role === "admin" ? undefined : session.username);
+    revalidatePath("/delivery");
+    revalidatePath("/orders");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "가방 정보 저장 중 오류가 발생했습니다.") };
+  }
+}
+
+/**
  * P5 13번: "직접수령" 선택 — driver_id를 가짜로 채우지 않고 fulfillment_method
  * 컬럼만 바꾼다. direct_pickup으로 바꾸면 기존 기사 배정은 함께 해제된다.
  */

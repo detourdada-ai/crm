@@ -69,6 +69,20 @@ export async function resetTenantTestData(tenantId: string): Promise<TenantReset
     .select("id");
   if (groupErr) throw groupErr;
 
+  // 배송관리 UX 최종화 이후 실사용 피드백: 기사 1명씩 지울 때는
+  // deleteDriverAction이 app_accounts(로그인 계정)까지 같이 지웠는데(P11-2),
+  // 테넌트 전체 초기화는 drivers 테이블만 지우고 로그인 계정은 그대로
+  // 남겨(FK가 driver_id를 null로만 바꿈) 그 아이디를 영구히 재사용할 수 없는
+  // 고아 계정이 쌓이는 문제가 있었다. drivers를 지우기 전에 먼저 연결된
+  // app_accounts를 조회해 같이 지운다.
+  const { data: driverRows, error: driverSelErr } = await db.from("drivers").select("id").eq("tenant_id", tenantId);
+  if (driverSelErr) throw driverSelErr;
+  const driverIds = (driverRows ?? []).map((r) => r.id);
+  if (driverIds.length > 0) {
+    const { error: driverAccountErr } = await db.from("app_accounts").delete().in("driver_id", driverIds);
+    if (driverAccountErr) throw driverAccountErr;
+  }
+
   const { data: deletedDrivers, error: driverErr } = await db
     .from("drivers")
     .delete()
