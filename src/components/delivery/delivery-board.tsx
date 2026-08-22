@@ -14,15 +14,13 @@ import {
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
-import { buildGroupBuildingLabels, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import { buildGroupBuildingLabels, filterOrdersByGroup, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
 import { DeliveryViewTabs, type DeliveryViewMode } from "@/components/delivery/delivery-view-tabs";
-import { DeliveryGroupCards } from "@/components/delivery/delivery-group-cards";
+import { DeliveryRegionFilter } from "@/components/delivery/delivery-region-filter";
 import { DeliveryDriverView } from "@/components/delivery/delivery-driver-view";
 import { DeliveryOrderRow } from "@/components/delivery/delivery-order-row";
 import { BulkAssignBar } from "@/components/delivery/bulk-assign-bar";
 import type { Driver, DeliveryGroup, DeliveryStatus, FulfillmentMethod } from "@/types/domain";
-
-const UNGROUPED_SENTINEL = "__ungrouped__";
 
 /**
  * S2-A: 배송관리를 "조회 화면"에서 "오늘 배송을 운영하는 화면"으로 재설계 —
@@ -82,11 +80,7 @@ export function DeliveryBoard({
     router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
   }
 
-  const groupFilteredOrders = useMemo(() => {
-    if (!activeGroupId) return orders;
-    if (activeGroupId === UNGROUPED_SENTINEL) return orders.filter((o) => !o.delivery_group_id);
-    return orders.filter((o) => o.delivery_group_id === activeGroupId);
-  }, [orders, activeGroupId]);
+  const groupFilteredOrders = useMemo(() => filterOrdersByGroup(orders, activeGroupId), [orders, activeGroupId]);
 
   // §7/§13: 그룹 대표 건물명 — 그룹 자체가 아니라 그 그룹에 실제로 속한
   // 배송건들의 address_snapshot에서 다수결로 계산한다(delivery-group.ts,
@@ -298,7 +292,7 @@ export function DeliveryBoard({
 
       {viewMode === "region" ? (
         showGroupColumn ? (
-          <DeliveryGroupCards
+          <DeliveryRegionFilter
             groups={groups}
             labelById={groupLabels}
             countsByGroupId={countsByGroupId}

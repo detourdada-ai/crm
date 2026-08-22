@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
-import { groupRegionLabel } from "@/lib/utils/delivery-group";
+import { DeliveryRegionFilter } from "@/components/delivery/delivery-region-filter";
+import { buildGroupBuildingLabels, filterOrdersByGroup, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
 import { cn } from "@/lib/utils";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import type { Driver, DeliveryGroup } from "@/types/domain";
@@ -16,11 +17,6 @@ const COMPLETED_COLOR = "bg-muted-foreground";
 
 const DRIVER_ALL = "__all__";
 const DRIVER_UNASSIGNED = "__unassigned__";
-const REGION_ALL = "__all__";
-
-function regionKeyOf(g: Pick<DeliveryGroup, "representative_sido" | "representative_sigungu" | "representative_eupmyeondong">): string {
-  return `${g.representative_sido ?? ""}||${g.representative_sigungu ?? ""}||${g.representative_eupmyeondong ?? ""}`;
-}
 
 /**
  * P15-B / P15-B-2 / P15-B-3: 사장님 배송관제 지도 — 기존 목록(DeliveryBoard)은
@@ -53,12 +49,26 @@ export function DeliveryMapView({
   drivers: Driver[];
   groups: DeliveryGroup[];
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [driverFilter, setDriverFilter] = useState(DRIVER_ALL);
-  const [regionFilter, setRegionFilter] = useState(REGION_ALL);
   const [hideCompleted, setHideCompleted] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // 인터뷰 8/21 STEP B: 지역 필터는 목록(DeliveryBoard)과 완전히 같은
+  // activeGroupId(URL의 group 파라미터)를 공유한다 — 더 이상 지도만의
+  // 독립된 sido/sigungu 버킷 필터를 두지 않는다. "목록에서 지역 선택 →
+  // 지도에도 즉시 반영"이 구조적으로 보장된다.
+  const activeGroupId = searchParams.get("group");
+  function setActiveGroupId(next: string | null) {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set("group", next);
+    else params.delete("group");
+    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
+  }
 
   const driverColorById = useMemo(() => {
     const map = new Map<string, string>();
@@ -78,34 +88,40 @@ export function DeliveryMapView({
     return { counts, unassigned };
   }, [orders]);
 
-  const regionOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const g of groups) {
-      const key = regionKeyOf(g);
-      if (!map.has(key)) map.set(key, groupRegionLabel(g));
+  const groupLabels = useMemo(() => {
+    if (groups.length === 0) return new Map<string, GroupBuildingLabel>();
+    const memberAddresses = new Map<string, (string | null)[]>();
+    for (const o of orders) {
+      if (!o.delivery_group_id) continue;
+      const list = memberAddresses.get(o.delivery_group_id) ?? [];
+      list.push(o.address_snapshot);
+      memberAddresses.set(o.delivery_group_id, list);
     }
-    return [...map.entries()];
-  }, [groups]);
+    return buildGroupBuildingLabels(groups, memberAddresses);
+  }, [groups, orders]);
 
-  const regionGroupIds = useMemo(() => {
-    if (regionFilter === REGION_ALL) return null;
-    const ids = new Set<string>();
-    for (const g of groups) if (regionKeyOf(g) === regionFilter) ids.add(g.id);
-    return ids;
-  }, [groups, regionFilter]);
+  const countsByGroupId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const o of orders) {
+      if (o.delivery_group_id) map.set(o.delivery_group_id, (map.get(o.delivery_group_id) ?? 0) + 1);
+    }
+    return map;
+  }, [orders]);
+  const ungroupedCount = useMemo(() => orders.filter((o) => !o.delivery_group_id).length, [orders]);
+
+  const groupFilteredOrders = useMemo(() => filterOrdersByGroup(orders, activeGroupId), [orders, activeGroupId]);
 
   const filteredOrders = useMemo(() => {
-    return orders.filter((o) => {
+    return groupFilteredOrders.filter((o) => {
       if (driverFilter === DRIVER_UNASSIGNED) {
         if (o.driver_id) return false;
       } else if (driverFilter !== DRIVER_ALL && o.driver_id !== driverFilter) {
         return false;
       }
-      if (regionGroupIds && (!o.delivery_group_id || !regionGroupIds.has(o.delivery_group_id))) return false;
       if (hideCompleted && o.delivery_status === "완료") return false;
       return true;
     });
-  }, [orders, driverFilter, regionGroupIds, hideCompleted]);
+  }, [groupFilteredOrders, driverFilter, hideCompleted]);
 
   function selectOrder(id: string) {
     setHighlightedOrderId(id);
@@ -169,20 +185,15 @@ export function DeliveryMapView({
       </button>
       {detailOpen ? (
         <div className="flex flex-wrap items-center gap-2">
-          {regionOptions.length > 0 ? (
-            <Select value={regionFilter} onValueChange={setRegionFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={REGION_ALL}>전체 지역</SelectItem>
-                {regionOptions.map(([key, label]) => (
-                  <SelectItem key={key} value={key}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {groups.length > 0 ? (
+            <DeliveryRegionFilter
+              groups={groups}
+              labelById={groupLabels}
+              countsByGroupId={countsByGroupId}
+              ungroupedCount={ungroupedCount}
+              activeGroupId={activeGroupId}
+              onSelectGroup={setActiveGroupId}
+            />
           ) : null}
           <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <input type="checkbox" className="size-4" checked={hideCompleted} onChange={(e) => setHideCompleted(e.target.checked)} />
