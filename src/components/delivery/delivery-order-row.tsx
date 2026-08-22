@@ -133,7 +133,7 @@ export function DeliveryOrderRow({
  * 않고 배송관리 화면에서 바로 클릭 한 번으로 토글한다(배송건 단위,
  * updateShipmentBagAction — 주문관리의 가방 관리와는 별개 컬럼).
  */
-function ShipmentBagToggle({ shipmentId, bagNumber, bagReturned }: { shipmentId: string; bagNumber: string; bagReturned: boolean }) {
+export function ShipmentBagToggle({ shipmentId, bagNumber, bagReturned }: { shipmentId: string; bagNumber: string; bagReturned: boolean }) {
   const [returned, setReturned] = useState(bagReturned);
   const [isPending, startTransition] = useTransition();
 
@@ -237,7 +237,7 @@ const STATUS_MENU_OPTIONS: { value: "배송대기" | "배송중" | "완료"; lab
  * 미배정+직접수령 아니면 배송중/완료 불가)과 동일한 규칙을 클라이언트에도
  * 반영해 disabled로 미리 보여준다.
  */
-function DeliveryStatusControl({
+export function DeliveryStatusControl({
   status,
   canProgress,
   disabled,

@@ -4,22 +4,17 @@ import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  assignDriverAction,
-  reorderShipmentsAction,
-  setDeliveryStatusAction,
-  setFulfillmentMethodAction,
-  unassignDriverAction,
-} from "@/actions/delivery";
+import { assignDriverAction, reorderShipmentsAction, setFulfillmentMethodAction } from "@/actions/delivery";
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import { buildGroupBuildingLabels, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
 import { DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
+import { useShipmentRowActions } from "@/lib/hooks/use-shipment-row-actions";
 import { DeliveryOrderRow } from "@/components/delivery/delivery-order-row";
 import { BulkAssignBar } from "@/components/delivery/bulk-assign-bar";
-import type { Driver, DeliveryGroup, DeliveryStatus, FulfillmentMethod } from "@/types/domain";
+import type { Driver, DeliveryGroup, FulfillmentMethod } from "@/types/domain";
 
 /**
  * S2-A: 배송관리를 "조회 화면"에서 "오늘 배송을 운영하는 화면"으로 재설계 —
@@ -60,9 +55,9 @@ export function DeliveryBoard({
   const [bulkDriverId, setBulkDriverId] = useState("");
   const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
   const [isPending, startTransition] = useTransition();
-  const [pendingRowId, setPendingRowId] = useState<string | null>(null);
   const [candidateDriverIds, setCandidateDriverIds] = useState<Set<string>>(new Set());
   const [, startCandidateLookup] = useTransition();
+  const rowActions = useShipmentRowActions();
 
   const driverNames = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d.name])), [drivers]);
   // 배송관리 핵심 UX 재설계: 기사 필터로 특정 기사 한 명만 골랐을 때는
@@ -154,68 +149,11 @@ export function DeliveryBoard({
     });
   }
 
-  /** S2-B STEP3: 기사별 View의 ↑/↓ 버튼 → 그 기사 리스트 전체를 새 순서로 서버에 반영. */
+  /** S2-B STEP3: ↑/↓ 버튼 → 그 기사 리스트 전체를 새 순서로 서버에 반영. */
   function handleReorder(orderedShipmentIds: string[]) {
     startTransition(async () => {
       const result = await reorderShipmentsAction(orderedShipmentIds);
       if (!result.ok) toast.error(result.error ?? "순서 변경 중 오류가 발생했습니다.");
-    });
-  }
-
-  function handleSetStatus(shipmentId: string, status: DeliveryStatus) {
-    setPendingRowId(shipmentId);
-    startTransition(async () => {
-      const result = await setDeliveryStatusAction([shipmentId], status as "배송대기" | "배송중" | "완료");
-      if (result.ok) toast.success(`상태를 ${status}(으)로 변경했습니다.`);
-      else toast.error(result.error ?? "상태 변경 중 오류가 발생했습니다.");
-      setPendingRowId(null);
-    });
-  }
-
-  function handleAssign(shipmentId: string, targetDriverId: string) {
-    setPendingRowId(shipmentId);
-    startTransition(async () => {
-      const result = await assignDriverAction([shipmentId], targetDriverId);
-      if (result.ok) toast.success("기사를 배정했습니다.");
-      else toast.error(result.error ?? "기사 배정 중 오류가 발생했습니다.");
-      setPendingRowId(null);
-    });
-  }
-
-  function handleUnassign(shipmentId: string) {
-    setPendingRowId(shipmentId);
-    startTransition(async () => {
-      const result = await unassignDriverAction([shipmentId]);
-      if (result.ok) toast.success("배정을 해제했습니다.");
-      else toast.error(result.error ?? "배정 해제 중 오류가 발생했습니다.");
-      setPendingRowId(null);
-    });
-  }
-
-  function handleSetDirectPickup(shipmentId: string) {
-    setPendingRowId(shipmentId);
-    startTransition(async () => {
-      const result = await setFulfillmentMethodAction([shipmentId], "direct_pickup");
-      if (result.ok) toast.success("직접수령으로 설정하고 배송완료 처리했습니다.");
-      else toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
-      setPendingRowId(null);
-    });
-  }
-
-  /**
-   * P1-B 회귀 복구: S2-A 이전 DriverCell에 있던 "직접수령 해제"
-   * (handleClearDirectPickup → setFulfillmentMethodAction(..., "delivery"))가
-   * DriverAssignInline 통합 과정에서 이관되지 않아, direct_pickup으로 바뀐
-   * 배송건을 되돌릴 UI 경로가 없었다. "배정 해제"(driver_id 제거)와는 별개
-   * 개념이므로 별도 핸들러/메뉴 항목으로 분리해 복구한다.
-   */
-  function handleClearDirectPickup(shipmentId: string) {
-    setPendingRowId(shipmentId);
-    startTransition(async () => {
-      const result = await setFulfillmentMethodAction([shipmentId], "delivery");
-      if (result.ok) toast.success("직접수령을 해제했습니다.");
-      else toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
-      setPendingRowId(null);
     });
   }
 
@@ -242,13 +180,13 @@ export function DeliveryBoard({
         groupLabel={order.delivery_group_id ? (groupLabels.get(order.delivery_group_id)?.full ?? null) : null}
         selected={selected.has(order.rowKey)}
         onToggleSelect={(checked) => toggle(order.rowKey, checked)}
-        isPending={isPending}
-        showSpinner={isPending && pendingRowId === order.rowKey}
-        onSetStatus={(next) => handleSetStatus(order.rowKey, next)}
-        onAssign={(id) => handleAssign(order.rowKey, id)}
-        onSetDirectPickup={() => handleSetDirectPickup(order.rowKey)}
-        onUnassign={() => handleUnassign(order.rowKey)}
-        onClearDirectPickup={() => handleClearDirectPickup(order.rowKey)}
+        isPending={rowActions.isPending}
+        showSpinner={rowActions.isPending && rowActions.pendingRowId === order.rowKey}
+        onSetStatus={(next) => rowActions.setStatus(order.rowKey, next)}
+        onAssign={(id) => rowActions.assign(order.rowKey, id)}
+        onSetDirectPickup={() => rowActions.setDirectPickup(order.rowKey)}
+        onUnassign={() => rowActions.unassign(order.rowKey)}
+        onClearDirectPickup={() => rowActions.clearDirectPickup(order.rowKey)}
         itemSummary={itemSummaries[order.rowKey]}
         bagManagementEnabled={bagManagementEnabled}
       />

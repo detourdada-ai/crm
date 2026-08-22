@@ -50,17 +50,18 @@ const COMPLETED_COLOR = "bg-muted-foreground";
  */
 export function DeliveryMapView({
   orders,
-  panelOrders,
   drivers,
+  driverCounts,
+  bagManagementEnabled = false,
   activeDriverId = null,
   reorderEnabled = false,
 }: {
-  /** 이미 배송상태·배송그룹·기사 필터가 모두 적용된 최종 목록(마커/아래 목록에 쓴다). */
+  /** 이미 배송상태·배송그룹·기사 필터가 모두 적용된 최종 목록(마커/아래 목록/패널에 쓴다). */
   orders: OrderShipmentBoardRow[];
-  /** 필터로 좁혀지지 않은 전체 목록 — DeliveryShipmentPanel에서 화면에 안
-   *  보이는 다른 기사의 그날 전체 목록을 계산할 때 필요하다. 없으면 orders로 대체. */
-  panelOrders?: OrderShipmentBoardRow[];
   drivers: Driver[];
+  /** DeliveryShipmentPanel의 담당기사 선택지에 "오늘 N건" 참고 표시용. */
+  driverCounts: Record<string, number>;
+  bagManagementEnabled?: boolean;
   /** 기사 필터로 특정 기사 한 명을 좁혀 봤을 때만 마커 순번(route_order)을 보여준다. */
   activeDriverId?: string | null;
   /** 특정 배송일 하나만 조회 중일 때만 true — route_order가 의미를 갖는 범위. */
@@ -137,8 +138,9 @@ export function DeliveryMapView({
         <DeliveryShipmentPanel
           key={selectedShipment.rowKey}
           shipment={selectedShipment}
-          orders={panelOrders ?? orders}
           drivers={drivers}
+          driverCounts={driverCounts}
+          bagManagementEnabled={bagManagementEnabled}
           onClose={() => setHighlightedOrderId(null)}
         />
       ) : null}

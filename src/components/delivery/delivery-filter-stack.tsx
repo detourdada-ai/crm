@@ -161,8 +161,9 @@ export function DeliveryFilterStack({
         mapView={
           <DeliveryMapView
             orders={filteredOrders}
-            panelOrders={orders}
             drivers={drivers}
+            driverCounts={driverCounts}
+            bagManagementEnabled={bagManagementEnabled}
             activeDriverId={activeDriverId}
             reorderEnabled={reorderEnabled}
           />
