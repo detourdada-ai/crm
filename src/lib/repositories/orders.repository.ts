@@ -215,6 +215,30 @@ export const ordersRepository = {
     return found;
   },
 
+  /**
+   * 베타 런칭 전 핵심 시나리오 최종 정리 PART 9-11: findExistingOrderNumbers
+   * 위 코멘트가 설명하는 "261→157" 사고를 tenant_id 필터로 막았지만, 그 필터
+   * 때문에 정반대 상황(다른 테넌트가 이미 쓰고 있는 order_number를 이 테넌트가
+   * 새로 쓰려는 경우)은 사전 체크를 통과해버린다 — orders.order_number의
+   * UNIQUE 제약은 여전히 tenant 무관 전역이므로, 그 순간 DB INSERT가 그대로
+   * 실패한다(340건 사고의 실제 원인 — 충돌한 주문번호는 같은 테넌트의 과거
+   * 업로드가 아니라 다른 계정의 데이터였다). UNIQUE 제약 자체는 건드리지
+   * 않고, INSERT 전에 이 전역 충돌을 미리 알아내 그 행만 걸러내기 위한
+   * 조회다.
+   */
+  async findGloballyExistingOrderNumbers(orderNumbers: string[]): Promise<Set<string>> {
+    if (orderNumbers.length === 0) return new Set();
+    const CHUNK_SIZE = 300;
+    const found = new Set<string>();
+    for (let i = 0; i < orderNumbers.length; i += CHUNK_SIZE) {
+      const chunk = orderNumbers.slice(i, i + CHUNK_SIZE);
+      const { data, error } = await getSupabaseAdmin().from("orders").select("order_number").in("order_number", chunk);
+      if (error) throw error;
+      for (const r of data ?? []) found.add(r.order_number as string);
+    }
+    return found;
+  },
+
   async findByCustomerId(customerId: string): Promise<Order[]> {
     const { data, error } = await getSupabaseAdmin()
       .from("orders")

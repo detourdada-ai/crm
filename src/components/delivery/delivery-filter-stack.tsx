@@ -159,7 +159,13 @@ export function DeliveryFilterStack({
           />
         }
         mapView={
-          <DeliveryMapView orders={filteredOrders} panelOrders={orders} drivers={drivers} activeDriverId={activeDriverId} />
+          <DeliveryMapView
+            orders={filteredOrders}
+            panelOrders={orders}
+            drivers={drivers}
+            activeDriverId={activeDriverId}
+            reorderEnabled={reorderEnabled}
+          />
         }
       />
     </div>

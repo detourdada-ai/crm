@@ -301,13 +301,24 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   // error_log에 남긴다 — 완료 조건이 요구하는 "실패 단계" 항목.
   let currentStage: "배치 조회" | "고객/주문 생성" | "좌표 처리" | "주문번호 채번" | "DB 저장" = "배치 조회";
 
+  let crossTenantConflicts: Set<string>;
   try {
     // ---------- Phase 1: batch-fetch everything the per-row logic used to query individually ----------
     let ownerCustomers: Customer[];
-    [existingOrderNumbers, ownerCustomers] = await Promise.all([
+    let globallyExistingOrderNumbers: Set<string>;
+    [existingOrderNumbers, globallyExistingOrderNumbers, ownerCustomers] = await Promise.all([
       ordersRepository.findExistingOrderNumbers(Array.from(groups.keys()), tenant.id),
+      ordersRepository.findGloballyExistingOrderNumbers(Array.from(groups.keys())),
       customersRepository.findAllByOwner(ownerUsername),
     ]);
+    // 베타 런칭 전 핵심 시나리오 최종 정리 PART 9-11: orders.order_number는
+    // tenant 무관 전역 UNIQUE라, 이 테넌트에는 없지만(existingOrderNumbers
+    // 밖) 다른 테넌트에는 이미 있는(globallyExistingOrderNumbers 안) 번호는
+    // INSERT 시점에 그대로 제약 위반으로 터진다. 그 값들만 걸러내 DB 저장을
+    // 시도하기 전에 미리 실패 처리한다 — "이미 등록된 주문번호"(같은 테넌트,
+    // existingOrderNumbers)와는 원인이 다르므로 아래 루프에서 메시지를
+    // 구분한다.
+    crossTenantConflicts = new Set([...globallyExistingOrderNumbers].filter((n) => !existingOrderNumbers.has(n)));
     pool = new CustomerPoolIndex(ownerCustomers);
     // Import 시작 시점의 "고객별 기존 주문 수"(취소 제외, customer_order_stats
     // 뷰) — 이 파일 안에서 같은 고객이 여러 번 주문하면 첫 등장만 신규로
@@ -334,6 +345,22 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         successRows += rows.length;
         alreadyImportedRows += rows.length;
         alreadyImportedOrders += 1;
+        continue;
+      }
+
+      // PART 9-12: 다른 테넌트가 이미 쓰고 있는 주문번호 — 이 계정 기준으로는
+      // "이미 등록된 주문"이 아니므로(그래서 위 existingOrderNumbers 체크를
+      // 통과했다) 그렇게 안내하면 안 된다. INSERT를 시도하지 않고 이 자리에서
+      // 바로 실패 처리해, DB 저장 단계에서 전체가 취소되는 대신 이 주문만
+      // 건너뛰고 나머지는 정상 등록되게 한다.
+      if (crossTenantConflicts.has(orderNumber)) {
+        errors.push({
+          row: firstIndex + 2,
+          code: "order_number_conflict",
+          reason: `[${orderNumber}] 이 주문번호는 이미 다른 계정의 주문에 등록되어 있어 시스템 제약상 등록할 수 없습니다. 엑셀 원본의 주문번호를 확인해주세요.`,
+          raw: rows[0],
+        });
+        failedRowCount += rows.length;
         continue;
       }
 

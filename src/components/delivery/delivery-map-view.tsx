@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { toast } from "sonner";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { DeliveryShipmentPanel } from "@/components/delivery/delivery-shipment-panel";
+import { reorderShipmentsAction } from "@/actions/delivery";
 import { DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
 import { cn } from "@/lib/utils";
@@ -38,12 +41,19 @@ const COMPLETED_COLOR = "bg-muted-foreground";
  * 같은 주문이 발송일이 달라 배송건 두 개로 쪼개진 경우(예: "이번주" 같은
  * 여러 날짜를 아우르는 조회), 좌표가 같아 지도상 같은 위치에 뜨더라도
  * 서로 다른 배송건이라 반드시 구분되는 id가 필요하기 때문이다.
+ *
+ * 베타 런칭 전 핵심 시나리오 최종 정리 PART 5: "지도는 같은 배송목록을
+ * 지도 위에서 보는 View일 뿐"이라는 원칙에 따라, 목록(DeliveryBoard)에 있는
+ * 배송순서 ↑/↓ 재배치를 지도 아래 목록에도 동일하게 추가한다 — 기사 한
+ * 명으로 좁혀 봤을 때(showRank)만 의미가 있고, DeliveryBoard와 완전히
+ * 같은 reorderShipmentsAction(route_order 1..N 재정규화)을 그대로 쓴다.
  */
 export function DeliveryMapView({
   orders,
   panelOrders,
   drivers,
   activeDriverId = null,
+  reorderEnabled = false,
 }: {
   /** 이미 배송상태·배송그룹·기사 필터가 모두 적용된 최종 목록(마커/아래 목록에 쓴다). */
   orders: OrderShipmentBoardRow[];
@@ -53,9 +63,12 @@ export function DeliveryMapView({
   drivers: Driver[];
   /** 기사 필터로 특정 기사 한 명을 좁혀 봤을 때만 마커 순번(route_order)을 보여준다. */
   activeDriverId?: string | null;
+  /** 특정 배송일 하나만 조회 중일 때만 true — route_order가 의미를 갖는 범위. */
+  reorderEnabled?: boolean;
 }) {
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [isReordering, startReorder] = useTransition();
 
   const driverColorById = useMemo(() => {
     const map = new Map<string, string>();
@@ -73,10 +86,22 @@ export function DeliveryMapView({
   // 인터뷰 8/21 Sprint2b §7: 기사 한 명으로 좁혀 볼 때는 지도 마커 순번(①②③...)과
   // 이 아래 목록의 표시 순서가 반드시 같아야 한다 — route_order로 정렬한다.
   const filteredOrders = useMemo(() => (showRank ? sortByRouteOrder(orders) : orders), [orders, showRank]);
+  const showReorderControls = showRank && reorderEnabled;
 
   function selectOrder(id: string) {
     setHighlightedOrderId(id);
     rowRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function handleMoveRow(index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= filteredOrders.length) return;
+    const next = filteredOrders.slice();
+    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+    startReorder(async () => {
+      const result = await reorderShipmentsAction(next.map((o) => o.rowKey));
+      if (!result.ok) toast.error(result.error ?? "순서 변경 중 오류가 발생했습니다.");
+    });
   }
 
   const selectedShipment = useMemo(() => orders.find((o) => o.rowKey === highlightedOrderId) ?? null, [orders, highlightedOrderId]);
@@ -133,7 +158,7 @@ export function DeliveryMapView({
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">해당 조건의 배송이 없습니다.</p>
         ) : (
           <div className="max-h-[420px] divide-y overflow-y-auto">
-            {filteredOrders.map((o) => {
+            {filteredOrders.map((o, idx) => {
               const isDone = o.delivery_status === "완료";
               const isSelected = o.rowKey === highlightedOrderId;
               return (
@@ -148,7 +173,33 @@ export function DeliveryMapView({
                   onClick={() => selectOrder(o.rowKey)}
                   className={cn("flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-muted/40", isSelected && "bg-primary-soft")}
                 >
-                  {!activeDriverId || activeDriverId === DRIVER_UNASSIGNED_SENTINEL ? (
+                  {showReorderControls ? (
+                    <div className="flex shrink-0 flex-col items-center gap-1 pt-0.5" onClick={(e) => e.stopPropagation()}>
+                      <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
+                        {idx + 1}
+                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <button
+                          type="button"
+                          disabled={idx === 0 || isReordering}
+                          onClick={() => handleMoveRow(idx, -1)}
+                          aria-label="위로 이동"
+                          className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                        >
+                          <ChevronUp className="size-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === filteredOrders.length - 1 || isReordering}
+                          onClick={() => handleMoveRow(idx, 1)}
+                          aria-label="아래로 이동"
+                          className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                        >
+                          <ChevronDown className="size-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : !activeDriverId || activeDriverId === DRIVER_UNASSIGNED_SENTINEL ? (
                     <span
                       className={cn(
                         "mt-1.5 size-2.5 shrink-0 rounded-full",
