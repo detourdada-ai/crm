@@ -616,19 +616,31 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     }
     if (newOrderInserts.length > 0) {
       await ordersRepository.createMany(newOrderInserts);
-      // P15-A: 150건이 들어와도 "건마다"가 아니라 이번 import에 포함된 배송일
-      // 종류 수만큼만(보통 1~수 회) 재계산한다 — CPO 방침(P15-A 2번, Excel Import).
+    }
+    if (newShipmentInserts.length > 0) {
+      await orderShipmentsRepository.createMany(newShipmentInserts);
+      // 배송관리 운영 UX 최종화 PART 3: 지역별 필터가 "미그룹"만 보이는 회귀의
+      // 실제 원인 — 그룹 재계산 트리거가 (1) orders.delivery_date(주문당 "처음
+      // 발견된 발송일" 하나뿐인 호환 필드) 기준으로만 날짜를 모았고, (2) 심지어
+      // order_shipments가 DB에 쓰이기도 전(위 시점)에 실행되고 있었다. 상품별로
+      // 발송일이 갈라져 여러 배송건(order_shipments)으로 쪼개지는 주문은 그
+      // 중 일부 날짜가 트리거에서 아예 빠졌고, 트리거가 조회하는
+      // order_shipments 자체가 그 순간 아직 존재하지 않아 항상 0건으로
+      // 계산됐다 — 그래서 클러스터링 알고리즘/DB 스키마는 정상인데도 Excel
+      // import로 생성된 배송건은 그룹이 전혀 만들어지지 않았다. 실제 테넌트
+      // 데이터로 재현 확인(같은 날짜에 순수 클러스터링만 다시 돌려보면 실제
+      // 클러스터가 존재함을 확인). P15-A 원칙(건마다가 아니라 배송일 종류
+      // 수만큼만 재계산)은 그대로 유지 — 기준을 newShipmentInserts(실제
+      // 배송건 날짜)로 바꾸고, 이 배열이 DB에 쓰인 "다음"에 실행하도록
+      // 순서만 옮긴다.
       const distinctDateStrs = new Set(
-        newOrderInserts
-          .filter((o): o is typeof o & { delivery_date: string } => !!o.delivery_date)
-          .map((o) => kstDayDateStrOf(o.delivery_date))
+        newShipmentInserts
+          .filter((s): s is typeof s & { delivery_date: string } => !!s.delivery_date)
+          .map((s) => kstDayDateStrOf(s.delivery_date))
       );
       for (const dateStr of distinctDateStrs) {
         await triggerDeliveryGroupRegeneration(tenant.id, dateStr, ownerUsername);
       }
-    }
-    if (newShipmentInserts.length > 0) {
-      await orderShipmentsRepository.createMany(newShipmentInserts);
     }
     if (newItemInserts.length > 0) {
       await ordersRepository.createItems(newItemInserts);
