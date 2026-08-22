@@ -15,8 +15,10 @@ import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions"
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import { buildGroupBuildingLabels, filterOrdersByGroup, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import { filterOrdersByDriver } from "@/lib/utils/delivery-driver-filter";
 import { DeliveryViewTabs, type DeliveryViewMode } from "@/components/delivery/delivery-view-tabs";
 import { DeliveryRegionFilter } from "@/components/delivery/delivery-region-filter";
+import { DeliveryDriverFilter } from "@/components/delivery/delivery-driver-filter";
 import { DeliveryDriverView } from "@/components/delivery/delivery-driver-view";
 import { DeliveryOrderRow } from "@/components/delivery/delivery-order-row";
 import { BulkAssignBar } from "@/components/delivery/bulk-assign-bar";
@@ -29,13 +31,14 @@ import type { Driver, DeliveryGroup, DeliveryStatus, FulfillmentMethod } from "@
  * isApartmentName/groupRegionLabel)은 전혀 손대지 않고 그대로 재사용 —
  * 이번 개편은 UI 구조 변경이다.
  *
- * 배송그룹 필터는 group URL query param으로 관리(§6) — DeliveryFilterBar의
- * "배송그룹" select와 이 컴포넌트의 그룹 카드 클릭이 같은 param을 공유해
- * 별도 상태 공유 장치 없이 동기화된다. View 모드(전체/지역별/기사별)는
- * 반대로 URL에 남기지 않고 순수 client state로 관리한다(§14, CPO 지시) —
- * 탭 전환이 서버 재조회 없이 즉시 이뤄져야 하고, 이 상태가 그대로 유지되는
- * 덕에 선택 상태(selected)도 View 전환 시 리마운트 없이 보존된다(P12 재발
- * 방지 — §15).
+ * 배송관리 운영 플로우 완성 Sprint: View 모드(viewMode)와 선택된 기사
+ * (driverFilter)도 배송그룹(group)과 완전히 같은 방식으로 URL query param으로
+ * 관리한다 — 목록에서 "기사별 → 홍길동"을 고르고 지도로 넘어가도(또는 조회
+ * 필터바에서 "조회"를 눌러도) 같은 필터가 그대로 유지되어야 하기 때문이다
+ * (DeliveryMapView가 이 컴포넌트와 정확히 같은 3개 URL param을 읽고 쓴다).
+ * URL 변경으로 이 컴포넌트가 다시 렌더링되어도 같은 인스턴스 안에서 값만
+ * 바뀔 뿐이라 선택 상태(selected)는 View 전환에도 리마운트 없이 보존된다
+ * (P12 재발 방지 — §15).
  */
 export function DeliveryBoard({
   orders,
@@ -61,7 +64,6 @@ export function DeliveryBoard({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [viewMode, setViewMode] = useState<DeliveryViewMode>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDriverId, setBulkDriverId] = useState("");
   const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
@@ -80,7 +82,43 @@ export function DeliveryBoard({
     router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
   }
 
+  // 배송관리 운영 플로우 완성 Sprint §2/§13: View(전체/지역별/기사별)와
+  // 선택된 기사(driverFilter)도 group과 동일하게 URL로 관리한다 — 목록/지도가
+  // 완전히 같은 필터 상태를 공유해야 "목록에서 필터를 바꿨는데 지도로
+  // 이동하면 초기화되는" 구조가 생기지 않는다(memo §2 금지 사항).
+  const viewMode = (searchParams.get("viewMode") as DeliveryViewMode | null) ?? "all";
+  function setViewMode(next: DeliveryViewMode) {
+    const params = new URLSearchParams(searchParams);
+    if (next !== "all") params.set("viewMode", next);
+    else params.delete("viewMode");
+    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
+  }
+
+  const activeDriverId = searchParams.get("driverFilter");
+  function setActiveDriverId(next: string | null) {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set("driverFilter", next);
+    else params.delete("driverFilter");
+    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
+  }
+
   const groupFilteredOrders = useMemo(() => filterOrdersByGroup(orders, activeGroupId), [orders, activeGroupId]);
+  const driverFilteredOrders = useMemo(() => filterOrdersByDriver(groupFilteredOrders, activeDriverId), [groupFilteredOrders, activeDriverId]);
+  // "기사별" 탭에서 특정 기사를 아직 고르지 않았을 때만 기존 그룹형 개관
+  // (DeliveryDriverView)을 보여준다 — 고르고 나면 다른 탭과 동일하게 그
+  // 기사의 배송건만 나열한 플랫 목록으로 전환한다(memo §3 "기사 선택 시
+  // 해당 기사의 배송건만 표시").
+  const showDriverOverview = viewMode === "driver" && !activeDriverId;
+  const currentlyDisplayedOrders = showDriverOverview ? groupFilteredOrders : driverFilteredOrders;
+
+  const countsByDriverId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const o of groupFilteredOrders) {
+      if (o.driver_id) map.set(o.driver_id, (map.get(o.driver_id) ?? 0) + 1);
+    }
+    return map;
+  }, [groupFilteredOrders]);
+  const unassignedDriverCount = useMemo(() => groupFilteredOrders.filter((o) => !o.driver_id).length, [groupFilteredOrders]);
 
   // §7/§13: 그룹 대표 건물명 — 그룹 자체가 아니라 그 그룹에 실제로 속한
   // 배송건들의 address_snapshot에서 다수결로 계산한다(delivery-group.ts,
@@ -107,13 +145,13 @@ export function DeliveryBoard({
   }, [orders]);
   const ungroupedCount = useMemo(() => orders.filter((o) => !o.delivery_group_id).length, [orders]);
 
-  // P14-A 원칙 유지: "화면에 지금 보이는 집합"(groupFilteredOrders) 기준으로
-  // 선택을 좁힌다 — 필터/그룹 변경으로 화면에서 사라진 항목은 선택에서도
+  // P14-A 원칙 유지: "화면에 지금 보이는 집합"(currentlyDisplayedOrders) 기준으로
+  // 선택을 좁힌다 — 필터/그룹/기사 변경으로 화면에서 사라진 항목은 선택에서도
   // 빠져야 "선택 2건인데 101건 적용" 버그(P12)가 재발하지 않는다.
   const visibleSelected = useMemo(() => {
-    const currentIds = new Set(groupFilteredOrders.map((o) => o.rowKey));
+    const currentIds = new Set(currentlyDisplayedOrders.map((o) => o.rowKey));
     return new Set([...selected].filter((id) => currentIds.has(id)));
-  }, [selected, groupFilteredOrders]);
+  }, [selected, currentlyDisplayedOrders]);
 
   const orderById = useMemo(() => new Map(orders.map((o) => [o.rowKey, o.id])), [orders]);
 
@@ -142,8 +180,8 @@ export function DeliveryBoard({
 
   // S2-B STEP6: 일괄배정은 "지금 화면에 보이던 순서"를 그대로 유지해야
   // 한다(CPO 지시) — visibleSelected는 Set이라 클릭한 순서로 순회되므로,
-  // 화면 표시 순서인 groupFilteredOrders 기준으로 다시 정렬해서 넘긴다.
-  const selectedShipmentIdsInDisplayOrder = groupFilteredOrders.filter((o) => visibleSelected.has(o.rowKey)).map((o) => o.rowKey);
+  // 화면 표시 순서인 currentlyDisplayedOrders 기준으로 다시 정렬해서 넘긴다.
+  const selectedShipmentIdsInDisplayOrder = currentlyDisplayedOrders.filter((o) => visibleSelected.has(o.rowKey)).map((o) => o.rowKey);
 
   function handleBulkApply() {
     if (fulfillmentChoice === "direct_pickup") {
@@ -270,11 +308,32 @@ export function DeliveryBoard({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <DeliveryViewTabs value={viewMode} onChange={setViewMode} />
-        {activeGroupId ? (
-          <button type="button" onClick={() => setActiveGroupId(null)} className="text-xs text-muted-foreground hover:underline">
-            그룹 필터 해제
-          </button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-3">
+          {viewMode === "region" && showGroupColumn ? (
+            <DeliveryRegionFilter
+              groups={groups}
+              labelById={groupLabels}
+              countsByGroupId={countsByGroupId}
+              ungroupedCount={ungroupedCount}
+              activeGroupId={activeGroupId}
+              onSelectGroup={setActiveGroupId}
+            />
+          ) : null}
+          {viewMode === "driver" ? (
+            <DeliveryDriverFilter
+              drivers={drivers}
+              countsByDriverId={countsByDriverId}
+              unassignedCount={unassignedDriverCount}
+              activeDriverId={activeDriverId}
+              onSelectDriver={setActiveDriverId}
+            />
+          ) : null}
+          {activeGroupId ? (
+            <button type="button" onClick={() => setActiveGroupId(null)} className="text-xs text-muted-foreground hover:underline">
+              그룹 필터 해제
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <BulkAssignBar
@@ -290,24 +349,13 @@ export function DeliveryBoard({
         onApply={handleBulkApply}
       />
 
-      {viewMode === "region" ? (
-        showGroupColumn ? (
-          <DeliveryRegionFilter
-            groups={groups}
-            labelById={groupLabels}
-            countsByGroupId={countsByGroupId}
-            ungroupedCount={ungroupedCount}
-            activeGroupId={activeGroupId}
-            onSelectGroup={setActiveGroupId}
-          />
-        ) : (
-          <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            지역별 보기는 특정 배송일을 선택했을 때만 사용할 수 있습니다.
-          </p>
-        )
+      {viewMode === "region" && !showGroupColumn ? (
+        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          지역별 보기는 특정 배송일을 선택했을 때만 사용할 수 있습니다.
+        </p>
       ) : null}
 
-      {viewMode === "driver" ? (
+      {showDriverOverview ? (
         <DeliveryDriverView
           orders={groupFilteredOrders}
           drivers={drivers}
@@ -317,18 +365,21 @@ export function DeliveryBoard({
         />
       ) : (
         <div className="space-y-2">
-          {groupFilteredOrders.length > 1 ? (
+          {currentlyDisplayedOrders.length > 1 ? (
             <label className="flex items-center gap-2 pb-1 text-sm text-muted-foreground">
               <Checkbox
-                checked={visibleSelected.size === groupFilteredOrders.length}
+                checked={visibleSelected.size === currentlyDisplayedOrders.length}
                 onCheckedChange={(checked) =>
-                  setSelected(checked === true ? new Set(groupFilteredOrders.map((o) => o.rowKey)) : new Set())
+                  setSelected(checked === true ? new Set(currentlyDisplayedOrders.map((o) => o.rowKey)) : new Set())
                 }
               />
-              전체 선택({groupFilteredOrders.length}건)
+              전체 선택({currentlyDisplayedOrders.length}건)
             </label>
           ) : null}
-          {groupFilteredOrders.map((o) => renderRow(o))}
+          {currentlyDisplayedOrders.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">해당 조건의 배송건이 없습니다.</p>
+          ) : null}
+          {currentlyDisplayedOrders.map((o) => renderRow(o))}
         </div>
       )}
     </div>

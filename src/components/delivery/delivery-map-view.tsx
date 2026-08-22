@@ -2,12 +2,14 @@
 
 import { useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { DeliveryRegionFilter } from "@/components/delivery/delivery-region-filter";
+import { DeliveryDriverFilter } from "@/components/delivery/delivery-driver-filter";
+import { DeliveryViewTabs, type DeliveryViewMode } from "@/components/delivery/delivery-view-tabs";
 import { DeliveryShipmentPanel } from "@/components/delivery/delivery-shipment-panel";
 import { buildGroupBuildingLabels, filterOrdersByGroup, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import { filterOrdersByDriver, DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
 import { cn } from "@/lib/utils";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
@@ -17,17 +19,17 @@ const DRIVER_COLOR_CLASSES = ["bg-primary", "bg-sky-600", "bg-emerald-600", "bg-
 const UNASSIGNED_COLOR = "bg-slate-400";
 const COMPLETED_COLOR = "bg-muted-foreground";
 
-const DRIVER_ALL = "__all__";
-const DRIVER_UNASSIGNED = "__unassigned__";
-
 /**
  * P15-B / P15-B-2 / P15-B-3: 사장님 배송관제 지도 — 기존 목록(DeliveryBoard)은
  * 전혀 건드리지 않고 `/delivery`에 "지도" 탭으로만 추가한다. 서버에서 한 번
  * 불러온 orders/drivers/groups를 그대로 받아쓸 뿐 이 컴포넌트 자체는 어떤
  * 조회도, 배송그룹 재계산도 하지 않는다(성능 원칙).
  *
- * P15-B-2: 기사 필터는 상단 탭이고 `orders.filter(driver_id === 선택)` 기준으로만
- * 동작한다 — delivery_group_id는 필터 기준으로 쓰지 않는다.
+ * 배송관리 운영 플로우 완성 Sprint: 전체/지역별/기사별은 DeliveryBoard와
+ * 완전히 같은 DeliveryViewTabs + URL param(viewMode/group/driverFilter)으로
+ * 동작한다 — 지도만의 독립된 탭-행 UI(예전 P15-B-2)는 더 이상 쓰지 않는다.
+ * 목록에서 고른 필터가 지도에도, 지도에서 고른 필터가 목록에도 그대로
+ * 보이는 것이 핵심(memo §2/§4).
  *
  * P15-B-3: 지도 아래에 선택한 기사(또는 전체/미배정)의 배송목록을 추가한다.
  * 목록은 지도 markers와 완전히 같은 filteredOrders에서 파생되므로("지도에는
@@ -54,9 +56,7 @@ export function DeliveryMapView({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [driverFilter, setDriverFilter] = useState(DRIVER_ALL);
   const [hideCompleted, setHideCompleted] = useState(false);
-  const [detailOpen, setDetailOpen] = useState(false);
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -72,6 +72,26 @@ export function DeliveryMapView({
     router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
   }
 
+  // 배송관리 운영 플로우 완성 Sprint §2/§13: View(전체/지역별/기사별)와
+  // 선택된 기사도 group과 완전히 같은 방식으로 URL을 통해 DeliveryBoard와
+  // 공유한다 — 목록에서 "기사별 → 홍길동"을 고르고 지도로 넘어가도 같은
+  // 기사가 이미 선택된 채로 보여야 한다(memo §4/§18).
+  const viewMode = (searchParams.get("viewMode") as DeliveryViewMode | null) ?? "all";
+  function setViewMode(next: DeliveryViewMode) {
+    const params = new URLSearchParams(searchParams);
+    if (next !== "all") params.set("viewMode", next);
+    else params.delete("viewMode");
+    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
+  }
+
+  const activeDriverId = searchParams.get("driverFilter");
+  function setActiveDriverId(next: string | null) {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set("driverFilter", next);
+    else params.delete("driverFilter");
+    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
+  }
+
   const driverColorById = useMemo(() => {
     const map = new Map<string, string>();
     drivers.forEach((d, i) => map.set(d.id, DRIVER_COLOR_CLASSES[i % DRIVER_COLOR_CLASSES.length]));
@@ -79,16 +99,6 @@ export function DeliveryMapView({
   }, [drivers]);
 
   const driverNameById = useMemo(() => new Map(drivers.map((d) => [d.id, d.name])), [drivers]);
-
-  const driverCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    let unassigned = 0;
-    for (const o of orders) {
-      if (o.driver_id) counts.set(o.driver_id, (counts.get(o.driver_id) ?? 0) + 1);
-      else unassigned += 1;
-    }
-    return { counts, unassigned };
-  }, [orders]);
 
   const groupLabels = useMemo(() => {
     if (groups.length === 0) return new Map<string, GroupBuildingLabel>();
@@ -113,25 +123,29 @@ export function DeliveryMapView({
 
   const groupFilteredOrders = useMemo(() => filterOrdersByGroup(orders, activeGroupId), [orders, activeGroupId]);
 
+  const countsByDriverId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const o of groupFilteredOrders) {
+      if (o.driver_id) map.set(o.driver_id, (map.get(o.driver_id) ?? 0) + 1);
+    }
+    return map;
+  }, [groupFilteredOrders]);
+  const unassignedDriverCount = useMemo(() => groupFilteredOrders.filter((o) => !o.driver_id).length, [groupFilteredOrders]);
+
   // 인터뷰 8/21 Sprint2b §7: 기사 한 명으로 좁혀 볼 때만 마커에 배송순서(①②③...)를
   // 보여준다 — "전체"에서는 서로 다른 기사의 route_order가 섞여 숫자가 의미를
   // 갖지 않으므로 표시하지 않는다.
-  const showRank = driverFilter !== DRIVER_ALL && driverFilter !== DRIVER_UNASSIGNED;
+  const showRank = !!activeDriverId && activeDriverId !== DRIVER_UNASSIGNED_SENTINEL;
 
   const filteredOrders = useMemo(() => {
-    const filtered = groupFilteredOrders.filter((o) => {
-      if (driverFilter === DRIVER_UNASSIGNED) {
-        if (o.driver_id) return false;
-      } else if (driverFilter !== DRIVER_ALL && o.driver_id !== driverFilter) {
-        return false;
-      }
+    const filtered = filterOrdersByDriver(groupFilteredOrders, activeDriverId).filter((o) => {
       if (hideCompleted && o.delivery_status === "완료") return false;
       return true;
     });
     // 인터뷰 8/21 Sprint2b §7: 기사 한 명으로 좁혀 볼 때는 지도 마커 순번(①②③...)과
     // 이 아래 목록의 표시 순서가 반드시 같아야 한다 — route_order로 정렬한다.
     return showRank ? sortByRouteOrder(filtered) : filtered;
-  }, [groupFilteredOrders, driverFilter, hideCompleted, showRank]);
+  }, [groupFilteredOrders, activeDriverId, hideCompleted, showRank]);
 
   function selectOrder(id: string) {
     setHighlightedOrderId(id);
@@ -163,59 +177,40 @@ export function DeliveryMapView({
 
   const noCoordCount = filteredOrders.length - markers.length;
 
-  const tabs = useMemo(
-    () => [
-      { id: DRIVER_ALL, label: "전체", count: orders.length, colorClassName: undefined as string | undefined },
-      ...drivers.map((d) => ({ id: d.id, label: d.name, count: driverCounts.counts.get(d.id) ?? 0, colorClassName: driverColorById.get(d.id) })),
-      { id: DRIVER_UNASSIGNED, label: "미배정", count: driverCounts.unassigned, colorClassName: UNASSIGNED_COLOR },
-    ],
-    [orders.length, drivers, driverCounts, driverColorById]
-  );
-
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1.5">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setDriverFilter(tab.id)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm font-medium transition-colors",
-              driverFilter === tab.id ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted"
-            )}
-          >
-            {tab.colorClassName ? <span className={cn("size-2.5 rounded-full", tab.colorClassName)} /> : null}
-            {tab.label} {tab.count}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <DeliveryViewTabs value={viewMode} onChange={setViewMode} />
+        <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <input type="checkbox" className="size-4" checked={hideCompleted} onChange={(e) => setHideCompleted(e.target.checked)} />
+          완료 숨기기
+        </label>
       </div>
 
-      <button
-        type="button"
-        className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-        onClick={() => setDetailOpen((v) => !v)}
-      >
-        상세 필터
-        <ChevronDown className={cn("size-3.5 transition-transform", detailOpen && "rotate-180")} />
-      </button>
-      {detailOpen ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {groups.length > 0 ? (
-            <DeliveryRegionFilter
-              groups={groups}
-              labelById={groupLabels}
-              countsByGroupId={countsByGroupId}
-              ungroupedCount={ungroupedCount}
-              activeGroupId={activeGroupId}
-              onSelectGroup={setActiveGroupId}
-            />
-          ) : null}
-          <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <input type="checkbox" className="size-4" checked={hideCompleted} onChange={(e) => setHideCompleted(e.target.checked)} />
-            완료 숨기기
-          </label>
-        </div>
+      {viewMode === "region" ? (
+        groups.length > 0 ? (
+          <DeliveryRegionFilter
+            groups={groups}
+            labelById={groupLabels}
+            countsByGroupId={countsByGroupId}
+            ungroupedCount={ungroupedCount}
+            activeGroupId={activeGroupId}
+            onSelectGroup={setActiveGroupId}
+          />
+        ) : (
+          <p className="rounded-lg border border-dashed border-border p-3 text-center text-sm text-muted-foreground">
+            지역별 보기는 특정 배송일을 선택했을 때만 사용할 수 있습니다.
+          </p>
+        )
+      ) : null}
+      {viewMode === "driver" ? (
+        <DeliveryDriverFilter
+          drivers={drivers}
+          countsByDriverId={countsByDriverId}
+          unassignedCount={unassignedDriverCount}
+          activeDriverId={activeDriverId}
+          onSelectDriver={setActiveDriverId}
+        />
       ) : null}
 
       <DeliveryMap markers={markers} className="h-[420px] sm:h-[520px]" highlightId={highlightedOrderId} emptyMessage="표시할 배송지가 없습니다." />
@@ -236,7 +231,12 @@ export function DeliveryMapView({
       <div className="rounded-lg border bg-card">
         <div className="border-b px-4 py-2.5">
           <p className="text-sm font-medium text-text-strong">
-            {tabs.find((t) => t.id === driverFilter)?.label ?? "전체"} 배송목록 · {filteredOrders.length}건
+            {!activeDriverId
+              ? "전체"
+              : activeDriverId === DRIVER_UNASSIGNED_SENTINEL
+                ? "미배정"
+                : (driverNameById.get(activeDriverId) ?? "기사")}{" "}
+            배송목록 · {filteredOrders.length}건
           </p>
         </div>
         {filteredOrders.length === 0 ? (
@@ -258,7 +258,7 @@ export function DeliveryMapView({
                   onClick={() => selectOrder(o.rowKey)}
                   className={cn("flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-muted/40", isSelected && "bg-primary-soft")}
                 >
-                  {driverFilter === DRIVER_ALL || driverFilter === DRIVER_UNASSIGNED ? (
+                  {!activeDriverId || activeDriverId === DRIVER_UNASSIGNED_SENTINEL ? (
                     <span
                       className={cn(
                         "mt-1.5 size-2.5 shrink-0 rounded-full",
@@ -270,7 +270,7 @@ export function DeliveryMapView({
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate font-medium text-text-strong">{o.recipient_name || o.buyer_name || "-"}</p>
                       <div className="flex shrink-0 items-center gap-1.5">
-                        {(driverFilter === DRIVER_ALL || driverFilter === DRIVER_UNASSIGNED) && o.driver_id ? (
+                        {(!activeDriverId || activeDriverId === DRIVER_UNASSIGNED_SENTINEL) && o.driver_id ? (
                           <span className="text-xs text-muted-foreground">{driverNameById.get(o.driver_id) ?? ""}</span>
                         ) : null}
                         <Badge variant={isDone ? "outline" : "secondary"}>{o.delivery_status}</Badge>

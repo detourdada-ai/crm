@@ -84,6 +84,13 @@ export function DeliveryFilterBar({
     if (query.trim()) params.set("q", query.trim());
     if (status !== "all") params.set("filter", status);
     if (groupId !== GROUP_ALL) params.set("group", groupId);
+    // 배송관리 운영 플로우 완성 Sprint §4/§13: 이 필터바가 모르는 View
+    // 상태(전체/지역별/기사별 + 선택된 기사)는 그대로 들고 간다 — "조회"를
+    // 눌렀다고 지도/목록에서 보던 필터가 초기화되면 안 된다.
+    const viewMode = searchParams.get("viewMode");
+    const driverFilter = searchParams.get("driverFilter");
+    if (viewMode) params.set("viewMode", viewMode);
+    if (driverFilter) params.set("driverFilter", driverFilter);
     return params;
   }
 

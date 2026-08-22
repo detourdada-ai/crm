@@ -39,6 +39,8 @@ export default async function DeliveryPage({
     q?: string;
     filter?: string;
     group?: string;
+    viewMode?: string;
+    driverFilter?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -176,6 +178,10 @@ export default async function DeliveryPage({
     if (params.driverId) search.set("driverId", params.driverId);
     if (params.q) search.set("q", params.q);
     if (params.group) search.set("group", params.group);
+    // 배송관리 운영 플로우 완성 Sprint §4: 상태 필터(전체/배정필요/배송중/완료)
+    // 탭 이동으로 View(전체/지역별/기사별) 선택이 초기화되지 않아야 한다.
+    if (params.viewMode) search.set("viewMode", params.viewMode);
+    if (params.driverFilter) search.set("driverFilter", params.driverFilter);
     if (next !== "all") search.set("filter", next);
     const qs = search.toString();
     return qs ? `/delivery?${qs}` : "/delivery";

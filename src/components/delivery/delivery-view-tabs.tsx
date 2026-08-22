@@ -11,10 +11,10 @@ const TABS: { value: DeliveryViewMode; label: string }[] = [
 ];
 
 /**
- * S2-A §14: View 전환은 URL에 남기지 않고(CPO 지시) DeliveryBoard의 client
- * state로만 관리 — 서버 재조회 없이 즉시 전환되어야 하고, 선택 상태
- * (visibleSelected)가 View 전환에도 깨지지 않아야 하므로 같은 컴포넌트
- * 인스턴스 안에서 탭만 바뀐다(리마운트 없음).
+ * 순수 표시용 탭 스트립 — value/onChange만 받는다. 배송관리 운영 플로우
+ * 완성 Sprint부터 DeliveryBoard와 DeliveryMapView 둘 다 이 값을 URL의
+ * viewMode 파라미터에 연결해서 쓴다(§2/§13) — 목록/지도가 완전히 같은
+ * View 선택을 공유하기 위함이며, 이 컴포넌트 자체는 그 사실을 몰라도 된다.
  */
 export function DeliveryViewTabs({ value, onChange }: { value: DeliveryViewMode; onChange: (next: DeliveryViewMode) => void }) {
   return (
