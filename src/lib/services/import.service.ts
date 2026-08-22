@@ -47,7 +47,15 @@ function getMapped(row: Record<string, unknown>, mapping: ColumnMapping, field: 
 function errorMessageOf(e: unknown): string {
   if (e instanceof Error) return e.message;
   if (e && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string") {
-    return (e as { message: string }).message;
+    const base = (e as { message: string }).message;
+    // PostgrestError는 실제로 충돌한 값(예: "Key (order_number)=(2026...)
+    // already exists.")을 message가 아니라 details에 담는다 — 실패 원인을
+    // "무엇이" 충돌했는지까지 보여주려면 있을 때 함께 붙여야 한다.
+    const details = (e as { details?: unknown }).details;
+    if (typeof details === "string" && details.trim() && details !== base) {
+      return `${base} (${details})`;
+    }
+    return base;
   }
   return "알 수 없는 오류";
 }

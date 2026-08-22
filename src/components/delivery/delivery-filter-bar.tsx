@@ -6,44 +6,26 @@ import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QuickDateRange, DELIVERY_DATE_QUICK_OPTIONS, type QuickDateFilterValue } from "@/components/common/quick-date-range";
 import { kstTodayIso } from "@/lib/utils/kst-date";
-import type { DeliveryFilter } from "@/components/delivery/delivery-status-flow";
-import type { Driver } from "@/types/domain";
-
-const DRIVER_ALL = "all";
-const GROUP_ALL = "all";
-
-const STATUS_OPTIONS: { value: DeliveryFilter; label: string }[] = [
-  { value: "all", label: "전체" },
-  { value: "unassigned", label: "배정 필요" },
-  { value: "assigned", label: "배정 완료" },
-  { value: "배송중", label: "배송중" },
-  { value: "완료", label: "완료" },
-];
 
 /**
- * S2-A §5/§6: 배송일/상태/배송그룹/기사/검색 5개 핵심 필터만 남긴다("정렬"
- * 라벨/UI는 제거 — 기존 DeliveryBoard 내부 정렬 select도 이번 개편에서
- * 함께 없앴다). 상태는 기존 DeliveryStatusFlow(칩)와 이 select가 동일한
- * `filter` URL param을 공유한다 — OrderStatusChips/OrderFilterBar가 이미
- * 쓰는 이중 진입점 패턴 그대로. 배송그룹도 마찬가지로 `group` param을
- * DeliveryBoard의 그룹 카드와 공유한다(§6).
+ * 배송관리 핵심 UX 재설계: 상태/배송그룹/담당기사는 더 이상 이 필터바가
+ * 다루지 않는다 — 배송상태는 상위 DeliveryStatusFlow(칩), 배송그룹/기사는
+ * DeliveryFilterStack이 각각 단일 진입점으로 전담한다(예전에는 이 필터바와
+ * 그 두 곳이 같은 `filter`/`group` URL param을 두 벌의 select로 각자 조작해
+ * "어디서 바꿨는지"에 따라 select 표시가 따라가지 못하는 문제가 있었다).
+ * 여기 남는 건 배송일 범위와 검색 — 조회할 데이터 자체의 범위(신규 DB
+ * 쿼리)를 바꾸는 조건만 남긴다.
  */
 export function DeliveryFilterBar({
   dateFilter,
   dateFrom,
   dateTo,
-  drivers,
-  groupOptions,
 }: {
   dateFilter: QuickDateFilterValue;
   dateFrom: string;
   dateTo: string;
-  drivers: Driver[];
-  /** 단일 배송일 조회일 때만 값이 있음(그룹은 날짜 단위 개념) — 기간 조회에서는 빈 배열. */
-  groupOptions: { id: string; label: string; count: number }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -53,25 +35,7 @@ export function DeliveryFilterBar({
   const [filter, setFilter] = useState<QuickDateFilterValue>(dateFilter);
   const [from, setFrom] = useState(dateFrom);
   const [to, setTo] = useState(dateTo);
-  const [driverId, setDriverId] = useState(searchParams.get("driverId") ?? DRIVER_ALL);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
-  const [status, setStatus] = useState<DeliveryFilter>((searchParams.get("filter") as DeliveryFilter) ?? "all");
-  const [groupId, setGroupId] = useState(searchParams.get("group") ?? GROUP_ALL);
-
-  // §6: 상태/배송그룹은 이 컴포넌트 밖(DeliveryStatusFlow 칩, DeliveryBoard의
-  // 그룹 카드)에서도 같은 URL param을 바꿀 수 있다 — useState의 초기값은
-  // 최초 마운트 시 한 번만 반영되므로, 다른 곳에서 URL이 바뀌면 이 select들이
-  // "전체"로 멈춰있는 것처럼 보이는 문제가 있었다(값 자체는 실제로 필터링에
-  // 반영되지만 select 표시만 안 따라감). useEffect로 동기화하면 커밋 후 추가
-  // 렌더가 발생하므로(react-hooks/set-state-in-effect), 렌더 중 비교해
-  // searchParams가 바뀐 프레임에만 맞춰 조정한다.
-  const searchParamsKey = searchParams.toString();
-  const [prevSearchParamsKey, setPrevSearchParamsKey] = useState(searchParamsKey);
-  if (searchParamsKey !== prevSearchParamsKey) {
-    setPrevSearchParamsKey(searchParamsKey);
-    setStatus((searchParams.get("filter") as DeliveryFilter) ?? "all");
-    setGroupId(searchParams.get("group") ?? GROUP_ALL);
-  }
 
   function buildParams(): URLSearchParams {
     const params = new URLSearchParams();
@@ -80,17 +44,15 @@ export function DeliveryFilterBar({
       if (from) params.set("dateFrom", from);
       if (to) params.set("dateTo", to);
     }
-    if (driverId !== DRIVER_ALL) params.set("driverId", driverId);
     if (query.trim()) params.set("q", query.trim());
-    if (status !== "all") params.set("filter", status);
-    if (groupId !== GROUP_ALL) params.set("group", groupId);
-    // 배송관리 운영 플로우 완성 Sprint §4/§13: 이 필터바가 모르는 View
-    // 상태(전체/지역별/기사별 + 선택된 기사)는 그대로 들고 간다 — "조회"를
-    // 눌렀다고 지도/목록에서 보던 필터가 초기화되면 안 된다.
-    const viewMode = searchParams.get("viewMode");
-    const driverFilter = searchParams.get("driverFilter");
-    if (viewMode) params.set("viewMode", viewMode);
-    if (driverFilter) params.set("driverFilter", driverFilter);
+    // 이 필터바가 모르는 상위 필터(배송상태/배송그룹/기사)는 그대로 들고
+    // 간다 — "조회"를 눌렀다고 다른 곳에서 고른 필터가 초기화되면 안 된다.
+    const filterParam = searchParams.get("filter");
+    const groupParam = searchParams.get("group");
+    const driverFilterParam = searchParams.get("driverFilter");
+    if (filterParam) params.set("filter", filterParam);
+    if (groupParam) params.set("group", groupParam);
+    if (driverFilterParam) params.set("driverFilter", driverFilterParam);
     return params;
   }
 
@@ -103,10 +65,7 @@ export function DeliveryFilterBar({
     const today = kstTodayIso();
     setFrom(today);
     setTo(today);
-    setDriverId(DRIVER_ALL);
     setQuery("");
-    setStatus("all");
-    setGroupId(GROUP_ALL);
     startTransition(() => router.push(pathname));
   }
 
@@ -123,55 +82,6 @@ export function DeliveryFilterBar({
           onCustomFromChange={setFrom}
           onCustomToChange={setTo}
         />
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">상태</Label>
-          <Select value={status} onValueChange={(v) => setStatus(v as DeliveryFilter)}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {groupOptions.length > 0 ? (
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">배송그룹</Label>
-            <Select value={groupId} onValueChange={setGroupId}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={GROUP_ALL}>전체</SelectItem>
-                {groupOptions.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.label} · {g.count}건
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ) : null}
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">담당기사</Label>
-          <Select value={driverId} onValueChange={setDriverId}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={DRIVER_ALL}>전체</SelectItem>
-              {drivers.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
         <div className="space-y-1.5">
           <Label htmlFor="deliverySearch" className="text-xs text-muted-foreground">
             검색

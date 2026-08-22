@@ -1,8 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { DeliveryBoard } from "@/components/delivery/delivery-board";
-import { DeliveryMapView } from "@/components/delivery/delivery-map-view";
-import { DeliveryViewSwitcher } from "@/components/delivery/delivery-view-switcher";
 import { DeliveryFilterBar } from "@/components/delivery/delivery-filter-bar";
+import { DeliveryFilterStack } from "@/components/delivery/delivery-filter-stack";
 import { DriverManagementDialog } from "@/components/delivery/driver-management-dialog";
 import { DriverLocationsDialog } from "@/components/delivery/driver-locations-dialog";
 import { DeliveryStatusFlow, type DeliveryFilter, type DeliveryFlowCount } from "@/components/delivery/delivery-status-flow";
@@ -21,12 +19,19 @@ import { listAccounts } from "@/lib/auth/credentials";
 import { isValidDateString } from "@/lib/utils/date";
 import { kstTodayIso, resolveKstQuickRange, isQuickDateFilter, type QuickDateFilterValue } from "@/lib/utils/kst-date";
 import { digitsOnly } from "@/lib/utils/phone";
-import { buildGroupBuildingLabels } from "@/lib/utils/delivery-group";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 function isDeliveryFilter(value: string | undefined): value is DeliveryFilter {
-  return value === "unassigned" || value === "assigned" || value === "배송중" || value === "완료";
+  return value === "all" || value === "unassigned" || value === "assigned" || value === "배송중" || value === "완료";
 }
+
+const STATUS_LABELS: Record<DeliveryFilter, string> = {
+  all: "전체",
+  unassigned: "배정 필요",
+  assigned: "배정 완료",
+  배송중: "배송중",
+  완료: "완료",
+};
 
 export default async function DeliveryPage({
   searchParams,
@@ -35,11 +40,9 @@ export default async function DeliveryPage({
     dateFilter?: string;
     dateFrom?: string;
     dateTo?: string;
-    driverId?: string;
     q?: string;
     filter?: string;
     group?: string;
-    viewMode?: string;
     driverFilter?: string;
   }>;
 }) {
@@ -60,7 +63,11 @@ export default async function DeliveryPage({
           }
         : resolveKstQuickRange(dateFilter, today);
 
-  const activeFilter: DeliveryFilter = isDeliveryFilter(params.filter) ? params.filter : "all";
+  // 배송관리 핵심 UX 재설계 PART 3: 배송상태 Filter의 기본값을 "배정필요"로
+  // 바꾼다 — 배송관리에 들어왔을 때 가장 먼저 처리해야 할 일이 눈에 띄어야
+  // 한다는 원칙("목록과 지도는 같은 배송 데이터를 보는 View일 뿐, 화면에
+  // 처음 보여줄 조건은 업무상 가장 중요한 상태여야 한다").
+  const activeFilter: DeliveryFilter = isDeliveryFilter(params.filter) ? params.filter : "unassigned";
 
   // Phase 4: 배송 그룹화는 "특정 하루"를 선택했을 때만 의미가 있다(그룹은
   // 배송일 하나 단위로 계산되는 개념 — 작업지시서 원문). 기간 조회(이번주/
@@ -89,10 +96,10 @@ export default async function DeliveryPage({
   const isAdmin = session.role === "admin";
   const accountUsernames = accounts.filter((a) => a.role !== "driver").map((a) => a.username);
 
-  // 담당기사/검색은 이미 불러온 목록 위에서 필터링한다 — 신규 DB 쿼리 조건을
-  // 늘리지 않고 최소 범위로 구현(Phase 4-B STEP13 원칙).
+  // 검색은 이미 불러온 목록 위에서 필터링한다 — 신규 DB 쿼리 조건을 늘리지
+  // 않고 최소 범위로 구현(Phase 4-B STEP13 원칙). 담당기사 필터는 배송그룹
+  // 필터와 함께 DeliveryFilterStack이 한 곳에서 처리한다(§핵심 UX 재설계).
   let orders = fetchedOrders;
-  if (params.driverId) orders = orders.filter((o) => o.driver_id === params.driverId);
   if (params.q?.trim()) {
     const q = params.q.trim().toLowerCase();
     // 전화번호는 하이픈 포함 형식으로 저장되므로, 검색어의 숫자만 비교해
@@ -150,53 +157,34 @@ export default async function DeliveryPage({
     if (o.driver_id) driverCounts[o.driver_id] = (driverCounts[o.driver_id] ?? 0) + 1;
   }
 
-  const groupOptions = groupResult
-    ? (() => {
-        const memberAddresses = new Map<string, (string | null)[]>();
-        for (const o of orders) {
-          if (!o.delivery_group_id) continue;
-          const list = memberAddresses.get(o.delivery_group_id) ?? [];
-          list.push(o.address_snapshot);
-          memberAddresses.set(o.delivery_group_id, list);
-        }
-        const labels = buildGroupBuildingLabels(groupResult.groups, memberAddresses);
-        const counts = new Map<string, number>();
-        for (const o of orders) {
-          if (o.delivery_group_id) counts.set(o.delivery_group_id, (counts.get(o.delivery_group_id) ?? 0) + 1);
-        }
-        return groupResult.groups
-          .map((g) => ({ id: g.id, label: labels.get(g.id)?.full ?? `그룹 ${g.group_no}`, count: counts.get(g.id) ?? 0 }))
-          .filter((g) => g.count > 0);
-      })()
-    : [];
-
   function buildFilterHref(next: DeliveryFilter) {
     const search = new URLSearchParams();
     if (params.dateFilter) search.set("dateFilter", params.dateFilter);
     if (params.dateFrom) search.set("dateFrom", params.dateFrom);
     if (params.dateTo) search.set("dateTo", params.dateTo);
-    if (params.driverId) search.set("driverId", params.driverId);
     if (params.q) search.set("q", params.q);
     if (params.group) search.set("group", params.group);
-    // 배송관리 운영 플로우 완성 Sprint §4: 상태 필터(전체/배정필요/배송중/완료)
-    // 탭 이동으로 View(전체/지역별/기사별) 선택이 초기화되지 않아야 한다.
-    if (params.viewMode) search.set("viewMode", params.viewMode);
     if (params.driverFilter) search.set("driverFilter", params.driverFilter);
-    if (next !== "all") search.set("filter", next);
+    // 기본값이 "배정필요"로 바뀌었으므로, 그 값으로 이동할 때만 filter
+    // param을 생략한다(그래야 배정필요 칩을 눌러도 URL이 깨끗하게 유지된다).
+    if (next !== "unassigned") search.set("filter", next);
     const qs = search.toString();
     return qs ? `/delivery?${qs}` : "/delivery";
   }
 
-  // S2-C STEP6: 지금 화면에 적용된 필터 그대로 Excel API를 호출한다.
+  // S2-C STEP6: 지금 화면에 적용된 필터 그대로 Excel API를 호출한다 —
+  // params.filter(원본 쿼리) 대신 activeFilter(기본값까지 반영해 이미
+  // 해석된 값)를 써야, filter param이 없는 기본 상태(배정필요)에서도
+  // 화면과 정확히 같은 조건으로 다운로드된다.
   function buildExportHref() {
     const search = new URLSearchParams();
     if (params.dateFilter) search.set("dateFilter", params.dateFilter);
     if (params.dateFrom) search.set("dateFrom", params.dateFrom);
     if (params.dateTo) search.set("dateTo", params.dateTo);
-    if (params.driverId) search.set("driverId", params.driverId);
     if (params.q) search.set("q", params.q);
     if (params.group) search.set("group", params.group);
-    if (params.filter) search.set("filter", params.filter);
+    if (params.driverFilter) search.set("driverFilter", params.driverFilter);
+    if (activeFilter !== "all") search.set("filter", activeFilter);
     const qs = search.toString();
     return qs ? `/api/delivery/export?${qs}` : "/api/delivery/export";
   }
@@ -227,13 +215,7 @@ export default async function DeliveryPage({
 
       <DeliveryStatusFlow counts={flowCounts} active={activeFilter} buildHref={buildFilterHref} />
 
-      <DeliveryFilterBar
-        dateFilter={dateFilter}
-        dateFrom={range?.start ?? today}
-        dateTo={range?.end ?? today}
-        drivers={drivers}
-        groupOptions={groupOptions}
-      />
+      <DeliveryFilterBar dateFilter={dateFilter} dateFrom={range?.start ?? today} dateTo={range?.end ?? today} />
 
       {orders.length === 0 ? (
         <EmptyState
@@ -258,19 +240,16 @@ export default async function DeliveryPage({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <DeliveryViewSwitcher
-              listView={
-                <DeliveryBoard
-                  orders={visibleOrders}
-                  drivers={drivers}
-                  itemSummaries={itemSummaries}
-                  groups={groupResult?.groups ?? []}
-                  showGroupColumn={isSingleDay}
-                  bagManagementEnabled={features.bagManagement}
-                  driverCounts={driverCounts}
-                />
-              }
-              mapView={<DeliveryMapView orders={visibleOrders} drivers={drivers} />}
+            <DeliveryFilterStack
+              orders={visibleOrders}
+              drivers={drivers}
+              groups={groupResult?.groups ?? []}
+              showGroupFilter={isSingleDay}
+              statusLabel={STATUS_LABELS[activeFilter]}
+              itemSummaries={itemSummaries}
+              bagManagementEnabled={features.bagManagement}
+              driverCounts={driverCounts}
+              reorderEnabled={isSingleDay}
             />
           </CardContent>
         </Card>

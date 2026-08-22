@@ -5,6 +5,7 @@ import { buildExcelBuffer, excelDownloadHeaders } from "@/lib/services/excel-exp
 import { isValidDateString } from "@/lib/utils/date";
 import { kstTodayIso, resolveKstQuickRange, isQuickDateFilter, type QuickDateFilterValue } from "@/lib/utils/kst-date";
 import { digitsOnly } from "@/lib/utils/phone";
+import { filterOrdersByDriver } from "@/lib/utils/delivery-driver-filter";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 const UNGROUPED_SENTINEL = "__ungrouped__";
@@ -16,9 +17,9 @@ function isDeliveryFilter(value: string | null): value is "unassigned" | "assign
 
 /**
  * S2-C STEP6: 배송관리(/delivery) 화면과 정확히 같은 조회+필터 조건으로
- * Excel을 만든다. delivery/page.tsx의 날짜 해석과 driverId/q/상태 필터,
- * delivery-board.tsx의 group 필터 로직을 그대로 복제한다 — 그 셋 중 하나만
- * 바뀌면 "화면=엑셀"이 깨지므로 수정 시 함께 맞춰야 한다.
+ * Excel을 만든다. delivery/page.tsx의 날짜 해석과 q/상태 필터,
+ * DeliveryFilterStack의 group/driverFilter 필터 로직을 그대로 복제한다 —
+ * 그 중 하나만 바뀌면 "화면=엑셀"이 깨지므로 수정 시 함께 맞춰야 한다.
  */
 export async function GET(request: NextRequest) {
   await requireSession();
@@ -40,9 +41,6 @@ export async function GET(request: NextRequest) {
 
   const boardResult = await getDeliveryBoardAction(range?.start ?? null, range?.end);
   let orders: OrderShipmentBoardRow[] = boardResult.orders;
-
-  const driverId = params.get("driverId");
-  if (driverId) orders = orders.filter((o) => o.driver_id === driverId);
 
   const q = params.get("q");
   if (q?.trim()) {
@@ -72,6 +70,8 @@ export async function GET(request: NextRequest) {
   if (group) {
     orders = group === UNGROUPED_SENTINEL ? orders.filter((o) => !o.delivery_group_id) : orders.filter((o) => o.delivery_group_id === group);
   }
+
+  orders = filterOrdersByDriver(orders, params.get("driverFilter"));
 
   if (orders.length > EXPORT_MAX_ROWS) {
     return NextResponse.json(
