@@ -69,6 +69,7 @@ export async function assignDriverAction(shipmentIds: string[], driverId: string
     await orderShipmentsRepository.assignDriver(shipmentIds, driverId, session.role === "admin" ? undefined : session.username);
     revalidatePath("/delivery");
     revalidatePath("/orders");
+    revalidatePath("/driver");
     return { ok: true, error: null };
   } catch (e) {
     return { ok: false, error: toActionError(e, "기사 배정 중 오류가 발생했습니다.") };
@@ -92,6 +93,7 @@ export async function unassignDriverAction(shipmentIds: string[]): Promise<Deliv
     await orderShipmentsRepository.unassignDriver(shipmentIds, session.role === "admin" ? undefined : session.username);
     revalidatePath("/delivery");
     revalidatePath("/orders");
+    revalidatePath("/driver");
     return { ok: true, error: null };
   } catch (e) {
     return { ok: false, error: toActionError(e, "배정 해제 중 오류가 발생했습니다.") };
