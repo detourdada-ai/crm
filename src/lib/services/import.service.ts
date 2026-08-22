@@ -36,6 +36,22 @@ function getMapped(row: Record<string, unknown>, mapping: ColumnMapping, field: 
   return row[header];
 }
 
+/**
+ * 배송관리 UX 회귀 복구 + 엑셀 안정화 (정정판) PART 3: `e instanceof Error`만
+ * 확인하면 Supabase/Postgrest 오류(예: unique 제약 위반)가 전부 "알 수 없는
+ * 오류"로 뭉개진다 — PostgrestError는 Error를 상속하지 않는 평범한 객체지만
+ * message 필드는 실제 DB 오류 문구를 그대로 담고 있다(예: "duplicate key
+ * value violates unique constraint..."). error_log에 실제 원인이 남도록
+ * Error 인스턴스가 아니어도 message 필드가 문자열이면 그대로 사용한다.
+ */
+function errorMessageOf(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string") {
+    return (e as { message: string }).message;
+  }
+  return "알 수 없는 오류";
+}
+
 function cellToString(value: unknown): string {
   if (value == null) return "";
   return String(value).trim();
@@ -253,33 +269,50 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     groups.set(orderNumber, list);
   });
 
-  // ---------- Phase 1: batch-fetch everything the per-row logic used to query individually ----------
-  const [existingOrderNumbers, ownerCustomers] = await Promise.all([
-    ordersRepository.findExistingOrderNumbers(Array.from(groups.keys()), tenant.id),
-    customersRepository.findAllByOwner(ownerUsername),
-  ]);
-  const pool = new CustomerPoolIndex(ownerCustomers);
-  // Import 시작 시점의 "고객별 기존 주문 수"(취소 제외, customer_order_stats
-  // 뷰) — 이 파일 안에서 같은 고객이 여러 번 주문하면 첫 등장만 신규로
-  // 세고 그 다음부터는 즉시 반복으로 넘어가도록 처리 중에 카운트를 올린다.
-  const priorOrderCounts = await customersRepository.findOrderCounts(ownerCustomers.map((c) => c.id));
-
-  // ---------- Phase 2: pure in-memory pass over every group — zero DB calls in this loop ----------
+  // 배송관리 UX 회귀 복구 + 엑셀 안정화 (정정판) PART 2/3: 실제 production에서
+  // "고객 161명은 생성됐는데 주문은 0건, import는 processing에 영구 정지"된
+  // 사고가 확인됐다(340건 업로드) — 원래 이 try는 Phase 5/3(채번+DB flush)만
+  // 감쌌는데, 그 앞의 Phase 1(배치 조회)·Phase 4(geocoding)에서 예외가 나도
+  // 똑같이 "아무 것도 기록되지 않고 processing에 멈추는" 문제가 재현될 수
+  // 있었다. Phase 1부터 Phase 3까지 파이프라인 전체를 하나의 try로 넓혀서,
+  // 어느 단계에서 실패하든 반드시 rollback + status="failed" + 실제 원인이
+  // error_log에 남도록 한다.
+  let existingOrderNumbers: Set<string>;
+  let pool: CustomerPoolIndex;
+  let priorOrderCounts: Map<string, number>;
   const newCustomerInserts: CustomerInsert[] = [];
   const newOrderInserts: OrderInsert[] = [];
   const newItemInserts: OrderItemInsert[] = [];
   const newShipmentInserts: OrderShipmentInsert[] = [];
   const newDuplicateInserts: DuplicateCandidateInsert[] = [];
   const bagNoUpdates: { id: string; bagNo: string }[] = [];
-  // P10-1.5: Excel 주문은 geocoding이 아예 빠져 있어 기사후보 추천/배송그룹
-  // 클러스터링의 입력(order.sido, latitude/longitude)이 영구히 비어있던
-  // 문제를 고친다. 루프 안에서 매 행 await하면 대량 파일에서 느려지므로
-  // (DB 왕복을 없앤 이 루프의 원칙과 같은 이유) 주소만 모아뒀다가 루프
-  // 종료 후 한 번에 처리한다. 같은 정규화 주소는 파일 안에서 한 번만
-  // geocode(query)하도록 addressQueries에 최초 1건만 등록한다.
-  const addressQueries = new Map<string, string>(); // normalizedAddress -> cleanAddress(query)
-  const pendingOrderGeocode: { insert: OrderInsert; addressKey: string }[] = [];
-  const pendingCustomerGeocode: { insert: CustomerInsert; addressKey: string }[] = [];
+  let geocodeSuccess = 0;
+  let geocodeFailed = 0;
+  let duplicateCandidateCount = 0;
+
+  try {
+    // ---------- Phase 1: batch-fetch everything the per-row logic used to query individually ----------
+    let ownerCustomers: Customer[];
+    [existingOrderNumbers, ownerCustomers] = await Promise.all([
+      ordersRepository.findExistingOrderNumbers(Array.from(groups.keys()), tenant.id),
+      customersRepository.findAllByOwner(ownerUsername),
+    ]);
+    pool = new CustomerPoolIndex(ownerCustomers);
+    // Import 시작 시점의 "고객별 기존 주문 수"(취소 제외, customer_order_stats
+    // 뷰) — 이 파일 안에서 같은 고객이 여러 번 주문하면 첫 등장만 신규로
+    // 세고 그 다음부터는 즉시 반복으로 넘어가도록 처리 중에 카운트를 올린다.
+    priorOrderCounts = await customersRepository.findOrderCounts(ownerCustomers.map((c) => c.id));
+
+    // ---------- Phase 2: pure in-memory pass over every group — zero DB calls in this loop ----------
+    // P10-1.5: Excel 주문은 geocoding이 아예 빠져 있어 기사후보 추천/배송그룹
+    // 클러스터링의 입력(order.sido, latitude/longitude)이 영구히 비어있던
+    // 문제를 고친다. 루프 안에서 매 행 await하면 대량 파일에서 느려지므로
+    // (DB 왕복을 없앤 이 루프의 원칙과 같은 이유) 주소만 모아뒀다가 루프
+    // 종료 후 한 번에 처리한다. 같은 정규화 주소는 파일 안에서 한 번만
+    // geocode(query)하도록 addressQueries에 최초 1건만 등록한다.
+    const addressQueries = new Map<string, string>(); // normalizedAddress -> cleanAddress(query)
+    const pendingOrderGeocode: { insert: OrderInsert; addressKey: string }[] = [];
+    const pendingCustomerGeocode: { insert: CustomerInsert; addressKey: string }[] = [];
 
   for (const [orderNumber, entries] of groups) {
     const rows = entries.map((e) => e.row);
@@ -533,47 +566,33 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       errors.push({
         row: firstIndex + 2,
         code: "processing_error",
-        reason: `[${orderNumber}] 처리 실패: ${e instanceof Error ? e.message : "알 수 없는 오류"}`,
+        reason: `[${orderNumber}] 처리 실패: ${errorMessageOf(e)}`,
         raw: rows[0],
       });
       failedRowCount += rows.length;
     }
   }
 
-  // Phase 4 (P10-1.5): 큐에 쌓인 서로 다른 주소만 제한된 동시성으로
-  // geocode하고, 신규 고객/주문 insert 객체에 결과를 채워 넣는다.
-  // geocodeBatch는 절대 throw하지 않으므로 이 단계가 실패해도 import
-  // 자체는 계속 진행된다(실패한 주소는 geocode_status="failed"로 남을 뿐).
-  let geocodeSuccess = 0;
-  let geocodeFailed = 0;
-  if (addressQueries.size > 0) {
-    const geocodeResults = await geocodeBatch(addressQueries);
-    for (const { insert, addressKey } of pendingCustomerGeocode) {
-      const geo = geocodeResults.get(addressKey);
-      if (geo) Object.assign(insert, geo, { geocoded_at: new Date().toISOString() });
+    // Phase 4 (P10-1.5): 큐에 쌓인 서로 다른 주소만 제한된 동시성으로
+    // geocode하고, 신규 고객/주문 insert 객체에 결과를 채워 넣는다.
+    // geocodeBatch는 절대 throw하지 않으므로 이 단계가 실패해도 import
+    // 자체는 계속 진행된다(실패한 주소는 geocode_status="failed"로 남을 뿐).
+    if (addressQueries.size > 0) {
+      const geocodeResults = await geocodeBatch(addressQueries);
+      for (const { insert, addressKey } of pendingCustomerGeocode) {
+        const geo = geocodeResults.get(addressKey);
+        if (geo) Object.assign(insert, geo, { geocoded_at: new Date().toISOString() });
+      }
+      for (const { insert, addressKey } of pendingOrderGeocode) {
+        const geo = geocodeResults.get(addressKey);
+        if (geo) Object.assign(insert, geo, { geocoded_at: new Date().toISOString() });
+      }
     }
-    for (const { insert, addressKey } of pendingOrderGeocode) {
-      const geo = geocodeResults.get(addressKey);
-      if (geo) Object.assign(insert, geo, { geocoded_at: new Date().toISOString() });
+    for (const o of newOrderInserts) {
+      if (o.geocode_status === "success") geocodeSuccess += 1;
+      else if (o.geocode_status === "failed") geocodeFailed += 1;
     }
-  }
-  for (const o of newOrderInserts) {
-    if (o.geocode_status === "success") geocodeSuccess += 1;
-    else if (o.geocode_status === "failed") geocodeFailed += 1;
-  }
 
-  // 배송관리 UX 회귀 복구 + 엑셀 안정화 PART 2: 채번/배치쓰기 어느 단계에서든
-  // 예외가 던져지면 이 함수가 그대로 throw했고, importsRepository.update(...,
-  // status:"completed")가 끝까지 실행되지 못해 import 기록이 "처리중"에
-  // 영구히 멈춰 있었다 — 실패 원인도 어디에도 남지 않았다(imports.status의
-  // "failed" 값은 스키마/타입에는 있었지만 실제로 세팅하는 코드가 없었다).
-  // 이 블록 전체를 try/catch로 감싸서: (1) 실패 시 이번 실행에서 만든
-  // 고객/주문을 되돌리고(고객→customer_notification/duplicate_candidates,
-  // 주문→order_items/order_shipments는 FK cascade로 함께 삭제된다),
-  // (2) status="failed"와 실제 원인을 error_log에 남긴 뒤, (3) 호출자가
-  // 알 수 있도록 다시 throw한다.
-  let duplicateCandidateCount = 0;
-  try {
     // Phase 5: 내부 주문번호를 이 시점에 한 번에 배정한다 — 위 루프(zero DB calls)를
     // 지키기 위해 루프 안에서는 채번하지 않고, 여기서 KST 캘린더일 단위로 묶어
     // next_order_seq_batch를 날짜 종류 수만큼만 호출한다(건마다 왕복하지 않음).
@@ -619,14 +638,16 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     // 함께 삭제된다(schema.sql: on delete cascade). customers를 지우면
     // duplicate_candidates도 마찬가지로 cascade된다. 아직 DB에 실제로
     // 쓰이지 못한 id를 지우는 것은 안전한 no-op이다 — 이 rollback 자체가
-    // 실패해도 원래 오류를 가리지 않도록 별도로 감싼다.
+    // 실패해도 원래 오류를 가리지 않도록 별도로 감싼다. Phase 1(배치 조회)에서
+    // 실패하면 newOrderInserts/newCustomerInserts가 아직 비어있을 수 있는데,
+    // deleteMany(빈 배열)는 그 자체로 안전한 no-op이다.
     try {
       await ordersRepository.deleteMany(newOrderInserts.map((o) => o.id!));
       await customersRepository.deleteMany(newCustomerInserts.map((c) => c.id!));
     } catch {
       // rollback 실패는 무시 — 아래에서 원래 오류를 그대로 기록/전파한다.
     }
-    const reason = e instanceof Error ? e.message : "알 수 없는 오류";
+    const reason = errorMessageOf(e);
     await importsRepository.update(importRecord.id, {
       status: "failed",
       success_rows: 0,
