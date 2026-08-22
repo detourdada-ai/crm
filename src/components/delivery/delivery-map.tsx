@@ -33,8 +33,12 @@ function coordKey(lat: number, lng: number): string {
 }
 
 /** 선택 강조용 색상 — 기사 배정색(primary/sky/emerald/amber/violet/rose)·미배정(slate-400)·
- *  완료(muted-foreground)와 겹치지 않는, 지도에서 안 쓰는 색(fuchsia)으로 고정한다. */
-const HIGHLIGHT_COLOR = "#c026d3";
+ *  완료(muted-foreground)와 겹치지 않는, 지도에서 안 쓰는 색으로 고정한다. 마젠타는 다른
+ *  진한 색들 사이에서 눈에 덜 띈다는 피드백으로 네이버지도 선택 마커에 가까운 원색 노랑으로 변경 —
+ *  배경 어두운 계열 색상들 사이에서 가장 밝고 튀는 색이라 목록 상태와 확실히 구분된다. */
+const HIGHLIGHT_COLOR = "#facc15";
+const HIGHLIGHT_TEXT_COLOR = "#1c1917";
+const HIGHLIGHT_BORDER_COLOR = "#1c1917";
 
 /**
  * P15-B-2: 카카오가 동일한 건물/단지 도로명주소에 여러 동/호를 하나의
@@ -272,11 +276,18 @@ export function DeliveryMap({
   }, [openGroupKey, status, markers]);
 
   // P15-B-3: 지도 밖 목록에서 주문을 선택하면 그 주문의 마커를 강조한다.
-  // 링(원) 테두리 대신 마커 자체 배경색을 다른 곳에서 안 쓰는 색으로 바꿔 표시한다.
+  // 링(원) 테두리 대신 마커 자체를 다른 곳에서 안 쓰는 원색으로 키워서 표시한다 —
+  // 색만 바꾸면 진한 색 마커들 사이에서 묻히므로, 크기도 눈에 띄게 키우고
+  // 테두리/숫자 색도 밝은 배경에서 읽히도록 어둡게 바꾼다(네이버지도 선택 마커 참고).
   useEffect(() => {
     if (highlightedElRef.current) {
-      highlightedElRef.current.style.backgroundColor = "";
-      highlightedElRef.current.classList.remove("scale-125", "z-10");
+      const el = highlightedElRef.current;
+      el.style.backgroundColor = "";
+      el.style.color = "";
+      el.style.borderColor = "";
+      el.style.transform = "";
+      el.style.boxShadow = "";
+      el.classList.remove("z-10");
       highlightedElRef.current = null;
     }
     if (!highlightId || status !== "ready" || !mapRef.current || !window.kakao) return;
@@ -291,7 +302,11 @@ export function DeliveryMap({
         const el = pinElementsRef.current.get(key);
         if (el) {
           el.style.backgroundColor = HIGHLIGHT_COLOR;
-          el.classList.add("scale-125", "z-10");
+          el.style.color = HIGHLIGHT_TEXT_COLOR;
+          el.style.borderColor = HIGHLIGHT_BORDER_COLOR;
+          el.style.transform = "scale(1.6)";
+          el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.45)";
+          el.classList.add("z-10");
           highlightedElRef.current = el;
         }
       }
