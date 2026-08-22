@@ -41,6 +41,7 @@ declare namespace kakao.maps {
   class CustomOverlay {
     constructor(options: CustomOverlayOptions);
     setMap(map: Map | null): void;
+    setZIndex(zIndex: number): void;
   }
 
   namespace event {

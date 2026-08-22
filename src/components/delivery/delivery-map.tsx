@@ -84,6 +84,7 @@ export function DeliveryMap({
   const groupMembersRef = useRef<Map<string, DeliveryMapMarker[]>>(new Map());
   const popupOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
   const highlightedElRef = useRef<HTMLDivElement | null>(null);
+  const highlightedKeyRef = useRef<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
 
@@ -279,6 +280,9 @@ export function DeliveryMap({
   // 링(원) 테두리 대신 마커 자체를 다른 곳에서 안 쓰는 원색으로 키워서 표시한다 —
   // 색만 바꾸면 진한 색 마커들 사이에서 묻히므로, 크기도 눈에 띄게 키우고
   // 테두리/숫자 색도 밝은 배경에서 읽히도록 어둡게 바꾼다(네이버지도 선택 마커 참고).
+  // CSS z-index 클래스는 카카오맵이 마커마다 별도 오버레이(레이어)로 그리기 때문에
+  // 서로 다른 오버레이 사이의 겹침 순서에는 영향을 주지 않는다 — 오버레이 자체의
+  // zIndex를 올려야 다른 마커들 위로 실제로 올라온다.
   useEffect(() => {
     if (highlightedElRef.current) {
       const el = highlightedElRef.current;
@@ -287,8 +291,9 @@ export function DeliveryMap({
       el.style.borderColor = "";
       el.style.transform = "";
       el.style.boxShadow = "";
-      el.classList.remove("z-10");
+      if (highlightedKeyRef.current) pinOverlaysRef.current.get(highlightedKeyRef.current)?.setZIndex(1);
       highlightedElRef.current = null;
+      highlightedKeyRef.current = null;
     }
     if (!highlightId || status !== "ready" || !mapRef.current || !window.kakao) return;
     const kakaoNs = window.kakao;
@@ -306,8 +311,9 @@ export function DeliveryMap({
           el.style.borderColor = HIGHLIGHT_BORDER_COLOR;
           el.style.transform = "scale(1.6)";
           el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.45)";
-          el.classList.add("z-10");
+          pinOverlaysRef.current.get(key)?.setZIndex(999);
           highlightedElRef.current = el;
+          highlightedKeyRef.current = key;
         }
       }
       break;
