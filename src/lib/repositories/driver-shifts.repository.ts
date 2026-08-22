@@ -78,4 +78,16 @@ export const driverShiftsRepository = {
     if (error) throw error;
     return data;
   },
+
+  /** Sprint4: 사장님 "전체 기사 위치" 지도 — 지정된 기사들의 오늘 운행 기록을 한 번에 조회한다. */
+  async findTodayByDriverIds(driverIds: string[], shiftDate: string): Promise<DriverShift[]> {
+    if (driverIds.length === 0) return [];
+    const { data, error } = await getSupabaseAdmin()
+      .from("driver_shifts")
+      .select("*")
+      .in("driver_id", driverIds)
+      .eq("shift_date", shiftDate);
+    if (error) throw error;
+    return data ?? [];
+  },
 };

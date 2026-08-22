@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { driverShiftsRepository } from "@/lib/repositories/driver-shifts.repository";
+import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { toActionError } from "@/lib/utils/action-error";
-import { requireDriverSession, requireSession } from "@/lib/auth/current-session";
+import { ownerScopeFor, requireDriverSession, requireSession } from "@/lib/auth/current-session";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import { assertOwnsDriver } from "@/actions/drivers";
-import type { DriverShift } from "@/types/domain";
+import type { Driver, DriverShift } from "@/types/domain";
 
 export interface DriverShiftActionState {
   ok: boolean;
@@ -71,4 +72,26 @@ export async function getDriverLatestLocationAction(driverId: string): Promise<D
   const session = await requireSession();
   await assertOwnsDriver(driverId, session);
   return driverShiftsRepository.findLatestLocation(driverId);
+}
+
+export interface DriverLocation {
+  driver: Driver;
+  shift: DriverShift | null;
+}
+
+/**
+ * Sprint4: 사장님 "전체 기사 위치" 지도 — 오늘 활동 중인(운행중이거나 오늘
+ * 위치를 남긴) 기사 전원의 최근 위치를 한 번에 조회한다. 배송 상태와 무관한
+ * 참고용 정보다(위 getDriverLatestLocationAction과 동일 원칙, 다건 버전).
+ */
+export async function listDriverLocationsAction(): Promise<DriverLocation[]> {
+  const session = await requireSession();
+  const scope = ownerScopeFor(session);
+  const drivers = await driversRepository.listActive(scope);
+  const shifts = await driverShiftsRepository.findTodayByDriverIds(
+    drivers.map((d) => d.id),
+    kstTodayIso()
+  );
+  const shiftByDriverId = new Map(shifts.map((s) => [s.driver_id, s]));
+  return drivers.map((driver) => ({ driver, shift: shiftByDriverId.get(driver.id) ?? null }));
 }

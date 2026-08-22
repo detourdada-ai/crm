@@ -4,6 +4,7 @@ import { DeliveryMapView } from "@/components/delivery/delivery-map-view";
 import { DeliveryViewSwitcher } from "@/components/delivery/delivery-view-switcher";
 import { DeliveryFilterBar } from "@/components/delivery/delivery-filter-bar";
 import { DriverManagementDialog } from "@/components/delivery/driver-management-dialog";
+import { DriverLocationsDialog } from "@/components/delivery/driver-locations-dialog";
 import { DeliveryStatusFlow, type DeliveryFilter, type DeliveryFlowCount } from "@/components/delivery/delivery-status-flow";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
@@ -213,6 +214,7 @@ export default async function DeliveryPage({
               accountUsernames={accountUsernames}
               knownRegions={knownRegions}
             />
+            <DriverLocationsDialog />
           </div>
         }
       />
