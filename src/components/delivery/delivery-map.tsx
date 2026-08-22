@@ -24,6 +24,8 @@ export interface DeliveryMapMarker {
   href?: string;
   /** P15-B-4: 이 좌표 그룹 전체가 완료됐는지 판단하는 배지 색상 기준(그룹 크기 2+일 때만 사용). */
   done?: boolean;
+  /** 인터뷰 8/21 Sprint2b: 특정 기사 한 명으로 좁혀 볼 때만 의미 있는 배송순서(route_order) — 겹침 배지(2건+)에는 표시하지 않는다. */
+  rank?: number;
 }
 
 function coordKey(lat: number, lng: number): string {
@@ -116,7 +118,7 @@ export function DeliveryMap({
     // 바뀐 경우(배송완료 클릭)에도 배지 숫자/색을 다시 그려야 하기 때문.
     function memberIdSet(list: DeliveryMapMarker[]): string {
       return list
-        .map((m) => `${m.id}:${m.done ? 1 : 0}`)
+        .map((m) => `${m.id}:${m.done ? 1 : 0}:${m.rank ?? ""}`)
         .sort()
         .join(",");
     }
@@ -148,6 +150,7 @@ export function DeliveryMap({
           "flex size-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-semibold text-white shadow-md",
           m.colorClassName ?? "bg-primary"
         );
+        if (m.rank != null) el.textContent = String(m.rank);
         if (m.onClick || onGroupSelect) {
           el.style.cursor = "pointer";
           el.addEventListener("click", (e) => {

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { sortByRouteOrder } from "@/lib/utils/route-order";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import type { Driver } from "@/types/domain";
 
@@ -44,13 +45,6 @@ export function DeliveryDriverView({
 
   if (unassigned.length === 0 && driversWithOrders.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">표시할 배송건이 없습니다.</p>;
-  }
-
-  function sortByRouteOrder(list: OrderShipmentBoardRow[]): OrderShipmentBoardRow[] {
-    return list
-      .map((o, i) => ({ o, i }))
-      .sort((a, b) => (a.o.route_order ?? Number.POSITIVE_INFINITY) - (b.o.route_order ?? Number.POSITIVE_INFINITY) || a.i - b.i)
-      .map(({ o }) => o);
   }
 
   function handleMove(list: OrderShipmentBoardRow[], index: number, direction: -1 | 1) {

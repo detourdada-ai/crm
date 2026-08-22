@@ -6,7 +6,9 @@ import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { DeliveryRegionFilter } from "@/components/delivery/delivery-region-filter";
+import { DeliveryShipmentPanel } from "@/components/delivery/delivery-shipment-panel";
 import { buildGroupBuildingLabels, filterOrdersByGroup, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import { sortByRouteOrder } from "@/lib/utils/route-order";
 import { cn } from "@/lib/utils";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import type { Driver, DeliveryGroup } from "@/types/domain";
@@ -111,8 +113,13 @@ export function DeliveryMapView({
 
   const groupFilteredOrders = useMemo(() => filterOrdersByGroup(orders, activeGroupId), [orders, activeGroupId]);
 
+  // 인터뷰 8/21 Sprint2b §7: 기사 한 명으로 좁혀 볼 때만 마커에 배송순서(①②③...)를
+  // 보여준다 — "전체"에서는 서로 다른 기사의 route_order가 섞여 숫자가 의미를
+  // 갖지 않으므로 표시하지 않는다.
+  const showRank = driverFilter !== DRIVER_ALL && driverFilter !== DRIVER_UNASSIGNED;
+
   const filteredOrders = useMemo(() => {
-    return groupFilteredOrders.filter((o) => {
+    const filtered = groupFilteredOrders.filter((o) => {
       if (driverFilter === DRIVER_UNASSIGNED) {
         if (o.driver_id) return false;
       } else if (driverFilter !== DRIVER_ALL && o.driver_id !== driverFilter) {
@@ -121,12 +128,20 @@ export function DeliveryMapView({
       if (hideCompleted && o.delivery_status === "완료") return false;
       return true;
     });
-  }, [groupFilteredOrders, driverFilter, hideCompleted]);
+    // 인터뷰 8/21 Sprint2b §7: 기사 한 명으로 좁혀 볼 때는 지도 마커 순번(①②③...)과
+    // 이 아래 목록의 표시 순서가 반드시 같아야 한다 — route_order로 정렬한다.
+    return showRank ? sortByRouteOrder(filtered) : filtered;
+  }, [groupFilteredOrders, driverFilter, hideCompleted, showRank]);
 
   function selectOrder(id: string) {
     setHighlightedOrderId(id);
     rowRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
+
+  // 인터뷰 8/21 Sprint2b: 좁혀진 필터 결과(filteredOrders)가 아니라 전체
+  // orders에서 찾는다 — 패널 안에서 기사를 다른 사람으로 바꾸는 시나리오도
+  // 있어서, 지금 화면에 안 보이는 기사의 그날 목록도 정확히 계산해야 한다.
+  const selectedShipment = useMemo(() => orders.find((o) => o.rowKey === highlightedOrderId) ?? null, [orders, highlightedOrderId]);
 
   const markers: DeliveryMapMarker[] = useMemo(() => {
     return filteredOrders
@@ -142,8 +157,9 @@ export function DeliveryMapView({
           o.delivery_status === "완료" ? COMPLETED_COLOR : o.driver_id ? (driverColorById.get(o.driver_id) ?? UNASSIGNED_COLOR) : UNASSIGNED_COLOR,
         onClick: () => selectOrder(o.rowKey),
         actionLabel: "선택",
+        rank: showRank && o.route_order != null ? o.route_order : undefined,
       }));
-  }, [filteredOrders, driverColorById]);
+  }, [filteredOrders, driverColorById, showRank]);
 
   const noCoordCount = filteredOrders.length - markers.length;
 
@@ -205,6 +221,16 @@ export function DeliveryMapView({
       <DeliveryMap markers={markers} className="h-[420px] sm:h-[520px]" highlightId={highlightedOrderId} emptyMessage="표시할 배송지가 없습니다." />
       {noCoordCount > 0 ? (
         <p className="text-xs text-muted-foreground">주소 확인 필요 {noCoordCount}건은 좌표가 없어 지도에 표시되지 않습니다 — 목록에서는 계속 확인할 수 있습니다.</p>
+      ) : null}
+
+      {selectedShipment ? (
+        <DeliveryShipmentPanel
+          key={selectedShipment.rowKey}
+          shipment={selectedShipment}
+          orders={orders}
+          drivers={drivers}
+          onClose={() => setHighlightedOrderId(null)}
+        />
       ) : null}
 
       <div className="rounded-lg border bg-card">
