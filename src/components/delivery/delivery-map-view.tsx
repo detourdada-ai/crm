@@ -3,7 +3,6 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { DeliveryOrderRow } from "@/components/delivery/delivery-order-row";
 import { reorderShipmentsAction } from "@/actions/delivery";
@@ -21,22 +20,14 @@ const UNASSIGNED_COLOR = "bg-slate-400";
 const COMPLETED_COLOR = "bg-muted-foreground";
 
 /**
- * P15-B / P15-B-2 / P15-B-3: 사장님 배송관제 지도 — 기존 목록(DeliveryBoard)은
- * 전혀 건드리지 않고 `/delivery`에 "지도" 탭으로만 추가한다. 서버에서 한 번
- * 불러온 orders/drivers를 그대로 받아쓸 뿐 이 컴포넌트 자체는 어떤 조회도,
- * 배송그룹 재계산도 하지 않는다(성능 원칙).
- *
- * 배송관리 목록/지도 완전 동일화(최종): "목록 카드(DeliveryOrderRow)가
- * 배송건의 유일한 표준 UI이고, 지도는 그 카드를 지도 위에서 쓰는 View일
- * 뿐"이라는 정의를 그대로 구현한다 — 마커를 클릭했을 때 뜨는 것은 지도
- * 전용 패널이 아니라 목록과 완전히 같은 DeliveryOrderRow다(같은 필드,
- * 같은 버튼, 같은 useShipmentRowActions 훅). 배송그룹/기사 필터는 상위
- * DeliveryFilterStack이 목록과 완전히 동일하게 한 번만 계산해서 내려준다.
- *
- * S1-1 Phase 5: 마커/목록 키는 order.id가 아니라 rowKey(=shipmentId)다 —
- * 같은 주문이 발송일이 달라 배송건 두 개로 쪼개진 경우(예: "이번주" 같은
- * 여러 날짜를 아우르는 조회), 좌표가 같아 지도상 같은 위치에 뜨더라도
- * 서로 다른 배송건이라 반드시 구분되는 id가 필요하기 때문이다.
+ * 배송관리 목록/지도 완전 동일화(최종, 3차 수정): 목록(DeliveryBoard)이
+ * "마커를 선택해야만 표준 카드가 잠깐 뜨고, 그 아래 목록은 간이 표시"였던
+ * 이전 구조는 여전히 "지도 전용 목록 UI"였다(CPO 지적) — 목록에서 되는
+ * 기사배정/배송상태/가방회수/순서변경이 지도의 목록 자체에는 없었기
+ * 때문이다. 이번엔 지도 하단 목록도 DeliveryBoard와 완전히 동일하게
+ * filteredOrders 전체를 DeliveryOrderRow로 그대로 렌더링하고(마커 선택시
+ * 별도 패널을 띄우지 않고, 그 행으로 스크롤+강조만 한다), reorderEnabled일
+ * 때 화살표도 선택된 하나가 아니라 모든 행에 동일하게 붙인다.
  */
 export function DeliveryMapView({
   orders,
@@ -49,7 +40,7 @@ export function DeliveryMapView({
   activeDriverId = null,
   reorderEnabled = false,
 }: {
-  /** 이미 배송상태·배송그룹·기사 필터가 모두 적용된 최종 목록(마커/아래 목록/카드에 쓴다). */
+  /** 이미 배송상태·배송그룹·기사 필터가 모두 적용된 최종 목록(마커/목록에 쓴다). */
   orders: OrderShipmentBoardRow[];
   drivers: Driver[];
   /** 목록(DeliveryBoard)과 동일하게 상위에서 한 번만 계산해서 내려준다. */
@@ -74,8 +65,6 @@ export function DeliveryMapView({
     drivers.forEach((d, i) => map.set(d.id, DRIVER_COLOR_CLASSES[i % DRIVER_COLOR_CLASSES.length]));
     return map;
   }, [drivers]);
-
-  const driverNameById = useMemo(() => new Map(drivers.map((d) => [d.id, d.name])), [drivers]);
 
   // 인터뷰 8/21 Sprint2b §7: 기사 한 명으로 좁혀 볼 때만 마커에 배송순서(①②③...)를
   // 보여준다 — "전체"에서는 서로 다른 기사의 route_order가 섞여 숫자가 의미를
@@ -103,8 +92,6 @@ export function DeliveryMapView({
     });
   }
 
-  const selectedShipment = useMemo(() => orders.find((o) => o.rowKey === highlightedOrderId) ?? null, [orders, highlightedOrderId]);
-
   const markers: DeliveryMapMarker[] = useMemo(() => {
     return filteredOrders
       .filter((o): o is OrderShipmentBoardRow & { latitude: number; longitude: number } => o.latitude != null && o.longitude != null)
@@ -125,6 +112,37 @@ export function DeliveryMapView({
 
   const noCoordCount = filteredOrders.length - markers.length;
 
+  function renderRow(order: OrderShipmentBoardRow) {
+    return (
+      <DeliveryOrderRow
+        key={order.rowKey}
+        order={order}
+        drivers={drivers}
+        driverNames={driverNames}
+        driverCounts={driverCounts}
+        groupLabel={order.delivery_group_id ? (groupLabels.get(order.delivery_group_id)?.full ?? null) : null}
+        selected={selectedRowIds.has(order.rowKey)}
+        onToggleSelect={(checked) =>
+          setSelectedRowIds((prev) => {
+            const next = new Set(prev);
+            if (checked) next.add(order.rowKey);
+            else next.delete(order.rowKey);
+            return next;
+          })
+        }
+        isPending={rowActions.isPending}
+        showSpinner={rowActions.isPending && rowActions.pendingRowId === order.rowKey}
+        onSetStatus={(next) => rowActions.setStatus(order.rowKey, next)}
+        onAssign={(id) => rowActions.assign(order.rowKey, id)}
+        onSetDirectPickup={() => rowActions.setDirectPickup(order.rowKey)}
+        onUnassign={() => rowActions.unassign(order.rowKey)}
+        onClearDirectPickup={() => rowActions.clearDirectPickup(order.rowKey)}
+        itemSummary={itemSummaries[order.rowKey]}
+        bagManagementEnabled={bagManagementEnabled}
+      />
+    );
+  }
+
   return (
     <div className="space-y-3">
       <DeliveryMap markers={markers} className="h-[420px] sm:h-[520px]" highlightId={highlightedOrderId} emptyMessage="표시할 배송지가 없습니다." />
@@ -132,54 +150,39 @@ export function DeliveryMapView({
         <p className="text-xs text-muted-foreground">주소 확인 필요 {noCoordCount}건은 좌표가 없어 지도에 표시되지 않습니다 — 목록에서는 계속 확인할 수 있습니다.</p>
       ) : null}
 
-      {selectedShipment ? (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground">선택한 배송건 — 목록과 동일한 카드입니다.</p>
-            <button type="button" onClick={() => setHighlightedOrderId(null)} className="text-xs text-muted-foreground hover:underline">
-              닫기
-            </button>
-          </div>
-          <DeliveryOrderRow
-            key={selectedShipment.rowKey}
-            order={selectedShipment}
-            drivers={drivers}
-            driverNames={driverNames}
-            driverCounts={driverCounts}
-            groupLabel={selectedShipment.delivery_group_id ? (groupLabels.get(selectedShipment.delivery_group_id)?.full ?? null) : null}
-            selected={selectedRowIds.has(selectedShipment.rowKey)}
-            onToggleSelect={(checked) =>
-              setSelectedRowIds((prev) => {
-                const next = new Set(prev);
-                if (checked) next.add(selectedShipment.rowKey);
-                else next.delete(selectedShipment.rowKey);
-                return next;
-              })
-            }
-            isPending={rowActions.isPending}
-            showSpinner={rowActions.isPending && rowActions.pendingRowId === selectedShipment.rowKey}
-            onSetStatus={(next) => rowActions.setStatus(selectedShipment.rowKey, next)}
-            onAssign={(id) => rowActions.assign(selectedShipment.rowKey, id)}
-            onSetDirectPickup={() => rowActions.setDirectPickup(selectedShipment.rowKey)}
-            onUnassign={() => rowActions.unassign(selectedShipment.rowKey)}
-            onClearDirectPickup={() => rowActions.clearDirectPickup(selectedShipment.rowKey)}
-            itemSummary={itemSummaries[selectedShipment.rowKey]}
-            bagManagementEnabled={bagManagementEnabled}
-          />
-          {showReorderControls ? (
-            <div className="flex items-center gap-2 pl-1">
-              <span className="text-xs text-muted-foreground">배송순서</span>
-              {(() => {
-                const idx = filteredOrders.findIndex((o) => o.rowKey === selectedShipment.rowKey);
-                if (idx < 0) return null;
-                return (
-                  <>
+      {filteredOrders.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">해당 조건의 배송건이 없습니다.</p>
+      ) : (
+        <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
+          {filteredOrders.map((o, idx) => {
+            const isSelected = o.rowKey === highlightedOrderId;
+            const row = (
+              <div
+                key={o.rowKey}
+                ref={(el) => {
+                  if (el) rowRefs.current.set(o.rowKey, el);
+                  else rowRefs.current.delete(o.rowKey);
+                }}
+                onClick={() => setHighlightedOrderId(o.rowKey)}
+                className={cn("rounded-xl transition-colors", isSelected && "ring-2 ring-primary")}
+              >
+                {renderRow(o)}
+              </div>
+            );
+            if (!showReorderControls) return row;
+            return (
+              <div key={o.rowKey} className="flex items-start gap-2">
+                <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
+                  <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
+                    {idx + 1}
+                  </span>
+                  <div className="flex flex-col gap-0.5">
                     <button
                       type="button"
                       disabled={idx === 0 || isReordering}
                       onClick={() => handleMoveRow(idx, -1)}
                       aria-label="위로 이동"
-                      className="rounded border border-border bg-surface p-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                      className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
                     >
                       <ChevronUp className="size-3.5" />
                     </button>
@@ -188,73 +191,18 @@ export function DeliveryMapView({
                       disabled={idx === filteredOrders.length - 1 || isReordering}
                       onClick={() => handleMoveRow(idx, 1)}
                       aria-label="아래로 이동"
-                      className="rounded border border-border bg-surface p-1 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                      className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
                     >
                       <ChevronDown className="size-3.5" />
                     </button>
-                    <span className="text-xs text-muted-foreground">{idx + 1}번째</span>
-                  </>
-                );
-              })()}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="rounded-lg border bg-card">
-        <div className="border-b px-4 py-2.5">
-          <p className="text-sm font-medium text-text-strong">
-            {!activeDriverId
-              ? "전체"
-              : activeDriverId === DRIVER_UNASSIGNED_SENTINEL
-                ? "미배정"
-                : (driverNameById.get(activeDriverId) ?? "기사")}{" "}
-            배송목록 · {filteredOrders.length}건
-          </p>
-        </div>
-        {filteredOrders.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">해당 조건의 배송이 없습니다.</p>
-        ) : (
-          <div className="max-h-[420px] divide-y overflow-y-auto">
-            {filteredOrders.map((o) => {
-              const isDone = o.delivery_status === "완료";
-              const isSelected = o.rowKey === highlightedOrderId;
-              return (
-                <div
-                  key={o.rowKey}
-                  ref={(el) => {
-                    if (el) rowRefs.current.set(o.rowKey, el);
-                    else rowRefs.current.delete(o.rowKey);
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => selectOrder(o.rowKey)}
-                  className={cn("flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-muted/40", isSelected && "bg-primary-soft")}
-                >
-                  <span
-                    className={cn(
-                      "mt-1.5 size-2.5 shrink-0 rounded-full",
-                      isDone ? COMPLETED_COLOR : o.driver_id ? (driverColorById.get(o.driver_id) ?? UNASSIGNED_COLOR) : UNASSIGNED_COLOR
-                    )}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate font-medium text-text-strong">{o.recipient_name || o.buyer_name || "-"}</p>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        {o.driver_id ? <span className="text-xs text-muted-foreground">{driverNameById.get(o.driver_id) ?? ""}</span> : null}
-                        <Badge variant={isDone ? "outline" : "secondary"}>{o.delivery_status}</Badge>
-                      </div>
-                    </div>
-                    <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">
-                      {o.latitude != null && o.longitude != null ? (o.address_snapshot ?? "-") : "주소 위치 확인 필요"}
-                    </p>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                <div className="min-w-0 flex-1">{row}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
