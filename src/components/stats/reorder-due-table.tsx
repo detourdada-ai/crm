@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/common/empty-state";
 import { formatDate } from "@/lib/constants/order-status";
 import type { ReorderDueCustomer } from "@/lib/services/reorder.service";
 
 export function ReorderDueTable({ customers }: { customers: ReorderDueCustomer[] }) {
   if (customers.length === 0) {
-    return <p className="py-12 text-center text-sm text-muted-foreground">재주문이 임박한 고객이 없습니다.</p>;
+    return <EmptyState title="재주문이 임박한 고객이 없습니다." />;
   }
 
   return (

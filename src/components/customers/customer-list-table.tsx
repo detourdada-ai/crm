@@ -62,7 +62,7 @@ export function CustomerListTable({
         <TableBody>
           {customers.map((c) => (
             <TableRow key={c.id} className="hover:bg-muted/40">
-              <TableCell>{c.is_favorite ? <Star className="size-4 fill-yellow-400 text-yellow-400" /> : null}</TableCell>
+              <TableCell>{c.is_favorite ? <Star className="size-4 fill-warning text-warning" /> : null}</TableCell>
               <TableCell>
                 <Link href={`/customers/${c.id}`} className="font-semibold text-text-strong hover:text-primary">
                   {c.name}

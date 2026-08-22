@@ -29,9 +29,9 @@ export function CustomerFavoriteButton({ customerId, initialIsFavorite }: { cust
       size="sm"
       disabled={isPending}
       onClick={handleClick}
-      className={cn("gap-1.5", isFavorite && "border-yellow-400 text-yellow-600")}
+      className={cn("gap-1.5", isFavorite && "border-warning text-warning")}
     >
-      <Star className={cn("size-4", isFavorite && "fill-yellow-400")} />
+      <Star className={cn("size-4", isFavorite && "fill-warning")} />
       {isFavorite ? "즐겨찾기됨" : "즐겨찾기"}
     </Button>
   );

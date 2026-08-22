@@ -13,12 +13,12 @@ const ICONS: Record<TimelineEventType, typeof ShoppingBag> = {
 };
 
 const ICON_STYLES: Record<TimelineEventType, string> = {
-  order: "bg-blue-100 text-blue-600",
-  phone_change: "bg-amber-100 text-amber-600",
-  address_change: "bg-emerald-100 text-emerald-600",
-  merge: "bg-purple-100 text-purple-600",
-  memo_change: "bg-slate-100 text-slate-600",
-  info_change: "bg-slate-100 text-slate-600",
+  order: "bg-info-soft text-info",
+  phone_change: "bg-warning-soft text-warning",
+  address_change: "bg-success-soft text-success",
+  merge: "bg-muted text-muted-foreground",
+  memo_change: "bg-muted text-muted-foreground",
+  info_change: "bg-muted text-muted-foreground",
 };
 
 export function CustomerTimeline({ events }: { events: TimelineEvent[] }) {

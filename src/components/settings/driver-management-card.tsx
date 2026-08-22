@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/common/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -170,7 +171,7 @@ function CreateDriverDialog({
             {usernameCheck === "checking" || isCheckingUsername ? (
               <p className="text-xs text-muted-foreground">확인하는 중...</p>
             ) : usernameCheck === "available" ? (
-              <p className="text-xs text-emerald-600">사용 가능한 아이디입니다</p>
+              <p className="text-xs text-success">사용 가능한 아이디입니다</p>
             ) : usernameCheck === "taken" ? (
               <p className="text-xs text-destructive">이미 사용 중인 아이디입니다</p>
             ) : null}
@@ -705,7 +706,7 @@ export function DriverManagementCard({
         <CreateDriverDialog isAdmin={isAdmin} accountUsernames={accountUsernames} knownRegions={knownRegions} />
       </div>
       {filteredDrivers.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">등록된 배송 기사가 없습니다.</p>
+        <EmptyState title="등록된 배송 기사가 없습니다." />
       ) : (
         <Table>
           <TableHeader>

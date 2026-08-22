@@ -42,9 +42,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-semibold">{customer.name}</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-text-strong">{customer.name}</h1>
         <Badge variant="outline">{customer.customer_code}</Badge>
-        {isVip ? <Badge className="bg-yellow-400 text-yellow-950 hover:bg-yellow-400">VIP</Badge> : null}
+        {isVip ? <Badge className="bg-warning text-warning-foreground hover:bg-warning">VIP</Badge> : null}
         <Badge variant={customer.status === "active" ? "outline" : "secondary"}>
           {CUSTOMER_STATUS_LABELS[customer.status as CustomerStatus] ?? customer.status}
         </Badge>

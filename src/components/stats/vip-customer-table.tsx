@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/common/empty-state";
 import { formatCurrency } from "@/lib/constants/order-status";
 import type { VipCustomer } from "@/lib/services/vip.service";
 
 export function VipCustomerTable({ customers }: { customers: VipCustomer[] }) {
   if (customers.length === 0) {
-    return <p className="py-12 text-center text-sm text-muted-foreground">VIP 기준을 충족하는 고객이 없습니다.</p>;
+    return <EmptyState title="VIP 기준을 충족하는 고객이 없습니다." />;
   }
 
   return (
