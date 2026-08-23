@@ -230,6 +230,46 @@ export function MyDeliveriesList({
         ) : null}
       </div>
 
+      {/* PART 16: 지도 마커를 눌러야만 카드가 보이던 기존 흐름은 그대로 두고,
+          그와 별개로 "지금 뭘 배송해야 하는지"를 route_order 기준으로 항상
+          보여준다 — 완료된 건은 여기서 제외된다. */}
+      {remaining.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">현재 배송</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-text-strong">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+                  {sequenceByRowKey.get(remaining[0].rowKey)}
+                </span>
+                <span className="truncate">{remaining[0].recipient_name || remaining[0].buyer_name || "-"}</span>
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                className="shrink-0 gap-1"
+                disabled={isPending && pendingShipmentId === remaining[0].rowKey}
+                onClick={() => handleComplete(remaining[0].rowKey)}
+              >
+                <CheckCircle2 className="size-3.5" />
+                {isPending && pendingShipmentId === remaining[0].rowKey ? "처리 중" : "배송완료"}
+              </Button>
+            </div>
+          </div>
+          {remaining[1] ? (
+            <div className="space-y-1.5 border-t pt-3 sm:border-t-0 sm:border-l sm:pt-0 sm:pl-4">
+              <p className="text-xs font-medium text-muted-foreground">다음 배송</p>
+              <p className="flex items-center gap-1.5 text-sm text-text-strong">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-text-strong">
+                  {sequenceByRowKey.get(remaining[1].rowKey)}
+                </span>
+                <span className="truncate">{remaining[1].recipient_name || remaining[1].buyer_name || "-"}</span>
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="lg:grid lg:grid-cols-[1fr_380px] lg:items-start lg:gap-4">
         <DeliveryMap
           markers={markers}
