@@ -42,14 +42,27 @@ async function waitForDialogClose(dialog: ReturnType<Page["getByRole"]>, timeout
 }
 
 /** 로그인 직후 role별 최종 목적지(/driver)로 가기까지 middleware 리다이렉트가
- * 한 번 더 걸릴 수 있어, url이 안정될 때까지 폴링한다. */
-async function waitForUrlContains(page: Page, substr: string, timeoutMs = 10000): Promise<boolean> {
+ * 한 번 더 걸릴 수 있고, url()이 안정되기 전에 확인하면 오탐이 나므로 url뿐
+ * 아니라 기사 앱 전용 콘텐츠("내 배송")도 함께 폴링한다. */
+async function waitForDriverLanding(page: Page, timeoutMs = 12000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (page.url().includes(substr)) return true;
-    await new Promise((r) => setTimeout(r, 400));
+    if (page.url().includes("/driver")) return true;
+    const bodyText = await page.locator("body").innerText().catch(() => "");
+    if (bodyText.includes("내 배송")) return true;
+    await new Promise((r) => setTimeout(r, 500));
   }
-  return page.url().includes(substr);
+  return false;
+}
+
+/** DB에 반영될 때까지(서버 액션 응답 이후 약간의 지연 가능) 폴링한다. */
+async function waitForCondition(check: () => Promise<boolean>, timeoutMs = 10000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await check()) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
 }
 
 async function setSession(context: BrowserContext, username: string, role: "admin" | "user" | "driver") {
@@ -131,7 +144,7 @@ async function main() {
     await page.locator('input[name="username"]').fill(renamedUsername);
     await page.locator('input[name="password"]').fill(newPassword);
     await page.getByRole("button", { name: "로그인" }).click();
-    const b1Ok = await waitForUrlContains(page, "/driver");
+    const b1Ok = await waitForDriverLanding(page);
     record("B1. 변경된 아이디+새 비밀번호로 기사 로그인 성공(/driver 진입)", b1Ok, `url=${page.url()}`);
 
     // ---- Scenario C: 다른 테넌트(user3)에게는 이 기사가 보이지 않음(격리) ----
@@ -169,7 +182,7 @@ async function main() {
     await page.locator('input[name="username"]').fill(adminRenamedUsername);
     await page.locator('input[name="password"]').fill(newPassword);
     await page.getByRole("button", { name: "로그인" }).click();
-    const d2Ok = await waitForUrlContains(page, "/driver");
+    const d2Ok = await waitForDriverLanding(page);
     record("D2. Admin이 재변경한 아이디로도 로그인 성공(비밀번호는 이전 값 유지)", d2Ok, `url=${page.url()}`);
 
     // ---- Scenario E: 사장님(user2) 내 프로필(이름/연락처) 저장 ----
@@ -180,14 +193,13 @@ async function main() {
     await page.locator('input[name="contactName"]').fill("QA-CPO-홍길동");
     await page.locator('input[name="contactPhone"]').fill("010-1234-5678");
     await page.getByRole("button", { name: "프로필 저장" }).click();
-    await page.waitForTimeout(1500);
-    await page.waitForLoadState("networkidle").catch(() => {});
-    const { data: profileAfter } = await admin.from("tenants").select("contact_name,contact_phone").eq("id", tenant2.id).maybeSingle();
-    record(
-      "E1. 사장님 내 프로필(이름/연락처) 저장이 tenants 테이블에 반영됨",
-      profileAfter?.contact_name === "QA-CPO-홍길동" && profileAfter?.contact_phone === "010-1234-5678",
-      JSON.stringify(profileAfter)
-    );
+    let profileAfter: { contact_name: string | null; contact_phone: string | null } | null = null;
+    const e1Ok = await waitForCondition(async () => {
+      const { data } = await admin.from("tenants").select("contact_name,contact_phone").eq("id", tenant2.id).maybeSingle();
+      profileAfter = data;
+      return data?.contact_name === "QA-CPO-홍길동" && data?.contact_phone === "010-1234-5678";
+    });
+    record("E1. 사장님 내 프로필(이름/연락처) 저장이 tenants 테이블에 반영됨", e1Ok, JSON.stringify(profileAfter));
 
     // E2: 이 화면에는 아이디 입력칸이 없어야 한다(아이디 변경은 Admin CS 전용).
     const usernameFieldOnProfile = await page.locator('input[name="contactName"]').locator("xpath=//input[@name='username' or @name='newUsername']").count();
