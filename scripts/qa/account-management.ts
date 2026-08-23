@@ -28,6 +28,30 @@ function record(step: string, pass: boolean, detail?: string) {
   console.log(`${pass ? "PASS" : "FAIL"} — ${step}${shown ? ` (${shown})` : ""}`);
 }
 
+/** 다이얼로그 안에서 순차적으로 두 개의 서버 액션(정보수정→계정수정)을 거는
+ * 저장 버튼도 있어 고정 대기로는 느릴 때 폴링이 놓칠 수 있다 — 최대
+ * timeoutMs까지 다이얼로그가 닫히길(=저장 완료) 폴링한다. */
+async function waitForDialogClose(dialog: ReturnType<Page["getByRole"]>, timeoutMs = 12000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const visible = await dialog.isVisible().catch(() => false);
+    if (!visible) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
+}
+
+/** 로그인 직후 role별 최종 목적지(/driver)로 가기까지 middleware 리다이렉트가
+ * 한 번 더 걸릴 수 있어, url이 안정될 때까지 폴링한다. */
+async function waitForUrlContains(page: Page, substr: string, timeoutMs = 10000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (page.url().includes(substr)) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return page.url().includes(substr);
+}
+
 async function setSession(context: BrowserContext, username: string, role: "admin" | "user" | "driver") {
   await context.clearCookies();
   const url = new URL(BASE_URL);
@@ -97,10 +121,8 @@ async function main() {
     await dialog.locator('input[name="password"]').fill(newPassword);
     await dialog.locator('input[name="confirmPassword"]').fill(newPassword);
     await dialog.getByRole("button", { name: "저장" }).click();
-    await page.waitForTimeout(1500);
-    await page.waitForLoadState("networkidle").catch(() => {});
-    const stillOpen = await dialog.isVisible().catch(() => false);
-    record("A2. 기사 아이디+비밀번호 변경 저장 성공(다이얼로그 닫힘)", !stillOpen);
+    const a2Closed = await waitForDialogClose(dialog);
+    record("A2. 기사 아이디+비밀번호 변경 저장 성공(다이얼로그 닫힘)", a2Closed);
     currentDriverUsername = renamedUsername;
 
     // ---- Scenario B: 새 아이디/비밀번호로 실제 기사 로그인 확인 ----
@@ -109,10 +131,8 @@ async function main() {
     await page.locator('input[name="username"]').fill(renamedUsername);
     await page.locator('input[name="password"]').fill(newPassword);
     await page.getByRole("button", { name: "로그인" }).click();
-    await page.waitForLoadState("networkidle").catch(() => {});
-    await page.waitForTimeout(1000);
-    const afterLoginUrl = page.url();
-    record("B1. 변경된 아이디+새 비밀번호로 기사 로그인 성공(/driver 진입)", afterLoginUrl.includes("/driver"), `url=${afterLoginUrl}`);
+    const b1Ok = await waitForUrlContains(page, "/driver");
+    record("B1. 변경된 아이디+새 비밀번호로 기사 로그인 성공(/driver 진입)", b1Ok, `url=${page.url()}`);
 
     // ---- Scenario C: 다른 테넌트(user3)에게는 이 기사가 보이지 않음(격리) ----
     await setSession(context, OTHER_OWNER, "user");
@@ -139,10 +159,8 @@ async function main() {
     await renameDialog.waitFor({ state: "visible" });
     await renameDialog.locator('input[name="newUsername"]').fill(adminRenamedUsername);
     await renameDialog.getByRole("button", { name: "변경" }).click();
-    await page.waitForTimeout(1500);
-    await page.waitForLoadState("networkidle").catch(() => {});
-    const renameDialogStillOpen = await renameDialog.isVisible().catch(() => false);
-    record("D1. Admin이 기사 계정 아이디 재변경 성공", !renameDialogStillOpen);
+    const d1Closed = await waitForDialogClose(renameDialog);
+    record("D1. Admin이 기사 계정 아이디 재변경 성공", d1Closed);
     currentDriverUsername = adminRenamedUsername;
 
     // 재변경된 아이디로 여전히 로그인되는지(= owner_username/데이터 연결이 끊기지 않았는지)
@@ -151,9 +169,8 @@ async function main() {
     await page.locator('input[name="username"]').fill(adminRenamedUsername);
     await page.locator('input[name="password"]').fill(newPassword);
     await page.getByRole("button", { name: "로그인" }).click();
-    await page.waitForLoadState("networkidle").catch(() => {});
-    await page.waitForTimeout(1000);
-    record("D2. Admin이 재변경한 아이디로도 로그인 성공(비밀번호는 이전 값 유지)", page.url().includes("/driver"), `url=${page.url()}`);
+    const d2Ok = await waitForUrlContains(page, "/driver");
+    record("D2. Admin이 재변경한 아이디로도 로그인 성공(비밀번호는 이전 값 유지)", d2Ok, `url=${page.url()}`);
 
     // ---- Scenario E: 사장님(user2) 내 프로필(이름/연락처) 저장 ----
     await setSession(context, OWNER, "user");
@@ -162,8 +179,8 @@ async function main() {
     await page.waitForTimeout(500);
     await page.locator('input[name="contactName"]').fill("QA-CPO-홍길동");
     await page.locator('input[name="contactPhone"]').fill("010-1234-5678");
-    await page.getByRole("button", { name: "저장" }).first().click();
-    await page.waitForTimeout(1200);
+    await page.getByRole("button", { name: "프로필 저장" }).click();
+    await page.waitForTimeout(1500);
     await page.waitForLoadState("networkidle").catch(() => {});
     const { data: profileAfter } = await admin.from("tenants").select("contact_name,contact_phone").eq("id", tenant2.id).maybeSingle();
     record(

@@ -32,7 +32,7 @@ export function MyProfileForm({ contactName, contactPhone }: { contactName: stri
         <Input id="contactPhone" name="contactPhone" defaultValue={contactPhone ?? ""} placeholder="010-0000-0000" />
       </div>
       <Button type="submit" disabled={isPending}>
-        {isPending ? "저장하는 중..." : "저장"}
+        {isPending ? "프로필 저장하는 중..." : "프로필 저장"}
       </Button>
     </form>
   );
