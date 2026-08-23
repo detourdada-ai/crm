@@ -33,6 +33,12 @@ function statusText({ shift }: DriverLocation): string {
  * 1) 지도에 기사 개개인의 위치를 기사별 색으로 구분해 보여주고
  * 2) 그 아래에는 위치가 아니라 "오늘 그 기사의 배송목록 중 완료/미완료"를
  *    기사 한 명당 한 줄(라인)로, 순서대로 점 스트립으로 보여준다.
+ *
+ * 배송관리 1차 마무리 UI/UX: "기사별 배송순서"(배차 편집)와 완전히 다른
+ * 기능 — 여기는 운행상태 모니터링 전용이다. 그래서 작은 팝업 대신 화면
+ * 대부분을 쓰는 큰 다이얼로그를 기본값으로 하고(§7), 상단에 전체/개별
+ * 기사를 고르는 칩을 둔다(§8). 위치/배송 데이터 조회 로직(fetchData,
+ * listDriverLocationsAction, getDeliveryBoardAction)은 그대로다.
  */
 export function DriverLocationsDialog() {
   const [open, setOpen] = useState(false);
@@ -108,38 +114,66 @@ export function DriverLocationsDialog() {
           기사 위치
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
+      <DialogContent className="flex h-[92vh] max-h-[92vh] w-[95vw] max-w-[95vw] flex-col overflow-hidden sm:w-[90vw] sm:max-w-[1100px]">
         <DialogHeader>
           <DialogTitle>기사 위치</DialogTitle>
-          <DialogDescription>기사가 앱에서 마지막으로 남긴 참고용 위치와, 오늘 배송의 완료/미완료 현황입니다.</DialogDescription>
+          <DialogDescription>지금 운행 중인 기사들의 위치와 운행상태를 확인합니다. 기사가 앱에서 마지막으로 남긴 참고용 위치와, 오늘 배송의 완료/미완료 현황입니다.</DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+        <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1">
+          <button
+            type="button"
+            onClick={() => setSelectedDriverId(null)}
+            className={cn(
+              "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+              selectedDriverId === null ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted/40"
+            )}
+          >
+            전체
+          </button>
+          {(locations ?? []).map((l) => (
+            <button
+              key={l.driver.id}
+              type="button"
+              onClick={() => setSelectedDriverId(l.driver.id)}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                selectedDriverId === l.driver.id ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted/40"
+              )}
+            >
+              <span className={cn("size-2 shrink-0 rounded-full", driverColorById.get(l.driver.id) ?? "bg-primary")} />
+              {l.driver.name}
+            </button>
+          ))}
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
           <DeliveryMap
             markers={markers}
             routePaths={routePaths}
             emptyMessage="위치가 확인된 기사가 없습니다."
-            className="h-64"
+            className="h-[42vh] shrink-0"
             showLocateButton={false}
           />
-          <div className="space-y-2">
-            {(locations ?? []).map((l) => {
-              const stops = ordersByDriverId.get(l.driver.id) ?? [];
-              const doneCount = stops.filter((o) => o.delivery_status === "완료").length;
-              // PART 10: "현재 배송"은 아직 안 끝난 것 중 순서상 가장 앞선 건, "다음 배송"은 그 다음 건.
-              const remaining = stops.filter((o) => o.delivery_status !== "완료");
-              const current = remaining[0];
-              const next = remaining[1];
-              const isSelected = selectedDriverId === l.driver.id;
-              return (
-                <button
-                  key={l.driver.id}
-                  type="button"
-                  onClick={() => setSelectedDriverId(isSelected ? null : l.driver.id)}
-                  className={cn(
-                    "block w-full space-y-1.5 rounded-md border px-3 py-2 text-left transition-colors",
-                    isSelected ? "border-primary bg-primary-soft" : "hover:bg-muted/40"
-                  )}
-                >
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+            {(locations ?? [])
+              .filter((l) => !selectedDriverId || l.driver.id === selectedDriverId)
+              .map((l) => {
+                const stops = ordersByDriverId.get(l.driver.id) ?? [];
+                const doneCount = stops.filter((o) => o.delivery_status === "완료").length;
+                // PART 10: "현재 배송"은 아직 안 끝난 것 중 순서상 가장 앞선 건, "다음 배송"은 그 다음 건.
+                const remaining = stops.filter((o) => o.delivery_status !== "완료");
+                const current = remaining[0];
+                const next = remaining[1];
+                const isSelected = selectedDriverId === l.driver.id;
+                return (
+                  <button
+                    key={l.driver.id}
+                    type="button"
+                    onClick={() => setSelectedDriverId(l.driver.id)}
+                    className={cn(
+                      "block w-full space-y-1.5 rounded-md border px-3 py-2 text-left transition-colors",
+                      isSelected ? "border-primary bg-primary-soft" : "hover:bg-muted/40"
+                    )}
+                  >
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <span className="flex items-center gap-1.5 font-medium text-text-strong">
                       <span className={cn("size-2.5 shrink-0 rounded-full", driverColorById.get(l.driver.id))} />
