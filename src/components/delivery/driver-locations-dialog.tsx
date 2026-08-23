@@ -8,7 +8,7 @@ import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/deliv
 import { listDriverLocationsAction, type DriverLocation } from "@/actions/driver-shifts";
 import { getDeliveryBoardAction } from "@/actions/delivery";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
-import { buildDriverColorMap } from "@/lib/utils/driver-colors";
+import { buildDriverColorMap, buildDriverLineColorMap } from "@/lib/utils/driver-colors";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import { cn } from "@/lib/utils";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
@@ -55,6 +55,7 @@ export function DriverLocationsDialog() {
   }
 
   const driverColorById = useMemo(() => buildDriverColorMap((locations ?? []).map((l) => l.driver)), [locations]);
+  const driverLineColorById = useMemo(() => buildDriverLineColorMap((locations ?? []).map((l) => l.driver)), [locations]);
 
   const ordersByDriverId = useMemo(() => {
     const map = new Map<string, OrderShipmentBoardRow[]>();
@@ -79,6 +80,18 @@ export function DriverLocationsDialog() {
       colorClassName: driverColorById.get(l.driver.id),
     }));
 
+  // "이동" — 기사별로 오늘 배송순서(route_order)대로 좌표를 이어 그 기사가 도는
+  // 경로를 보여준다. 완료/미완료 구분 없이 오늘 전체 경로(다닌 곳 + 남은 곳)를
+  // 그 기사의 색으로 그려서, 아래 완료/미완료 점 스트립과 같이 보면 "지금 어디까지
+  // 왔는지" 감이 온다.
+  const routePaths = (locations ?? [])
+    .map((l) => {
+      const stops = ordersByDriverId.get(l.driver.id) ?? [];
+      const path = stops.filter((o) => o.latitude != null && o.longitude != null).map((o) => ({ lat: o.latitude!, lng: o.longitude! }));
+      return { id: l.driver.id, color: driverLineColorById.get(l.driver.id), path };
+    })
+    .filter((r) => r.path.length >= 2);
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
@@ -95,10 +108,10 @@ export function DriverLocationsDialog() {
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
           <DeliveryMap
             markers={markers}
+            routePaths={routePaths}
             emptyMessage="위치가 확인된 기사가 없습니다."
             className="h-64"
             showLocateButton={false}
-            showFullscreenButton={false}
           />
           <div className="space-y-2">
             {(locations ?? []).map((l) => {

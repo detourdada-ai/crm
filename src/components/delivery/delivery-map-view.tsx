@@ -113,7 +113,10 @@ export function DeliveryMapView({
   // 배송순서 이동 경로선 — markers는 showRank일 때 이미 route_order 순으로
   // 정렬돼 있으므로(filteredOrders가 sortByRouteOrder를 거침) 좌표만 순서대로
   // 뽑으면 된다. 완료 건은 markers에서 이미 빠졌으므로 "지금부터 남은 경로"만 보여준다.
-  const routePath = useMemo(() => (showRank ? markers.map((m) => ({ lat: m.lat, lng: m.lng })) : undefined), [markers, showRank]);
+  const routePaths = useMemo(
+    () => (showRank ? [{ id: "route", path: markers.map((m) => ({ lat: m.lat, lng: m.lng })) }] : undefined),
+    [markers, showRank]
+  );
 
   const noCoordCount = mapEligibleOrders.length - markers.length;
 
@@ -152,7 +155,7 @@ export function DeliveryMapView({
     <div className="space-y-3">
       <DeliveryMap
         markers={markers}
-        routePath={routePath}
+        routePaths={routePaths}
         className="h-[420px] sm:h-[520px]"
         highlightId={highlightedOrderId}
         emptyMessage="표시할 배송지가 없습니다."

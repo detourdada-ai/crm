@@ -68,7 +68,7 @@ const MY_LOCATION_COLOR = "#4285f4";
 export function DeliveryMap({
   markers,
   driverMarkers,
-  routePath,
+  routePaths,
   emptyMessage = "표시할 배송지가 없습니다.",
   className,
   highlightId,
@@ -79,8 +79,8 @@ export function DeliveryMap({
   markers: DeliveryMapMarker[];
   /** 사장님 배송관리 지도에서만 넘긴다 — 기사 앱 지도에는 자기 위치를 자기 지도에 표시할 필요가 없다. */
   driverMarkers?: DriverLocationMarker[];
-  /** 기사 한 명으로 좁혀 볼 때, 그 기사의 배송 순서(route_order)대로 정렬된 좌표를 이어그리는 선. */
-  routePath?: { lat: number; lng: number }[];
+  /** 기사(들)의 배송 순서(route_order)대로 정렬된 이동 경로선 — 기사별로 색을 다르게 줄 수 있다(기사위치 팝업은 여러 기사를 동시에 그린다). */
+  routePaths?: { id: string; color?: string; path: { lat: number; lng: number }[] }[];
   emptyMessage?: string;
   className?: string;
   /**
@@ -113,7 +113,7 @@ export function DeliveryMap({
   const highlightedElRef = useRef<HTMLDivElement | null>(null);
   const highlightedKeyRef = useRef<string | null>(null);
   const driverOverlaysRef = useRef<Map<string, kakao.maps.CustomOverlay>>(new Map());
-  const routePolylineRef = useRef<kakao.maps.Polyline | null>(null);
+  const routePolylinesRef = useRef<Map<string, kakao.maps.Polyline>>(new Map());
   const myLocationOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
@@ -395,22 +395,26 @@ export function DeliveryMap({
     }
   }, [driverMarkers, status]);
 
-  // 배송순서 이동 경로선 — 기사 한 명으로 좁혀 볼 때만 의미가 있다(호출부가 그 때만 넘긴다).
+  // 배송순서 이동 경로선 — 기사 한 명일 때(배차 지도)는 1개, 기사위치 팝업처럼
+  // 여러 기사를 동시에 그릴 때는 기사별 색으로 여러 개를 그린다.
   useEffect(() => {
-    routePolylineRef.current?.setMap(null);
-    routePolylineRef.current = null;
-    if (!routePath || routePath.length < 2 || status !== "ready" || !mapRef.current || !window.kakao) return;
+    for (const polyline of routePolylinesRef.current.values()) polyline.setMap(null);
+    routePolylinesRef.current.clear();
+    if (!routePaths || status !== "ready" || !mapRef.current || !window.kakao) return;
     const kakaoNs = window.kakao;
-    const polyline = new kakaoNs.maps.Polyline({
-      path: routePath.map((p) => new kakaoNs.maps.LatLng(p.lat, p.lng)),
-      strokeWeight: 3,
-      strokeColor: "#1c1917",
-      strokeOpacity: 0.55,
-      strokeStyle: "shortdash",
-    });
-    polyline.setMap(mapRef.current);
-    routePolylineRef.current = polyline;
-  }, [routePath, status]);
+    for (const route of routePaths) {
+      if (route.path.length < 2) continue;
+      const polyline = new kakaoNs.maps.Polyline({
+        path: route.path.map((p) => new kakaoNs.maps.LatLng(p.lat, p.lng)),
+        strokeWeight: 3,
+        strokeColor: route.color ?? "#1c1917",
+        strokeOpacity: 0.6,
+        strokeStyle: "shortdash",
+      });
+      polyline.setMap(mapRef.current);
+      routePolylinesRef.current.set(route.id, polyline);
+    }
+  }, [routePaths, status]);
 
   // 전체화면 전환 시 카카오맵이 컨테이너 크기 변화를 인식하도록 relayout을 호출한다.
   useEffect(() => {
