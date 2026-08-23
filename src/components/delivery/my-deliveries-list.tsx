@@ -200,7 +200,7 @@ export function MyDeliveriesList({
             </p>
           </div>
           {!shift?.started_at ? (
-            <Button type="button" size="sm" className="gap-1.5" disabled={shiftPending} onClick={handleStartShift}>
+            <Button type="button" size="sm" className="gap-1.5" disabled={shiftPending} aria-busy={shiftPending} onClick={handleStartShift}>
               <Navigation className="size-3.5" />
               운행시작
             </Button>
@@ -231,7 +231,7 @@ export function MyDeliveriesList({
               <Button type="button" size="sm" variant="outline" onClick={() => setEndPromptDismissed(true)}>
                 취소
               </Button>
-              <Button type="button" size="sm" disabled={shiftPending} onClick={handleEndShift}>
+              <Button type="button" size="sm" disabled={shiftPending} aria-busy={shiftPending} onClick={handleEndShift}>
                 운행종료
               </Button>
             </div>
@@ -261,6 +261,7 @@ export function MyDeliveriesList({
               size="lg"
               className="h-12 w-full gap-2"
               disabled={isPending && pendingShipmentId === current.rowKey}
+              aria-busy={isPending && pendingShipmentId === current.rowKey}
               onClick={() => handleComplete(current.rowKey)}
             >
               <CheckCircle2 className="size-5" />
@@ -289,6 +290,7 @@ export function MyDeliveriesList({
               variant="outline"
               className="w-full gap-2"
               disabled={isPending && pendingShipmentId === next.rowKey}
+              aria-busy={isPending && pendingShipmentId === next.rowKey}
               onClick={() => handleComplete(next.rowKey)}
             >
               <CheckCircle2 className="size-4" />
@@ -457,6 +459,7 @@ function UpcomingDeliveryCard({
           variant="outline"
           className="w-full gap-1.5"
           disabled={isCompletePending}
+          aria-busy={isCompletePending}
           onClick={(e) => {
             e.stopPropagation();
             onComplete(order.rowKey);

@@ -68,16 +68,20 @@ async function mainText(page: Page): Promise<string> {
 /** Server Action(배송완료/운행시작/종료 등) 클릭 뒤 — Production은 콜드스타트로
  *  왕복이 느릴 수 있고, 클릭 직후 React가 트랜지션을 실제로 시작하기까지도
  *  한 tick이 걸린다. 고정 대기 대신: (1) 트랜지션이 시작될 시간을 잠깐 준
- *  뒤 (2) 네트워크가 가라앉고 (3) 화면 텍스트가 클릭 전과 달라지고 "처리
- *  중" 펜딩 표시도 사라질 때까지 최대 timeoutMs만큼 폴링한다. */
+ *  뒤 (2) 네트워크가 가라앉고 (3) 화면 텍스트가 클릭 전과 달라지고
+ *  `aria-busy="true"`인 버튼이 하나도 없을 때까지 최대 timeoutMs만큼
+ *  폴링한다. §CPO 작업지시(PART14): 문구("처리 중" 등) 대신 명시적 상태
+ *  속성(aria-busy)에 의존해 UI 문구 변경에 QA가 깨지지 않게 한다. */
 async function settleAfterMutation(page: Page, beforeText: string, timeoutMs = 15000): Promise<string> {
   await page.waitForTimeout(400);
   await page.waitForLoadState("networkidle", { timeout: timeoutMs }).catch(() => {});
   const deadline = Date.now() + timeoutMs;
   let text = await mainText(page);
-  while ((text === beforeText || text.includes("처리 중") || text.includes("처리중")) && Date.now() < deadline) {
+  let busyCount = await page.locator('[aria-busy="true"]').count();
+  while ((text === beforeText || busyCount > 0) && Date.now() < deadline) {
     await page.waitForTimeout(500);
     text = await mainText(page);
+    busyCount = await page.locator('[aria-busy="true"]').count();
   }
   return text;
 }

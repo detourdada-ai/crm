@@ -322,7 +322,7 @@ export function DriverLocationsDialog() {
         </div>
         <DialogFooter className="gap-2 rounded-none sm:justify-between">
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={isPending} onClick={fetchData}>
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={isPending} aria-busy={isPending} onClick={fetchData}>
               <RefreshCw className="size-4" />
               새로고침
             </Button>
