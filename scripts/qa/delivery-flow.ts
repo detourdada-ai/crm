@@ -224,7 +224,7 @@ async function run() {
     const viewportSize = page.viewportSize();
     const dialogAreaRatio =
       dialogBox && viewportSize ? (dialogBox.width * dialogBox.height) / (viewportSize.width * viewportSize.height) : 0;
-    record("15b. 기사위치 팝업이 화면 대부분(전체화면 기본값)을 사용", dialogAreaRatio > 0.7, `ratio=${dialogAreaRatio.toFixed(2)}`);
+    record("15b. 기사위치 팝업이 뷰포트 전체를 사용(완전 전체화면)", dialogAreaRatio > 0.95, `ratio=${dialogAreaRatio.toFixed(2)}`);
     record("15c. 기사위치 팝업에 전체/개별 기사 선택 칩 노출(배차편집과 분리된 별도 선택)", dialogText.includes("전체") && dialogText.includes(driver.name));
 
     await page.keyboard.press("Escape").catch(() => {});

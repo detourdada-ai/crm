@@ -11,6 +11,7 @@ import { DriverDateFilter, formatDriverDateLabel } from "@/components/delivery/d
 import { markDeliveredAction } from "@/actions/delivery";
 import { startShiftAction, endShiftAction, updateMyLocationAction } from "@/actions/driver-shifts";
 import { kstTodayIso } from "@/lib/utils/kst-date";
+import { getDeliveryProgress } from "@/lib/utils/delivery-progress";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import type { DriverShift } from "@/types/domain";
 
@@ -114,8 +115,9 @@ export function MyDeliveriesList({
   // 섞지 않는다 — 이 번호는 카드에만 붙는 "전체 배송 경로 순서"다.
   const sequenceByRowKey = useMemo(() => new Map(orders.map((o, i) => [o.rowKey, i + 1])), [orders]);
 
-  const remaining = useMemo(() => orders.filter((o) => o.delivery_status !== "완료"), [orders]);
-  const completed = useMemo(() => orders.filter((o) => o.delivery_status === "완료"), [orders]);
+  // "현재 배송/다음 배송"은 이 화면·기사위치·기사 지도가 전부 같은 기준
+  // (route_order 가장 앞선 미완료 배송)을 쓰도록 공용 함수로 통일한다.
+  const { completed, remaining, current, next } = useMemo(() => getDeliveryProgress(orders), [orders]);
   const noCoordOrders = useMemo(() => orders.filter((o) => o.latitude == null || o.longitude == null), [orders]);
 
   const selectedOrders = useMemo(() => {
@@ -124,20 +126,29 @@ export function MyDeliveriesList({
     return orders.filter((o) => idSet.has(o.rowKey));
   }, [orders, selectedIds]);
 
+  // 기사 지도도 카드 목록과 같은 시각 위계를 쓴다(§CPO 작업지시) — 완료는
+  // 흐리게, 현재 배송은 가장 눈에 띄게, 다음 배송은 구분되게, 그 이후는
+  // 옅게. "현재/다음"의 기준은 getDeliveryProgress와 완전히 동일하다.
   const markers: DeliveryMapMarker[] = useMemo(() => {
     return orders
       .filter((o): o is OrderShipmentBoardRow & { latitude: number; longitude: number } => o.latitude != null && o.longitude != null)
-      .map((o) => ({
-        id: o.rowKey,
-        lat: o.latitude,
-        lng: o.longitude,
-        label: o.recipient_name || o.buyer_name || "-",
-        sublabel: o.address_snapshot ?? undefined,
-        statusLabel: o.delivery_status === "완료" ? "완료" : undefined,
-        colorClassName: o.delivery_status === "완료" ? "bg-muted-foreground" : "bg-slate-600",
-        done: o.delivery_status === "완료",
-      }));
-  }, [orders]);
+      .map((o) => {
+        const isDone = o.delivery_status === "완료";
+        const isCurrent = current?.rowKey === o.rowKey;
+        const isNext = next?.rowKey === o.rowKey;
+        return {
+          id: o.rowKey,
+          lat: o.latitude,
+          lng: o.longitude,
+          label: o.recipient_name || o.buyer_name || "-",
+          sublabel: o.address_snapshot ?? undefined,
+          statusLabel: isDone ? "완료" : isCurrent ? "현재 배송" : isNext ? "다음 배송" : undefined,
+          colorClassName: isDone ? "bg-muted-foreground" : isCurrent ? "bg-primary" : isNext ? "bg-amber-500" : "bg-slate-600",
+          done: isDone,
+          dimmed: !isDone && !isCurrent && !isNext,
+        };
+      });
+  }, [orders, current, next]);
 
   /** 같은 좌표(배지)를 다시 클릭하면 선택을 해제한다. */
   const handleGroupSelect = useCallback((ids: string[]) => {
@@ -233,37 +244,37 @@ export function MyDeliveriesList({
       {/* PART 16: 지도 마커를 눌러야만 카드가 보이던 기존 흐름은 그대로 두고,
           그와 별개로 "지금 뭘 배송해야 하는지"를 route_order 기준으로 항상
           보여준다 — 완료된 건은 여기서 제외된다. */}
-      {remaining.length > 0 ? (
+      {current ? (
         <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">현재 배송</p>
             <div className="flex items-center justify-between gap-2">
               <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-text-strong">
                 <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
-                  {sequenceByRowKey.get(remaining[0].rowKey)}
+                  {sequenceByRowKey.get(current.rowKey)}
                 </span>
-                <span className="truncate">{remaining[0].recipient_name || remaining[0].buyer_name || "-"}</span>
+                <span className="truncate">{current.recipient_name || current.buyer_name || "-"}</span>
               </p>
               <Button
                 type="button"
                 size="sm"
                 className="shrink-0 gap-1"
-                disabled={isPending && pendingShipmentId === remaining[0].rowKey}
-                onClick={() => handleComplete(remaining[0].rowKey)}
+                disabled={isPending && pendingShipmentId === current.rowKey}
+                onClick={() => handleComplete(current.rowKey)}
               >
                 <CheckCircle2 className="size-3.5" />
-                {isPending && pendingShipmentId === remaining[0].rowKey ? "처리 중" : "배송완료"}
+                {isPending && pendingShipmentId === current.rowKey ? "처리 중" : "배송완료"}
               </Button>
             </div>
           </div>
-          {remaining[1] ? (
+          {next ? (
             <div className="space-y-1.5 border-t pt-3 sm:border-t-0 sm:border-l sm:pt-0 sm:pl-4">
               <p className="text-xs font-medium text-muted-foreground">다음 배송</p>
               <p className="flex items-center gap-1.5 text-sm text-text-strong">
                 <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-text-strong">
-                  {sequenceByRowKey.get(remaining[1].rowKey)}
+                  {sequenceByRowKey.get(next.rowKey)}
                 </span>
-                <span className="truncate">{remaining[1].recipient_name || remaining[1].buyer_name || "-"}</span>
+                <span className="truncate">{next.recipient_name || next.buyer_name || "-"}</span>
               </p>
             </div>
           ) : null}
@@ -322,8 +333,7 @@ function OrderCardGroup({
   onComplete: (shipmentId: string) => void;
   onClose?: () => void;
 }) {
-  const remaining = orders.filter((o) => o.delivery_status !== "완료");
-  const completed = orders.filter((o) => o.delivery_status === "완료");
+  const { remaining, completed } = getDeliveryProgress(orders);
 
   return (
     <div className="space-y-3 rounded-lg border bg-card p-4">
