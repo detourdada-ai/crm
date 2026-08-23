@@ -257,7 +257,7 @@ export function MyDeliveriesList({
               onClick={() => handleComplete(current.rowKey)}
             >
               <CheckCircle2 className="size-5" />
-              {isPending && pendingShipmentId === current.rowKey ? "처리하는 중..." : "배송완료"}
+              {isPending && pendingShipmentId === current.rowKey ? "처리 중" : "배송완료"}
             </Button>
           }
         />
