@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Navigation, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { listDriverLocationsAction, type DriverLocation } from "@/actions/driver-shifts";
+import { getDeliveryBoardAction } from "@/actions/delivery";
+import { sortByRouteOrder } from "@/lib/utils/route-order";
+import { buildDriverColorMap } from "@/lib/utils/driver-colors";
+import { kstTodayIso } from "@/lib/utils/kst-date";
+import { cn } from "@/lib/utils";
+import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 function minutesAgo(iso: string | null): number | null {
   if (!iso) return null;
@@ -21,27 +27,46 @@ function statusText({ shift }: DriverLocation): string {
 }
 
 /**
- * Sprint4: 사장님이 오늘 활동 중인 기사들의 위치를 한 화면에서 확인한다.
- * driver_shifts.last_latitude/longitude는 참고용 최근 값 하나뿐이라 실시간
- * 이동경로 추적이 아니라 "지금 대략 어디 있는지" 스냅샷이다 — 그래서
- * 자동 폴링 없이 열 때와 새로고침 버튼을 눌렀을 때만 다시 조회한다.
+ * 배송관리 지도(delivery-map-view)는 "배차 중심" 화면이라 배송이 끝난 건은
+ * 지도에서 아예 치운다 — 모든 배차가 끝난 뒤 "기사님이 지금 어디 있고, 오늘
+ * 얼마나 다녔는지"를 보는 건 이 팝업의 몫이다(CPO 지시). 그래서 이 다이얼로그는:
+ * 1) 지도에 기사 개개인의 위치를 기사별 색으로 구분해 보여주고
+ * 2) 그 아래에는 위치가 아니라 "오늘 그 기사의 배송목록 중 완료/미완료"를
+ *    기사 한 명당 한 줄(라인)로, 순서대로 점 스트립으로 보여준다.
  */
 export function DriverLocationsDialog() {
   const [open, setOpen] = useState(false);
   const [locations, setLocations] = useState<DriverLocation[] | null>(null);
+  const [todayOrders, setTodayOrders] = useState<OrderShipmentBoardRow[]>([]);
   const [isPending, startTransition] = useTransition();
 
-  function fetchLocations() {
+  function fetchData() {
     startTransition(async () => {
-      const result = await listDriverLocationsAction();
-      setLocations(result);
+      const today = kstTodayIso();
+      const [locationResult, boardResult] = await Promise.all([listDriverLocationsAction(), getDeliveryBoardAction(today, today)]);
+      setLocations(locationResult);
+      setTodayOrders(boardResult.orders);
     });
   }
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
-    if (next) fetchLocations();
+    if (next) fetchData();
   }
+
+  const driverColorById = useMemo(() => buildDriverColorMap((locations ?? []).map((l) => l.driver)), [locations]);
+
+  const ordersByDriverId = useMemo(() => {
+    const map = new Map<string, OrderShipmentBoardRow[]>();
+    for (const o of todayOrders) {
+      if (!o.driver_id) continue;
+      const list = map.get(o.driver_id) ?? [];
+      list.push(o);
+      map.set(o.driver_id, list);
+    }
+    for (const [driverId, list] of map) map.set(driverId, sortByRouteOrder(list));
+    return map;
+  }, [todayOrders]);
 
   const markers: DeliveryMapMarker[] = (locations ?? [])
     .filter((l): l is DriverLocation & { shift: NonNullable<DriverLocation["shift"]> } => l.shift?.last_latitude != null && l.shift?.last_longitude != null)
@@ -51,7 +76,7 @@ export function DriverLocationsDialog() {
       lng: l.shift.last_longitude!,
       label: l.driver.name,
       sublabel: statusText(l),
-      colorClassName: l.shift.started_at && !l.shift.ended_at ? "bg-emerald-600" : "bg-muted-foreground",
+      colorClassName: driverColorById.get(l.driver.id),
     }));
 
   return (
@@ -65,24 +90,60 @@ export function DriverLocationsDialog() {
       <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>기사 위치</DialogTitle>
-          <DialogDescription>기사가 앱에서 마지막으로 남긴 참고용 위치입니다 — 실시간 이동경로가 아닙니다.</DialogDescription>
+          <DialogDescription>기사가 앱에서 마지막으로 남긴 참고용 위치와, 오늘 배송의 완료/미완료 현황입니다.</DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
-          <DeliveryMap markers={markers} emptyMessage="위치가 확인된 기사가 없습니다." className="h-64" />
-          <div className="space-y-1.5">
-            {(locations ?? []).map((l) => (
-              <div key={l.driver.id} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                <span className="font-medium text-text-strong">{l.driver.name}</span>
-                <span className="text-muted-foreground">{statusText(l)}</span>
-              </div>
-            ))}
+          <DeliveryMap
+            markers={markers}
+            emptyMessage="위치가 확인된 기사가 없습니다."
+            className="h-64"
+            showLocateButton={false}
+            showFullscreenButton={false}
+          />
+          <div className="space-y-2">
+            {(locations ?? []).map((l) => {
+              const stops = ordersByDriverId.get(l.driver.id) ?? [];
+              const doneCount = stops.filter((o) => o.delivery_status === "완료").length;
+              return (
+                <div key={l.driver.id} className="space-y-1.5 rounded-md border px-3 py-2">
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="flex items-center gap-1.5 font-medium text-text-strong">
+                      <span className={cn("size-2.5 shrink-0 rounded-full", driverColorById.get(l.driver.id))} />
+                      {l.driver.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{statusText(l)}</span>
+                  </div>
+                  {stops.length > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-1 flex-wrap gap-1">
+                        {stops.map((o) => (
+                          <span
+                            key={o.rowKey}
+                            title={`${o.recipient_name || o.buyer_name || "-"} · ${o.delivery_status}`}
+                            className={cn(
+                              "size-2.5 rounded-full",
+                              o.delivery_status === "완료" ? (driverColorById.get(l.driver.id) ?? "bg-primary") : "border border-border bg-transparent"
+                            )}
+                          />
+                        ))}
+                      </div>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        완료 {doneCount}/{stops.length}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">오늘 배정된 배송이 없습니다.</p>
+                  )}
+                </div>
+              );
+            })}
             {locations != null && locations.length === 0 ? (
               <p className="py-4 text-center text-sm text-muted-foreground">등록된 활성 기사가 없습니다.</p>
             ) : null}
           </div>
         </div>
         <DialogFooter className="gap-2 sm:justify-between">
-          <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={isPending} onClick={fetchLocations}>
+          <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={isPending} onClick={fetchData}>
             <RefreshCw className="size-4" />
             새로고침
           </Button>
