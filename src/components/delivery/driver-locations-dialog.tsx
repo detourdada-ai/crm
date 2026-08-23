@@ -160,7 +160,7 @@ export function DriverLocationsDialog() {
       </DialogTrigger>
       <DialogContent
         showCloseButton
-        className="fixed inset-0 top-0 left-0 flex h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-3 rounded-none border-0 p-4"
+        className="fixed inset-0 top-0 left-0 flex h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-3 rounded-none border-0 p-4 sm:max-w-none"
       >
         <DialogHeader>
           <DialogTitle>기사 위치</DialogTitle>
