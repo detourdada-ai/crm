@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "qa:delivery": "tsx scripts/qa/delivery-flow.ts",
+    "qa:production": "tsx scripts/qa/delivery-flow.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
@@ -39,7 +41,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.12",
     "typescript": "^5"
   }
 }
