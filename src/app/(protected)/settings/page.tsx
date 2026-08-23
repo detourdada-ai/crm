@@ -6,6 +6,8 @@ import { requireSession } from "@/lib/auth/current-session";
 import { listAccounts } from "@/lib/auth/credentials";
 import { getVipCriteria } from "@/lib/services/vip.service";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
+import { MyProfileForm } from "@/components/settings/my-profile-form";
+import { AccountUsernameDialog } from "@/components/settings/account-username-dialog";
 import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
 import { DriverManagementCard } from "@/components/settings/driver-management-card";
 import { AccountRoleFilter } from "@/components/settings/account-role-filter";
@@ -83,6 +85,16 @@ export default async function SettingsPage({
               </CardHeader>
               <CardContent>
                 <TenantProfileCard industry={tenant?.industry ?? null} bagManagement={tenant?.bag_management ?? false} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>내 프로필</CardTitle>
+                <CardDescription>로그인 아이디는 이 화면에서 바꿀 수 없습니다. 문의를 통해 요청해주세요.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MyProfileForm contactName={tenant?.contact_name ?? null} contactPhone={tenant?.contact_phone ?? null} />
               </CardContent>
             </Card>
 
@@ -222,7 +234,14 @@ export default async function SettingsPage({
                 <TableBody>
                   {filteredAccounts.map((account) => (
                     <TableRow key={account.username}>
-                      <TableCell className="font-medium">{account.username}</TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-1">
+                          {account.username}
+                          {account.username !== session.username ? (
+                            <AccountUsernameDialog username={account.username} />
+                          ) : null}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <Badge variant={account.role === "admin" ? "default" : "secondary"}>
                           {ROLE_LABELS[account.role]}

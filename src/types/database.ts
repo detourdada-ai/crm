@@ -142,6 +142,10 @@ export interface Database {
         Args: { p_tenant_id: string; p_day_str: string; p_count: number };
         Returns: number;
       };
+      rename_account_username: {
+        Args: { p_old_username: string; p_new_username: string };
+        Returns: void;
+      };
     };
     Enums: Record<string, never>;
     Tables: {
@@ -848,6 +852,8 @@ export interface Database {
           beta_ended_email_sent_at: string | null;
           industry: string | null;
           bag_management: boolean;
+          contact_name: string | null;
+          contact_phone: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -863,6 +869,8 @@ export interface Database {
           beta_ended_email_sent_at?: string | null;
           industry?: string | null;
           bag_management?: boolean;
+          contact_name?: string | null;
+          contact_phone?: string | null;
           created_at?: string;
           updated_at?: string;
         };

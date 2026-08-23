@@ -5,7 +5,7 @@ import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { driverRegionsRepository } from "@/lib/repositories/driver-regions.repository";
 import { accountsRepository } from "@/lib/repositories/accounts.repository";
 import { createDriverWithAccount, updateDriver, DriverServiceError } from "@/lib/services/driver.service";
-import { listAccounts } from "@/lib/auth/credentials";
+import { listAccounts, changePassword } from "@/lib/auth/credentials";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { Driver, DriverRegion } from "@/types/domain";
@@ -64,12 +64,21 @@ export async function assertOwnsDriver(driverId: string, session: SessionPayload
  * 미리 보여주기 위한 조회 전용 액션. createDriverWithAccount의 최종 제출
  * 시점 재검증(findByUsername) 로직은 그대로 두고, 같은 조회를 UX 힌트용으로
  * 한 번 더 호출할 뿐이다 — 중복 검증 로직 자체를 바꾸지 않는다.
+ *
+ * ACC: 수정 다이얼로그에서는 이 기사 자신의 현재 아이디를 "이미 사용 중"으로
+ * 오탐하면 안 되므로, 그 계정의 driver_id가 excludeDriverId와 같으면 사용
+ * 가능한 것으로 취급한다.
  */
-export async function checkDriverUsernameAvailableAction(username: string): Promise<{ available: boolean }> {
+export async function checkDriverUsernameAvailableAction(
+  username: string,
+  excludeDriverId?: string
+): Promise<{ available: boolean }> {
   const trimmed = username.trim();
   if (!trimmed) return { available: false };
   const existing = await accountsRepository.findByUsername(trimmed);
-  return { available: !existing };
+  if (!existing) return { available: true };
+  if (excludeDriverId && existing.driver_id === excludeDriverId) return { available: true };
+  return { available: false };
 }
 
 export async function createDriverAction(
@@ -111,9 +120,10 @@ export async function createDriverAction(
 }
 
 /**
- * P5/인터뷰8-21: 기사 정보(이름/연락처/주소/차량번호/건당 배송비) 수정 — 로그인
- * 아이디는 최초 생성 후 변경 불가(폼에 필드 자체를 두지 않음, updateDriver는
- * 그 필드를 받지도 않음).
+ * P5/인터뷰8-21: 기사 정보(이름/연락처/주소/차량번호/건당 배송비) 수정.
+ * 로그인 아이디/비밀번호는 이 액션이 다루지 않는다 — ACC 이후로는
+ * updateDriverAccountAction으로 분리됐다(기사 정보 수정과 계정 수정을
+ * 같은 다이얼로그 안에서 별도 호출로 처리).
  */
 export async function updateDriverInfoAction(
   driverId: string,
@@ -141,6 +151,49 @@ export async function updateDriverInfoAction(
     return { ok: true, error: null };
   } catch (e) {
     return { ok: false, error: toActionError(e, "기사 정보 수정 중 오류가 발생했습니다.") };
+  }
+}
+
+/**
+ * ACC: 기사 로그인 계정(아이디/비밀번호) 수정 — assertOwnsDriver로 admin 또는
+ * 해당 기사를 등록한 사장님(테넌트 owner)만 허용한다. 기사 계정은
+ * owner_username을 쓰지 않으므로(주문/고객 데이터를 소유하지 않음)
+ * rename_account_username 호출 시 그 부분은 항상 no-op이고, memberships만
+ * 실제로 갱신된다 — 사장님 계정 rename과 동일한 함수를 그대로 재사용한다.
+ * 두 필드 모두 선택 입력: 비워두면 그 값은 그대로 유지된다.
+ */
+export async function updateDriverAccountAction(
+  driverId: string,
+  _prevState: DriverActionState,
+  formData: FormData
+): Promise<DriverActionState> {
+  try {
+    const session = await requireSession();
+    await assertOwnsDriver(driverId, session);
+
+    const account = await accountsRepository.findByDriverId(driverId);
+    if (!account) return { ok: false, error: "이 기사의 로그인 계정을 찾을 수 없습니다." };
+
+    const newUsername = String(formData.get("username") || "").trim();
+    const newPassword = String(formData.get("password") || "");
+    const confirmPassword = String(formData.get("confirmPassword") || "");
+
+    if (newUsername && newUsername !== account.username) {
+      const existing = await accountsRepository.findByUsername(newUsername);
+      if (existing) return { ok: false, error: "이미 사용 중인 아이디입니다." };
+      await accountsRepository.renameUsername(account.username, newUsername);
+    }
+
+    if (newPassword) {
+      if (newPassword.length < 4) return { ok: false, error: "새 비밀번호는 4자 이상이어야 합니다." };
+      if (newPassword !== confirmPassword) return { ok: false, error: "새 비밀번호가 일치하지 않습니다." };
+      await changePassword(newUsername || account.username, newPassword);
+    }
+
+    revalidatePath("/settings");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "기사 계정 수정 중 오류가 발생했습니다.") };
   }
 }
 

@@ -60,4 +60,13 @@ export const tenantsRepository = {
     const { error } = await getSupabaseAdmin().from("tenants").update({ status }).eq("id", tenantId);
     if (error) throw error;
   },
+
+  /** ACC: 사장님 본인이 직접 수정하는 개인 프로필(이름/연락처). tenants.name(업체명)은 건드리지 않는다. */
+  async updateContactProfile(tenantId: string, contactName: string | null, contactPhone: string | null): Promise<void> {
+    const { error } = await getSupabaseAdmin()
+      .from("tenants")
+      .update({ contact_name: contactName, contact_phone: contactPhone })
+      .eq("id", tenantId);
+    if (error) throw error;
+  },
 };

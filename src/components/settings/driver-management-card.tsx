@@ -23,6 +23,7 @@ import {
   checkDriverUsernameAvailableAction,
   createDriverAction,
   deleteDriverAction,
+  updateDriverAccountAction,
   updateDriverInfoAction,
   updateDriverStatusAction,
 } from "@/actions/drivers";
@@ -214,25 +215,52 @@ function CreateDriverDialog({
 }
 
 /**
- * P5 1-3/1-4: 기사 정보 수정 — 로그인 아이디는 필드 자체를 두지 않아 변경
- * 불가능하게 한다. 1-4(담당지역 CRUD를 등록/수정 팝업 안에 포함)는 이미 있는
- * DriverRegionsCell(추가 다이얼로그+배지 삭제)을 그대로 이 다이얼로그 안에
- * 재사용해서 새 로직을 만들지 않는다.
+ * P5 1-3/1-4: 기사 정보 수정. 1-4(담당지역 CRUD를 등록/수정 팝업 안에 포함)는
+ * 이미 있는 DriverRegionsCell(추가 다이얼로그+배지 삭제)을 그대로 이 다이얼로그
+ * 안에 재사용해서 새 로직을 만들지 않는다.
+ *
+ * ACC: "로그인 계정" 섹션(아이디/비밀번호)을 추가 — 기사관리는 사장님의 운영
+ * 권한이므로 admin뿐 아니라 이 기사를 등록한 사장님도 여기서 바로 바꿀 수
+ * 있다(서버 측 권한은 updateDriverAccountAction의 assertOwnsDriver가 강제).
+ * 저장은 기존 updateDriverInfoAction과 별도 액션(updateDriverAccountAction)을
+ * 순차 호출한다 — 정보 수정과 계정 수정 로직을 섞지 않기 위함.
  */
 function EditDriverDialog({ driver, knownRegions }: { driver: DriverWithAccount; knownRegions: KnownRegion[] }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [usernameCheck, setUsernameCheck] = useState<"idle" | "checking" | "available" | "taken">("idle");
+
+  function handleUsernameBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const value = e.currentTarget.value.trim();
+    if (!value || value === driver.username) {
+      setUsernameCheck("idle");
+      return;
+    }
+    setUsernameCheck("checking");
+    checkDriverUsernameAvailableAction(value, driver.id).then((result) => {
+      setUsernameCheck(result.available ? "available" : "taken");
+    });
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     startTransition(async () => {
-      const result = await updateDriverInfoAction(driver.id, { ok: false, error: null }, formData);
-      if (!result.ok) {
-        toast.error(result.error ?? "기사 정보 수정 중 오류가 발생했습니다.");
+      const infoResult = await updateDriverInfoAction(driver.id, { ok: false, error: null }, formData);
+      if (!infoResult.ok) {
+        toast.error(infoResult.error ?? "기사 정보 수정 중 오류가 발생했습니다.");
         return;
       }
+      const wantsAccountChange = formData.get("username") !== driver.username || String(formData.get("password") || "");
+      if (wantsAccountChange) {
+        const accountResult = await updateDriverAccountAction(driver.id, { ok: false, error: null }, formData);
+        if (!accountResult.ok) {
+          toast.error(accountResult.error ?? "로그인 계정 수정 중 오류가 발생했습니다.");
+          return;
+        }
+      }
       toast.success("기사 정보를 수정했습니다.");
+      setUsernameCheck("idle");
       setOpen(false);
     });
   }
@@ -248,7 +276,6 @@ function EditDriverDialog({ driver, knownRegions }: { driver: DriverWithAccount;
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>기사 정보 수정</DialogTitle>
-          <DialogDescription>로그인 아이디는 최초 등록 후 변경할 수 없습니다.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
@@ -281,8 +308,42 @@ function EditDriverDialog({ driver, knownRegions }: { driver: DriverWithAccount;
             <Label>담당지역</Label>
             <DriverRegionsCell driver={driver} knownRegions={knownRegions} />
           </div>
+
+          <div className="space-y-3 border-t pt-4 sm:col-span-2">
+            <p className="text-sm font-medium">로그인 계정</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor={`edit-username-${driver.id}`}>아이디</Label>
+                <Input
+                  id={`edit-username-${driver.id}`}
+                  name="username"
+                  defaultValue={driver.username ?? ""}
+                  onBlur={handleUsernameBlur}
+                  onChange={() => setUsernameCheck("idle")}
+                />
+                {usernameCheck === "checking" ? (
+                  <p className="text-xs text-muted-foreground">확인하는 중...</p>
+                ) : usernameCheck === "available" ? (
+                  <p className="text-xs text-success">사용 가능한 아이디입니다</p>
+                ) : usernameCheck === "taken" ? (
+                  <p className="text-xs text-destructive">이미 사용 중인 아이디입니다</p>
+                ) : null}
+              </div>
+              <div />
+              <div className="space-y-2">
+                <Label htmlFor={`edit-password-${driver.id}`}>새 비밀번호</Label>
+                <Input id={`edit-password-${driver.id}`} name="password" type="password" minLength={4} placeholder="변경 시에만 입력" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`edit-confirmPassword-${driver.id}`}>새 비밀번호 확인</Label>
+                <Input id={`edit-confirmPassword-${driver.id}`} name="confirmPassword" type="password" minLength={4} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">비밀번호를 입력하지 않으면 기존 비밀번호가 유지됩니다.</p>
+          </div>
+
           <DialogFooter className="sm:col-span-2">
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending || usernameCheck === "taken"}>
               {isPending ? "저장하는 중..." : "저장"}
             </Button>
           </DialogFooter>

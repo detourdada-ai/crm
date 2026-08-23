@@ -46,6 +46,10 @@ export interface Tenant {
   // feature 컬럼(bag_management 등)이 결정하며 industry로 자동 강제되지 않는다.
   industry: string | null;
   bag_management: boolean;
+  // ACC: 사장님 "내 프로필" — tenants.name(업체명)과는 별개인 개인 이름/연락처.
+  // 본인이 직접 수정하며 Admin CS 계정관리(username)와는 무관하다.
+  contact_name: string | null;
+  contact_phone: string | null;
   created_at: ISODateString;
   updated_at: ISODateString;
 }

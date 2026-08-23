@@ -71,6 +71,20 @@ export const accountsRepository = {
     if (error) throw error;
   },
 
+  /**
+   * ACC: username은 surrogate id 없이 그 자체가 PK이고 memberships/tenant_access_keys가
+   * FK로 참조하며, owner_username(9개 테이블, plain-text 복제)까지 갱신해야 하므로
+   * 단순 UPDATE로는 처리할 수 없다 — 전부 supabase/migrations/0041의
+   * rename_account_username() 함수 안에서 한 트랜잭션으로 원자적으로 처리한다.
+   */
+  async renameUsername(oldUsername: string, newUsername: string): Promise<void> {
+    const { error } = await getSupabaseAdmin().rpc("rename_account_username", {
+      p_old_username: oldUsername,
+      p_new_username: newUsername,
+    });
+    if (error) throw error;
+  },
+
   /** Sprint 9: links this account to its (lazily-created) Supabase Auth user. Only ever set once per account. */
   async setAuthUserId(username: string, authUserId: string): Promise<void> {
     const { error } = await getSupabaseAdmin().from("app_accounts").update({ auth_user_id: authUserId }).eq("username", username);
