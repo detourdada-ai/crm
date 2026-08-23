@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition, type RefObject } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { assignDriverAction, reorderShipmentsAction, setFulfillmentMethodAction } from "@/actions/delivery";
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
@@ -41,6 +42,7 @@ export function DeliveryBoard({
   rowRefs,
   highlightedOrderId = null,
   emphasizedDriverId = null,
+  onSelectOrder,
 }: {
   /** 이미 배송상태·배송그룹·기사 필터가 모두 적용된 최종 목록. */
   orders: OrderShipmentBoardRow[];
@@ -64,6 +66,8 @@ export function DeliveryBoard({
   highlightedOrderId?: string | null;
   /** DeliveryRoutePanel에서 기사를 선택했을 때 — 다른 기사의 카드를 옅게 표시한다(필터링은 아니다, PART 6). */
   emphasizedDriverId?: string | null;
+  /** PART 11 양방향 highlight: 카드를 클릭하면 지도의 해당 마커도 강조+중심이동한다(map이 없는 모드에서는 넘기지 않는다). */
+  onSelectOrder?: (rowKey: string) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDriverId, setBulkDriverId] = useState("");
@@ -166,6 +170,15 @@ export function DeliveryBoard({
     handleReorder(next.map((o) => o.rowKey));
   }
 
+  /** PART 12: ↑/↓(한 칸 미세조정)과 별개로, 순서를 원하는 위치로 한 번에 이동시킨다. */
+  function handleJumpToPosition(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    const next = currentlyDisplayedOrders.slice();
+    const [item] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, item);
+    handleReorder(next.map((o) => o.rowKey));
+  }
+
   function renderRow(order: OrderShipmentBoardRow) {
     return (
       <DeliveryOrderRow
@@ -190,7 +203,10 @@ export function DeliveryBoard({
     );
   }
 
-  /** PART 8: 지도 마커 클릭 → 이 ref로 해당 카드를 찾아 스크롤 + 링 강조.
+  /** PART 8/11: 지도 마커 클릭 → 이 ref로 해당 카드를 찾아 스크롤 + 링 강조.
+   *  반대로 이 카드를 클릭해도 onSelectOrder로 같은 상태를 세팅해 지도 마커를
+   *  강조+중심이동한다(양방향). 체크박스/버튼 등 카드 내부 인터랙티브 요소
+   *  클릭이 버블링돼도 강조가 한 번 더 걸릴 뿐이라 해가 없다.
    *  PART 6: DeliveryRoutePanel에서 기사를 선택하면(필터가 아니라 강조) 다른 기사 카드를 옅게 표시. */
   function renderRowWithRef(order: OrderShipmentBoardRow) {
     const isHighlighted = order.rowKey === highlightedOrderId;
@@ -203,6 +219,7 @@ export function DeliveryBoard({
           if (el) rowRefs.current.set(order.rowKey, el);
           else rowRefs.current.delete(order.rowKey);
         }}
+        onClick={onSelectOrder ? () => onSelectOrder(order.rowKey) : undefined}
         className={cn("rounded-xl transition-opacity", isHighlighted && "ring-2 ring-primary", isDimmed && "opacity-40")}
       >
         {renderRow(order)}
@@ -267,6 +284,21 @@ export function DeliveryBoard({
                     <ChevronDown className="size-3.5" />
                   </button>
                 </div>
+                {/* PART 12: ↑/↓는 한 칸 미세조정, 이 Select는 원하는 순서로 바로 이동 — 배송이 많을 때 ↑/↓만으로는 너무 느리다. */}
+                {currentlyDisplayedOrders.length > 2 ? (
+                  <Select value={String(idx + 1)} onValueChange={(v) => handleJumpToPosition(idx, Number(v) - 1)}>
+                    <SelectTrigger size="sm" className="h-7 w-14 px-1.5 text-xs" aria-label="배송순서 바로 변경">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currentlyDisplayedOrders.map((_, i) => (
+                        <SelectItem key={i} value={String(i + 1)}>
+                          {i + 1}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
               </div>
               <div className="min-w-0 flex-1">{renderRowWithRef(o)}</div>
             </div>

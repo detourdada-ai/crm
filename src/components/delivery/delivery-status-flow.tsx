@@ -3,18 +3,15 @@ import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * P6: 한 줄(전체/배정필요/배정완료/배송중/완료)로 되돌린다 — P5에서 배송상태/
- * 기사배정을 두 줄로 분리했더니 오히려 더 혼란스럽다는 CPO 피드백.
- *
- * S2-A §4: "배정완료"를 신설해 4개 버킷(배정필요/배정완료/배송중/완료)이
- * 서로 완전히 배타적이도록 정의를 확정했다 — 배정필요는 "배송대기 + 기사
- * 없음 + 직접수령 아님", 배정완료는 "배송대기 + (기사있음 OR 직접수령)".
- * 기존에는 "배송대기인데 기사가 이미 배정된" 경우가 세 버킷 어디에도 속하지
- * 않는 예외로 남아 합계가 전체보다 작을 수 있었는데(정확한 정의는 이전
- * delivery/page.tsx의 needsDriverCount 계산 참고), 이제 그 빈틈을 배정완료가
- * 정확히 메워 네 버킷의 합이 항상 전체와 같다.
+ * 배송관리 최종 IA 재정의: "배정완료"는 실제 DB 상태값이 아니라 UI 라벨일
+ * 뿐이었고(기사 배정 즉시 delivery_status가 '배송중'으로 바뀐다), 그 탭에
+ * 실제로 남는 건 전부 직접수령(fulfillment_method='direct_pickup') 대기
+ * 주문이었다. 핵심 흐름을 "배정필요 → 배송중 → 완료" 3단계로 단순화하고,
+ * 직접수령 대기는 기사가 아예 관여하지 않는 별도 업무함이므로 이 흐름 안에
+ * 억지로 넣지 않는다(CPO 확정) — detached=true로 시각적으로 분리해서 뒤에
+ * 따로 붙인다(화살표로 잇지 않는다).
  */
-export type DeliveryFilter = "all" | "unassigned" | "assigned" | "배송중" | "완료";
+export type DeliveryFilter = "all" | "unassigned" | "배송중" | "완료" | "pickup";
 
 export interface DeliveryFlowCount {
   filter: DeliveryFilter;
@@ -23,6 +20,8 @@ export interface DeliveryFlowCount {
   tone: "neutral" | "warning" | "info" | "success";
   /** 배송관리의 핵심 업무 상태(배정 필요)를 다른 단계보다 시각적으로 더 강조한다. */
   emphasize?: boolean;
+  /** 배정필요→배송중→완료 핵심 흐름과 무관한 별도 업무함(직접수령 대기) — 화살표 없이 간격을 두고 분리해서 보여준다. */
+  detached?: boolean;
 }
 
 const TONE_TEXT: Record<DeliveryFlowCount["tone"], string> = {
@@ -59,8 +58,9 @@ export function DeliveryStatusFlow({
       {counts.map((c, i) => {
         const isActive = active === c.filter;
         const highlighted = isActive || c.emphasize;
+        const nextIsDetached = counts[i + 1]?.detached;
         return (
-          <div key={c.filter} className="flex items-center gap-2">
+          <div key={c.filter} className={cn("flex items-center gap-2", c.detached && "ml-2 border-l border-border pl-4")}>
             <Link
               href={buildHref(c.filter)}
               className={cn(
@@ -82,7 +82,7 @@ export function DeliveryStatusFlow({
                 {c.count}
               </span>
             </Link>
-            {i < counts.length - 1 ? <ArrowRight className="size-4 shrink-0 text-border-strong" /> : null}
+            {i < counts.length - 1 && !nextIsDetached ? <ArrowRight className="size-4 shrink-0 text-border-strong" /> : null}
           </div>
         );
       })}

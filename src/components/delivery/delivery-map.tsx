@@ -46,6 +46,18 @@ function coordKey(lat: number, lng: number): string {
   return `${lat},${lng}`;
 }
 
+/** PART 10: 같은 좌표에 배송이 여러 건 겹칠 때, 개수만 보여주는 배지 대신
+ *  각 배송을 조금씩 떨어뜨려 개별 순번이 모두 보이게 한다. 실제 다른 주소로
+ *  착각할 정도로 멀리 떨어뜨리면 안 되므로(작업지시서 명시), 반경을 같은
+ *  건물/단지 안으로 보일 정도(수 미터)로 고정한 원형 배치를 쓴다. */
+const OFFSET_RADIUS_DEG = 0.00006;
+function circularOffset(index: number, total: number, baseLat: number): { dLat: number; dLng: number } {
+  const angle = (2 * Math.PI * index) / total;
+  const dLat = OFFSET_RADIUS_DEG * Math.sin(angle);
+  const dLng = (OFFSET_RADIUS_DEG * Math.cos(angle)) / Math.cos((baseLat * Math.PI) / 180);
+  return { dLat, dLng };
+}
+
 /** 선택 강조용 색상 — 기사 배정색(primary/sky/emerald/amber/violet/rose)·미배정(slate-400)·
  *  완료(muted-foreground)와 겹치지 않는, 지도에서 안 쓰는 색으로 고정한다. 마젠타는 다른
  *  진한 색들 사이에서 눈에 덜 띈다는 피드백으로 네이버지도 선택 마커에 가까운 원색 노랑으로 변경 —
@@ -111,14 +123,14 @@ export function DeliveryMap({
   const pinOverlaysRef = useRef<Map<string, kakao.maps.CustomOverlay>>(new Map());
   const pinElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const groupMembersRef = useRef<Map<string, DeliveryMapMarker[]>>(new Map());
-  const popupOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
+  /** PART 10: 개별로 떨어뜨려 그린 마커의 실제 위치 — highlightId로 중심이동할 때 좌표 문자열 파싱 대신 이걸 그대로 쓴다. */
+  const pinPositionsRef = useRef<Map<string, { lat: number; lng: number }>>(new Map());
   const highlightedElRef = useRef<HTMLDivElement | null>(null);
   const highlightedKeyRef = useRef<string | null>(null);
   const driverOverlaysRef = useRef<Map<string, kakao.maps.CustomOverlay>>(new Map());
   const routePolylinesRef = useRef<Map<string, kakao.maps.Polyline>>(new Map());
   const myLocationOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
 
@@ -129,7 +141,6 @@ export function DeliveryMap({
         if (cancelled || !containerRef.current) return;
         const center = new window.kakao!.maps.LatLng(37.5665, 126.978); // 서울시청 — 마커 로드 후 bounds로 즉시 재조정됨
         mapRef.current = new window.kakao!.maps.Map(containerRef.current, { center, level: 6 });
-        window.kakao!.maps.event.addListener(mapRef.current, "click", () => setOpenGroupKey(null));
         setStatus("ready");
       })
       .catch(() => {
@@ -154,8 +165,31 @@ export function DeliveryMap({
       else groups.set(key, [m]);
     }
 
+    // PART 10: onGroupSelect가 있는 화면(기사 앱)은 기존처럼 "겹침 배지 하나
+    // + 클릭 시 전체를 카드로 펼치는" 흐름을 그대로 유지한다(그 흐름 자체가
+    // 의도된 UX). onGroupSelect가 없는 화면(사장님 배송관리 지도)만 겹치는
+    // 마커를 개별로 살짝 떨어뜨려 각자의 순번이 항상 보이도록 바꾼다.
+    interface RenderItem {
+      overlayKey: string;
+      lat: number;
+      lng: number;
+      merged: boolean;
+      members: DeliveryMapMarker[];
+    }
+    const items: RenderItem[] = [];
+    for (const [key, list] of groups) {
+      if (list.length === 1 || onGroupSelect) {
+        items.push({ overlayKey: key, lat: list[0].lat, lng: list[0].lng, merged: list.length > 1, members: list });
+      } else {
+        list.forEach((m, i) => {
+          const { dLat, dLng } = circularOffset(i, list.length, list[0].lat);
+          items.push({ overlayKey: `${key}::${m.id}`, lat: list[0].lat + dLat, lng: list[0].lng + dLng, merged: false, members: [m] });
+        });
+      }
+    }
+
     const existingKeys = new Set(pinOverlaysRef.current.keys());
-    const nextKeys = new Set(groups.keys());
+    const nextKeys = new Set(items.map((it) => it.overlayKey));
 
     // id뿐 아니라 done도 서명에 포함 — 그룹 구성은 그대로인데 완료 상태만
     // 바뀐 경우(배송완료 클릭)에도 배지 숫자/색을 다시 그려야 하기 때문.
@@ -172,12 +206,15 @@ export function DeliveryMap({
         pinOverlaysRef.current.delete(key);
         pinElementsRef.current.delete(key);
         groupMembersRef.current.delete(key);
+        pinPositionsRef.current.delete(key);
       }
     }
 
-    for (const [key, list] of groups) {
+    for (const item of items) {
+      const { overlayKey: key, members: list } = item;
       const prevMembers = groupMembersRef.current.get(key);
       const unchanged = prevMembers && memberIdSet(prevMembers) === memberIdSet(list);
+      pinPositionsRef.current.set(key, { lat: item.lat, lng: item.lng });
       if (unchanged) {
         groupMembersRef.current.set(key, list); // onClick 등 최신 콜백으로 갱신
         continue;
@@ -187,7 +224,7 @@ export function DeliveryMap({
       groupMembersRef.current.set(key, list);
 
       const el = document.createElement("div");
-      if (list.length === 1) {
+      if (!item.merged) {
         const m = list[0];
         el.className = cn(
           "flex size-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-semibold text-white shadow-md",
@@ -216,100 +253,28 @@ export function DeliveryMap({
         el.textContent = String(allDone ? list.length : remaining);
         el.addEventListener("click", (e) => {
           e.stopPropagation();
-          if (onGroupSelect) onGroupSelect(list.map((m) => m.id));
-          else setOpenGroupKey((prev) => (prev === key ? null : key));
+          onGroupSelect?.(list.map((m) => m.id));
         });
       }
 
       const overlay = new kakaoNs.maps.CustomOverlay({
-        position: new kakaoNs.maps.LatLng(list[0].lat, list[0].lng),
+        position: new kakaoNs.maps.LatLng(item.lat, item.lng),
         content: el,
         yAnchor: 0.5,
-        zIndex: list.length > 1 ? 10 : 1,
+        zIndex: item.merged ? 10 : 1,
       });
       overlay.setMap(map);
       pinOverlaysRef.current.set(key, overlay);
     }
 
-    if (groups.size > 0) {
+    if (items.length > 0) {
       const bounds = new kakaoNs.maps.LatLngBounds();
-      for (const key of groups.keys()) {
-        const [lat, lng] = key.split(",").map(Number);
-        bounds.extend(new kakaoNs.maps.LatLng(lat, lng));
+      for (const item of items) {
+        bounds.extend(new kakaoNs.maps.LatLng(item.lat, item.lng));
       }
       map.setBounds(bounds);
     }
   }, [markers, status, onGroupSelect]);
-
-  // 열려 있는 그룹이 바뀌면 팝업 오버레이를 새로 그린다.
-  useEffect(() => {
-    popupOverlayRef.current?.setMap(null);
-    popupOverlayRef.current = null;
-    if (!openGroupKey || status !== "ready" || !mapRef.current || !window.kakao) return;
-    const members = groupMembersRef.current.get(openGroupKey);
-    if (!members || members.length < 2) return;
-    const kakaoNs = window.kakao;
-    const map = mapRef.current;
-
-    const card = document.createElement("div");
-    card.className = "w-64 overflow-hidden rounded-lg border bg-card shadow-lg";
-    const header = document.createElement("div");
-    header.className = "flex items-center justify-between border-b bg-muted/40 px-3 py-2";
-    header.innerHTML = `<span class="text-sm font-semibold text-text-strong">이 위치 ${members.length}건</span>`;
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "text-muted-foreground hover:text-foreground";
-    closeBtn.textContent = "✕";
-    closeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      setOpenGroupKey(null);
-    });
-    header.appendChild(closeBtn);
-    card.appendChild(header);
-
-    const list = document.createElement("div");
-    list.className = "max-h-64 divide-y overflow-y-auto";
-    for (const m of members) {
-      const row = document.createElement("div");
-      row.className = "flex items-center justify-between gap-2 px-3 py-2";
-      const info = document.createElement("div");
-      info.className = "min-w-0";
-      info.innerHTML = `
-        <p class="truncate text-sm font-medium text-text-strong">${m.label}${m.statusLabel ? ` <span class="text-xs font-normal text-muted-foreground">${m.statusLabel}</span>` : ""}</p>
-        ${m.sublabel ? `<p class="truncate text-xs text-muted-foreground">${m.sublabel}</p>` : ""}
-      `;
-      row.appendChild(info);
-
-      if (m.href) {
-        const a = document.createElement("a");
-        a.href = m.href;
-        a.className = "shrink-0 rounded-md border px-2 py-1 text-xs font-medium text-primary hover:bg-primary-soft";
-        a.textContent = m.actionLabel ?? "상세보기";
-        row.appendChild(a);
-      } else if (m.onClick) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "shrink-0 rounded-md border px-2 py-1 text-xs font-medium text-primary hover:bg-primary-soft";
-        btn.textContent = m.actionLabel ?? "선택";
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          m.onClick?.();
-        });
-        row.appendChild(btn);
-      }
-      list.appendChild(row);
-    }
-    card.appendChild(list);
-
-    const overlay = new kakaoNs.maps.CustomOverlay({
-      position: new kakaoNs.maps.LatLng(members[0].lat, members[0].lng),
-      content: card,
-      yAnchor: 1.5,
-      zIndex: 20,
-    });
-    overlay.setMap(map);
-    popupOverlayRef.current = overlay;
-  }, [openGroupKey, status, markers]);
 
   // P15-B-3: 지도 밖 목록에서 주문을 선택하면 그 주문의 마커를 강조한다.
   // 링(원) 테두리 대신 마커 자체를 다른 곳에서 안 쓰는 원색으로 키워서 표시한다 —
@@ -334,22 +299,19 @@ export function DeliveryMap({
     const kakaoNs = window.kakao;
     for (const [key, list] of groupMembersRef.current) {
       if (!list.some((m) => m.id === highlightId)) continue;
-      const [lat, lng] = key.split(",").map(Number);
-      mapRef.current.setCenter(new kakaoNs.maps.LatLng(lat, lng));
-      if (list.length > 1) {
-        setOpenGroupKey(key);
-      } else {
-        const el = pinElementsRef.current.get(key);
-        if (el) {
-          el.style.backgroundColor = HIGHLIGHT_COLOR;
-          el.style.color = HIGHLIGHT_TEXT_COLOR;
-          el.style.borderColor = HIGHLIGHT_BORDER_COLOR;
-          el.style.transform = "scale(1.6)";
-          el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.45)";
-          pinOverlaysRef.current.get(key)?.setZIndex(999);
-          highlightedElRef.current = el;
-          highlightedKeyRef.current = key;
-        }
+      const pos = pinPositionsRef.current.get(key);
+      if (!pos) break;
+      mapRef.current.setCenter(new kakaoNs.maps.LatLng(pos.lat, pos.lng));
+      const el = pinElementsRef.current.get(key);
+      if (el) {
+        el.style.backgroundColor = HIGHLIGHT_COLOR;
+        el.style.color = HIGHLIGHT_TEXT_COLOR;
+        el.style.borderColor = HIGHLIGHT_BORDER_COLOR;
+        el.style.transform = "scale(1.6)";
+        el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.45)";
+        pinOverlaysRef.current.get(key)?.setZIndex(999);
+        highlightedElRef.current = el;
+        highlightedKeyRef.current = key;
       }
       break;
     }

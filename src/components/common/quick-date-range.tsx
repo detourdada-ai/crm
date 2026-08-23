@@ -77,7 +77,14 @@ export function QuickDateRange({
             type="date"
             className="w-40"
             value={customFrom}
-            onChange={(e) => onCustomFromChange(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              onCustomFromChange(next);
+              // 배송 날짜 필터 공통 UX: 시작일을 바꾸면 종료일이 자동으로 그
+              // 시작일과 같아진다 — "종료일도 다시 눌러야 하는" 불편을 없앤다.
+              // 넓은 기간을 다시 보고 싶으면 종료일만 뒤로 넓히면 된다.
+              onCustomToChange(next);
+            }}
             aria-label={`${label} 시작일`}
           />
           <span className="text-muted-foreground">~</span>
@@ -85,6 +92,7 @@ export function QuickDateRange({
             type="date"
             className="w-40"
             value={customTo}
+            min={customFrom || undefined}
             onChange={(e) => onCustomToChange(e.target.value)}
             aria-label={`${label} 종료일`}
           />

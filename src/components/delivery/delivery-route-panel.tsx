@@ -48,7 +48,19 @@ export function DeliveryRoutePanel({
 
   return (
     <div className="flex h-full flex-col gap-2 rounded-lg border bg-card p-3">
-      <p className="shrink-0 text-sm font-semibold text-text-strong">기사별 배송순서</p>
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-text-strong">기사별 배송순서</p>
+        <button
+          type="button"
+          onClick={() => onSelectDriver(null)}
+          className={cn(
+            "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+            selectedDriverId === null ? "border-primary bg-primary-soft text-primary" : "border-border text-muted-foreground hover:bg-muted/40"
+          )}
+        >
+          전체보기
+        </button>
+      </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
         {driverRows.map(({ driver, stops }) => {
           const isSelected = selectedDriverId === driver.id;

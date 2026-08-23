@@ -22,16 +22,28 @@ import { digitsOnly } from "@/lib/utils/phone";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 function isDeliveryFilter(value: string | undefined): value is DeliveryFilter {
-  return value === "all" || value === "unassigned" || value === "assigned" || value === "배송중" || value === "완료";
+  return value === "all" || value === "unassigned" || value === "배송중" || value === "완료" || value === "pickup";
 }
 
 const STATUS_LABELS: Record<DeliveryFilter, string> = {
   all: "전체",
   unassigned: "배정 필요",
-  assigned: "배정 완료",
   배송중: "배송중",
   완료: "완료",
+  pickup: "직접수령 대기",
 };
+
+/** 배송관리 최종 IA: 상태 탭에 따라 DeliveryFilterStack의 화면 구성 자체가 달라진다.
+ *  - assign(배정필요): 지역 필터만, Route 패널 없음 — "누구에게 배정할지" 화면.
+ *  - progress(배송중): 지역 필터 없음, 기사별 Route 패널이 곧 필터 — "순서를 관리"하는 화면.
+ *  - pickup(직접수령 대기): 기사가 관여하지 않으므로 지도/Route 없이 목록만.
+ *  - default(전체/완료): 기존 결합 화면(지역+기사 필터+지도+Route+목록) 유지. */
+function deliveryModeFor(filter: DeliveryFilter): "assign" | "progress" | "pickup" | "default" {
+  if (filter === "unassigned") return "assign";
+  if (filter === "배송중") return "progress";
+  if (filter === "pickup") return "pickup";
+  return "default";
+}
 
 export default async function DeliveryPage({
   searchParams,
@@ -114,25 +126,25 @@ export default async function DeliveryPage({
     );
   }
 
-  // S2-A §4: 배정필요/배정완료/배송중/완료 네 버킷이 서로 완전히 배타적이고
-  // 항상 전체와 합이 같도록 확정했다 — "배송대기인데 기사가 이미 배정된"
-  // 경우(과거엔 세 버킷 어디에도 안 들어가던 예외)를 이제 "배정완료"가
-  // 정확히 흡수한다.
+  // 배송관리 최종 IA: 핵심 흐름(배정필요→배송중→완료) 세 버킷과, 그 흐름과
+  // 무관한 별도 업무함(직접수령 대기) — 기사가 아예 관여하지 않는 주문이라
+  // "배정"이라는 개념 자체가 적용되지 않으므로 핵심 흐름에 억지로 끼워 넣지
+  // 않는다(CPO 확정). 네 버킷은 여전히 서로 배타적이고 합이 전체와 같다.
   const inProgressCount = orders.filter((o) => o.delivery_status === "배송중").length;
   const doneCount = orders.filter((o) => o.delivery_status === "완료").length;
   const needsDriverCount = orders.filter(
     (o) => o.delivery_status === "배송대기" && !o.driver_id && o.fulfillment_method !== "direct_pickup"
   ).length;
-  const assignedCount = orders.filter(
-    (o) => o.delivery_status === "배송대기" && (!!o.driver_id || o.fulfillment_method === "direct_pickup")
+  const pickupPendingCount = orders.filter(
+    (o) => o.delivery_status === "배송대기" && o.fulfillment_method === "direct_pickup"
   ).length;
 
   const flowCounts: DeliveryFlowCount[] = [
     { filter: "all", label: "전체", count: orders.length, tone: "neutral" },
     { filter: "unassigned", label: "배정 필요", count: needsDriverCount, tone: "warning", emphasize: true },
-    { filter: "assigned", label: "배정 완료", count: assignedCount, tone: "neutral" },
     { filter: "배송중", label: "배송중", count: inProgressCount, tone: "info" },
     { filter: "완료", label: "완료", count: doneCount, tone: "success" },
+    { filter: "pickup", label: "직접수령 대기", count: pickupPendingCount, tone: "neutral", detached: true },
   ];
 
   function filterOrders(list: OrderShipmentBoardRow[]): OrderShipmentBoardRow[] {
@@ -140,8 +152,8 @@ export default async function DeliveryPage({
     if (activeFilter === "unassigned") {
       return list.filter((o) => o.delivery_status === "배송대기" && !o.driver_id && o.fulfillment_method !== "direct_pickup");
     }
-    if (activeFilter === "assigned") {
-      return list.filter((o) => o.delivery_status === "배송대기" && (!!o.driver_id || o.fulfillment_method === "direct_pickup"));
+    if (activeFilter === "pickup") {
+      return list.filter((o) => o.delivery_status === "배송대기" && o.fulfillment_method === "direct_pickup");
     }
     return list;
   }
@@ -250,6 +262,7 @@ export default async function DeliveryPage({
               bagManagementEnabled={features.bagManagement}
               driverCounts={driverCounts}
               reorderEnabled={isSingleDay}
+              mode={deliveryModeFor(activeFilter)}
             />
           </CardContent>
         </Card>
