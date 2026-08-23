@@ -54,6 +54,7 @@ export function DeliveryRoutePanel({
       <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1">
         <button
           type="button"
+          data-testid="route-panel-select-all"
           onClick={() => onSelectDriver(null)}
           className={cn(
             "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",

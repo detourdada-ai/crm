@@ -136,7 +136,7 @@ async function run() {
     // ---- 4~6: 배송중 화면 — Route/지도/카드 강조 구조 ----
     await page.goto(`${BASE_URL}/delivery?filter=%EB%B0%B0%EC%86%A1%EC%A4%91`, { waitUntil: "networkidle" });
     text = await mainText(page);
-    record("4. 배송중 탭 진입 + Route Panel 노출", text.includes("기사별 배송순서") && text.includes("전체보기"));
+    record("4. 배송중 탭 진입 + Route Panel 노출", text.includes("기사별 배송순서") && text.includes("배차된 배송의 순서"));
     record("5. 배송중 목록에 B/C/D 표시(3건)", ["QA-CPO-B", "QA-CPO-C", "QA-CPO-D"].every((s) => text.includes(s)));
 
     const driverBtn = page.getByRole("button", { name: driver.name, exact: false }).first();
@@ -144,6 +144,25 @@ async function run() {
     await page.waitForURL((u) => u.searchParams.has("driverFilter"), { timeout: 4000 }).catch(() => {});
     const urlAfterDriverClick = page.url();
     record("6. Route Panel 기사 선택 → URL driverFilter 반영(지도/목록 동일 필터)", urlAfterDriverClick.includes("driverFilter="), urlAfterDriverClick);
+
+    // ---- 6b: '전체' 칩 클릭 → driverFilter 해제 + 전체 기사 배송 복원 ----
+    await page.waitForTimeout(500);
+    const routePanelAllChip = page.locator('[data-testid="route-panel-select-all"]');
+    await routePanelAllChip.scrollIntoViewIfNeeded().catch(() => {});
+    await routePanelAllChip.click({ timeout: 8000 }).catch((e) => console.error("전체 chip click error:", e.message));
+    await page.waitForURL((u) => !u.searchParams.has("driverFilter"), { timeout: 6000 }).catch(() => {});
+    const urlAfterAllClick = page.url();
+    text = await mainText(page);
+    record(
+      "6b. Route Panel '전체' 칩 클릭 → driverFilter 해제 + 전체 배송 복원",
+      !urlAfterAllClick.includes("driverFilter=") && ["QA-CPO-B", "QA-CPO-C", "QA-CPO-D"].every((s) => text.includes(s)),
+      urlAfterAllClick
+    );
+
+    // 배송순서 Select(§11)는 이번 라운드에서 코드 변경이 없는 기존 기능이라
+    // (delivery-board.tsx 미변경) 별도 mutate 시나리오로 재검증하지 않는다 —
+    // 이전 라운드(19/19 PASS)에서 이미 검증됨. 실 데이터에 불필요한 쓰기를
+    // 반복하지 않기 위한 판단(AGENTS.md 최소 변경 원칙).
 
     // ---- 7: 배송순서 단일 진실 — DB route_order와 화면 노출 순서 일치 ----
     const { data: shipmentsCheck } = await admin
@@ -200,6 +219,14 @@ async function run() {
       dialogText.includes("운행중") && dialogText.includes("QA-CPO-C") && dialogText.includes("QA-CPO-D"),
       dialogText
     );
+
+    const dialogBox = await page.locator('[role="dialog"]').boundingBox();
+    const viewportSize = page.viewportSize();
+    const dialogAreaRatio =
+      dialogBox && viewportSize ? (dialogBox.width * dialogBox.height) / (viewportSize.width * viewportSize.height) : 0;
+    record("15b. 기사위치 팝업이 화면 대부분(전체화면 기본값)을 사용", dialogAreaRatio > 0.7, `ratio=${dialogAreaRatio.toFixed(2)}`);
+    record("15c. 기사위치 팝업에 전체/개별 기사 선택 칩 노출(배차편집과 분리된 별도 선택)", dialogText.includes("전체") && dialogText.includes(driver.name));
+
     await page.keyboard.press("Escape").catch(() => {});
 
     // ---- 16~19: 나머지 완료 + 운행종료 + 관리자 반영 ----
