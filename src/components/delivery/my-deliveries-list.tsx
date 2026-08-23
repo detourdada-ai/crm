@@ -29,6 +29,13 @@ const LOCATION_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
  * "현재/다음/이후"는 getDeliveryProgress 하나로만 계산한다 — 기사위치
  * 팝업(driver-locations-dialog.tsx)과 완전히 같은 함수이므로 두 화면의
  * 번호·현재/다음 판정이 항상 일치한다(§PART13, 별도 계산 절대 금지).
+ *
+ * 배송완료 정책(CPO 확정, 베타 오픈 전 동결): "현재/다음/이후"는 안내용
+ * 시각적 위계일 뿐 처리 순서 제한이 아니다 — 고객을 중간에 만났거나
+ * 현장 상황으로 순서를 바꿔 처리해도 되므로, 미완료 배송이면 어떤
+ * 카드든 배송완료 버튼을 누를 수 있다. route_order 자체는 절대 바뀌지
+ * 않고, 완료할 때마다 getDeliveryProgress가 남은 배송 중 route_order가
+ * 가장 앞선 건을 다시 "현재"로 재계산할 뿐이다.
  */
 export function MyDeliveriesList({
   orders: initialOrders,
@@ -276,6 +283,18 @@ export function MyDeliveriesList({
           isHighlighted={highlightedRowKey === next.rowKey}
           registerRef={registerRowRef}
           onSelect={selectOrder}
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full gap-2"
+              disabled={isPending && pendingShipmentId === next.rowKey}
+              onClick={() => handleComplete(next.rowKey)}
+            >
+              <CheckCircle2 className="size-4" />
+              {isPending && pendingShipmentId === next.rowKey ? "처리 중" : "배송완료"}
+            </Button>
+          }
         />
       ) : null}
 
@@ -291,6 +310,8 @@ export function MyDeliveriesList({
                 isHighlighted={highlightedRowKey === o.rowKey}
                 registerRef={registerRowRef}
                 onSelect={selectOrder}
+                onComplete={handleComplete}
+                isCompletePending={isPending && pendingShipmentId === o.rowKey}
               />
             ))}
           </div>
@@ -333,7 +354,7 @@ function DeliveryAddress({ order }: { order: OrderShipmentBoardRow }) {
   );
 }
 
-/** 현재/다음 배송 — 기사 앱에서 가장 중요한 두 카드(§PART10~11). 배송완료 버튼은 현재 배송에만 붙는다. */
+/** 현재/다음 배송 — 기사 앱에서 가장 중요한 두 카드(§PART10~11), 시각적으로 가장 강조된다. 배송완료 버튼 노출 자체는 제한하지 않는다(현장 상황에 따라 어떤 순서든 완료 가능). */
 function FocusDeliveryCard({
   title,
   order,
@@ -356,6 +377,7 @@ function FocusDeliveryCard({
   return (
     <div
       ref={(el) => registerRef(order.rowKey, el)}
+      data-testid={`delivery-card-${order.rowKey}`}
       onClick={() => onSelect(order.rowKey)}
       className={cn(
         "space-y-2 rounded-lg border p-4 transition-shadow",
@@ -388,13 +410,16 @@ function FocusDeliveryCard({
   );
 }
 
-/** 이후/완료 배송 — 참고용 목록이라 현재/다음보다 정보 밀도를 낮춘다(§PART12,15). */
+/** 이후/완료 배송 — 참고용 목록이라 현재/다음보다 정보 밀도를 낮추지만(§PART12,15),
+ *  완료 정책상 미완료 건이면 여기도 배송완료 버튼을 그대로 제공한다(onComplete). */
 function UpcomingDeliveryCard({
   order,
   sequenceNumber,
   isHighlighted,
   registerRef,
   onSelect,
+  onComplete,
+  isCompletePending = false,
   done = false,
 }: {
   order: OrderShipmentBoardRow;
@@ -402,11 +427,14 @@ function UpcomingDeliveryCard({
   isHighlighted: boolean;
   registerRef: (rowKey: string, el: HTMLDivElement | null) => void;
   onSelect: (rowKey: string) => void;
+  onComplete?: (shipmentId: string) => void;
+  isCompletePending?: boolean;
   done?: boolean;
 }) {
   return (
     <div
       ref={(el) => registerRef(order.rowKey, el)}
+      data-testid={`delivery-card-${order.rowKey}`}
       onClick={() => onSelect(order.rowKey)}
       className={cn(
         "cursor-pointer space-y-1.5 rounded-lg border p-3 transition-shadow",
@@ -422,6 +450,22 @@ function UpcomingDeliveryCard({
       </p>
       <DeliveryAddress order={order} />
       {order.delivery_memo ? <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">💬 {order.delivery_memo}</p> : null}
+      {!done && onComplete ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="w-full gap-1.5"
+          disabled={isCompletePending}
+          onClick={(e) => {
+            e.stopPropagation();
+            onComplete(order.rowKey);
+          }}
+        >
+          <CheckCircle2 className="size-3.5" />
+          {isCompletePending ? "처리 중" : "배송완료"}
+        </Button>
+      ) : null}
     </div>
   );
 }

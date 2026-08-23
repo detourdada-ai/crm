@@ -119,6 +119,7 @@ async function run() {
         { key: "C-second", recipient: `QA-CPO-C 2번`, lat: 37.562, lng: 126.998, driverId: driver.driverId, status: "배송중", fulfillment: "delivery", routeOrder: 2 },
         { key: "D-third", recipient: `QA-CPO-D 3번`, lat: 37.564, lng: 127.001, driverId: driver.driverId, status: "배송중", fulfillment: "delivery", routeOrder: 3 },
         { key: "E-pickup", recipient: `QA-CPO-E 직접수령`, lat: 37.56, lng: 126.99, driverId: null, status: "배송대기", fulfillment: "direct_pickup", routeOrder: null },
+        { key: "F-fourth", recipient: `QA-CPO-F 4번`, lat: 37.566, lng: 127.003, driverId: driver.driverId, status: "배송중", fulfillment: "delivery", routeOrder: 4 },
       ],
       RUN_TAG
     );
@@ -137,7 +138,7 @@ async function run() {
     await page.goto(`${BASE_URL}/delivery?filter=%EB%B0%B0%EC%86%A1%EC%A4%91`, { waitUntil: "networkidle" });
     text = await mainText(page);
     record("4. 배송중 탭 진입 + Route Panel 노출", text.includes("기사별 배송순서") && text.includes("배차된 배송의 순서"));
-    record("5. 배송중 목록에 B/C/D 표시(3건)", ["QA-CPO-B", "QA-CPO-C", "QA-CPO-D"].every((s) => text.includes(s)));
+    record("5. 배송중 목록에 B/C/D/F 표시(4건)", ["QA-CPO-B", "QA-CPO-C", "QA-CPO-D", "QA-CPO-F"].every((s) => text.includes(s)));
 
     const driverBtn = page.getByRole("button", { name: driver.name, exact: false }).first();
     await driverBtn.click({ timeout: 5000 }).catch((e) => console.error("driverBtn click error:", e.message));
@@ -198,13 +199,53 @@ async function run() {
     const driverMapBox = await page.locator('[data-testid="delivery-map"]').first().boundingBox();
     record("12b. 기사 앱 지도 표시(가시 영역 확보)", !!driverMapBox && driverMapBox.width > 100 && driverMapBox.height > 100);
 
+    // §CPO 배송완료 정책: 현재/다음/이후는 안내용 시각적 위계일 뿐 처리 순서
+    // 제한이 아니다 — 어떤 미완료 배송이든(순서 상관없이) 바로 완료할 수
+    // 있어야 하고, route_order 자체는 완료와 무관하게 그대로 유지되어야 한다.
+    const idB = seeded.shipmentIds[1];
+    const idC = seeded.shipmentIds[2];
+    const idD = seeded.shipmentIds[3];
+    const idF = seeded.shipmentIds[5];
+    const cardCompleteBtn = (rowKey: string) =>
+      page.locator(`[data-testid="delivery-card-${rowKey}"]`).getByRole("button", { name: "배송완료", exact: true });
+
+    // ---- 13a: ③번(D, "이후 배송")을 먼저 완료해도 ①번(B)이 여전히 현재 배송 ----
     let beforeText = text;
-    await page.getByRole("button", { name: "배송완료", exact: true }).first().click({ timeout: 5000 });
+    await cardCompleteBtn(idD).click({ timeout: 5000 });
     text = await settleAfterMutation(page, beforeText);
     record(
-      "13. 배송완료 → 다음 배송으로 자동 전환(현재=②C)",
-      text.includes("현재 배송") && text.includes("QA-CPO-C") && text.includes("다음 배송") && text.includes("QA-CPO-D"),
+      "13a. ③번(D) 먼저 완료해도 ①번(B)이 여전히 현재 배송(처리 순서 제한 없음)",
+      text.includes("현재 배송") && text.includes("QA-CPO-B") && text.includes("다음 배송") && text.includes("QA-CPO-C"),
       text.slice(0, 200)
+    );
+
+    // ---- 13b: ④번(F)도 순서 무관하게 바로 완료 가능 ----
+    beforeText = text;
+    await cardCompleteBtn(idF).click({ timeout: 5000 });
+    text = await settleAfterMutation(page, beforeText);
+    record(
+      "13b. ④번(F)도 직접 완료 가능(모든 미완료 카드에 완료 버튼 존재)",
+      text.includes("현재 배송") && text.includes("QA-CPO-B"),
+      text.slice(0, 200)
+    );
+
+    // ---- 13c: 이제 ①번(B) 완료 → ②번(C)이 현재 배송으로 재계산(D/F는 이미 완료) ----
+    beforeText = text;
+    await cardCompleteBtn(idB).click({ timeout: 5000 });
+    text = await settleAfterMutation(page, beforeText);
+    record(
+      "13c. ①번(B) 완료 후 ②번(C)이 현재 배송으로 재계산",
+      text.includes("현재 배송") && text.includes("QA-CPO-C") && !text.includes("다음 배송"),
+      text.slice(0, 200)
+    );
+
+    // ---- 13d: 완료 순서와 무관하게 route_order 원래 값(1,2,3,4) 그대로 유지 ----
+    const { data: routeOrderCheck } = await admin.from("order_shipments").select("id, route_order").in("id", [idB, idC, idD, idF]);
+    const routeOrderMap = new Map((routeOrderCheck ?? []).map((r) => [r.id, r.route_order]));
+    record(
+      "13d. 완료 순서와 무관하게 route_order 원래 값 유지(B=1,C=2,D=3,F=4)",
+      routeOrderMap.get(idB) === 1 && routeOrderMap.get(idC) === 2 && routeOrderMap.get(idD) === 3 && routeOrderMap.get(idF) === 4,
+      JSON.stringify(Object.fromEntries(routeOrderMap))
     );
 
     const hadStartButton = text.includes("운행시작");
@@ -221,8 +262,8 @@ async function run() {
     await page.getByRole("button", { name: "기사 위치", exact: false }).click({ timeout: 5000 });
     const dialogText = await waitForDialogText(page, driver.name);
     record(
-      "15. 사장님 기사위치 팝업에서 운행중 + 현재/다음배송 동기화",
-      dialogText.includes("운행중") && dialogText.includes("QA-CPO-C") && dialogText.includes("QA-CPO-D"),
+      "15. 사장님 기사위치 팝업에서 운행중 + 현재 배송(C) 동기화(B/D/F는 완료 3/4)",
+      dialogText.includes("운행중") && dialogText.includes("QA-CPO-C") && dialogText.includes("완료 3/4"),
       dialogText
     );
 
@@ -235,18 +276,13 @@ async function run() {
 
     await page.keyboard.press("Escape").catch(() => {});
 
-    // ---- 16~19: 나머지 완료 + 운행종료 + 관리자 반영 ----
+    // ---- 16~19: 마지막 남은 배송(C) 완료 + 운행종료 + 관리자 반영 ----
     await setSession(context, driver.username, "driver");
     await page.goto(`${BASE_URL}/driver`, { waitUntil: "networkidle" });
-    for (let i = 0; i < 2; i++) {
-      const btn = page.getByRole("button", { name: "배송완료", exact: true }).first();
-      if (await btn.count()) {
-        beforeText = await mainText(page);
-        await btn.click({ timeout: 5000 });
-        text = await settleAfterMutation(page, beforeText);
-      }
-    }
-    record("16. 남은 배송 전부 완료(남은 0건)", text.includes("남은 0건"), text.slice(0, 200));
+    beforeText = await mainText(page);
+    await cardCompleteBtn(idC).click({ timeout: 5000 });
+    text = await settleAfterMutation(page, beforeText);
+    record("16. 남은 배송(C) 완료(남은 0건)", text.includes("남은 0건"), text.slice(0, 200));
 
     const endBtnFound = (await page.getByRole("button", { name: "운행종료", exact: true }).count()) > 0;
     if (endBtnFound) {
@@ -260,8 +296,8 @@ async function run() {
     await page.goto(`${BASE_URL}/delivery?filter=%EC%99%84%EB%A3%8C`, { waitUntil: "networkidle" });
     text = await mainText(page);
     record(
-      "18. 관리자 완료 탭에 B/C/D 전부 반영(배송완료 3건 동기화)",
-      ["QA-CPO-B", "QA-CPO-C", "QA-CPO-D"].every((s) => text.includes(s)),
+      "18. 관리자 완료 탭에 B/C/D/F 전부 반영(배송완료 4건 동기화)",
+      ["QA-CPO-B", "QA-CPO-C", "QA-CPO-D", "QA-CPO-F"].every((s) => text.includes(s)),
       text.slice(0, 200)
     );
 
