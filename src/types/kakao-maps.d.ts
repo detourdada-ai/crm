@@ -44,6 +44,19 @@ declare namespace kakao.maps {
     setZIndex(zIndex: number): void;
   }
 
+  interface PolylineOptions {
+    path: LatLng[];
+    strokeWeight?: number;
+    strokeColor?: string;
+    strokeOpacity?: number;
+    strokeStyle?: "solid" | "shortdash" | "shortdot" | "shortdashdot" | "dash" | "dot" | "dashdot" | "longdash" | "longdashdot" | "longdashdotdot";
+  }
+
+  class Polyline {
+    constructor(options: PolylineOptions);
+    setMap(map: Map | null): void;
+  }
+
   namespace event {
     function addListener(target: unknown, type: string, handler: () => void): void;
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Crosshair, Maximize, Minimize } from "lucide-react";
 import { loadKakaoMapsScript } from "@/lib/kakao-maps";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,17 @@ export interface DeliveryMapMarker {
   rank?: number;
 }
 
+/** 기사 실시간(참고용) 위치 마커 — 배송건 마커와는 별도 레이어. */
+export interface DriverLocationMarker {
+  id: string;
+  lat: number;
+  lng: number;
+  /** 기사 이름 — 마커 위 라벨. */
+  label: string;
+  /** 그 기사의 배송건 마커와 동일한 색(driver-map-view의 driverColorById)을 그대로 써서 "이 트럭이 이 색 배송건들의 기사"임을 한눈에 알 수 있게 한다. */
+  colorClassName?: string;
+}
+
 function coordKey(lat: number, lng: number): string {
   return `${lat},${lng}`;
 }
@@ -39,6 +51,8 @@ function coordKey(lat: number, lng: number): string {
 const HIGHLIGHT_COLOR = "#facc15";
 const HIGHLIGHT_TEXT_COLOR = "#1c1917";
 const HIGHLIGHT_BORDER_COLOR = "#1c1917";
+/** "현위치 찾기"로 표시하는 내 위치 점 색 — 배송건/기사 마커 색과 안 겹치는 파랑(구글맵 파란점 관례 차용). */
+const MY_LOCATION_COLOR = "#4285f4";
 
 /**
  * P15-B-2: 카카오가 동일한 건물/단지 도로명주소에 여러 동/호를 하나의
@@ -53,12 +67,20 @@ const HIGHLIGHT_BORDER_COLOR = "#1c1917";
  */
 export function DeliveryMap({
   markers,
+  driverMarkers,
+  routePath,
   emptyMessage = "표시할 배송지가 없습니다.",
   className,
   highlightId,
   onGroupSelect,
+  showLocateButton = true,
+  showFullscreenButton = true,
 }: {
   markers: DeliveryMapMarker[];
+  /** 사장님 배송관리 지도에서만 넘긴다 — 기사 앱 지도에는 자기 위치를 자기 지도에 표시할 필요가 없다. */
+  driverMarkers?: DriverLocationMarker[];
+  /** 기사 한 명으로 좁혀 볼 때, 그 기사의 배송 순서(route_order)대로 정렬된 좌표를 이어그리는 선. */
+  routePath?: { lat: number; lng: number }[];
   emptyMessage?: string;
   className?: string;
   /**
@@ -76,7 +98,12 @@ export function DeliveryMap({
    * 넘기지 않으면(사장님 화면) 기존 동작이 그대로 유지된다.
    */
   onGroupSelect?: (orderIds: string[]) => void;
+  /** "현위치 찾기" 버튼 노출 여부 — 기본 노출. */
+  showLocateButton?: boolean;
+  /** 전체화면 버튼 노출 여부 — 기본 노출. */
+  showFullscreenButton?: boolean;
 }) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<kakao.maps.Map | null>(null);
   const pinOverlaysRef = useRef<Map<string, kakao.maps.CustomOverlay>>(new Map());
@@ -85,8 +112,13 @@ export function DeliveryMap({
   const popupOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
   const highlightedElRef = useRef<HTMLDivElement | null>(null);
   const highlightedKeyRef = useRef<string | null>(null);
+  const driverOverlaysRef = useRef<Map<string, kakao.maps.CustomOverlay>>(new Map());
+  const routePolylineRef = useRef<kakao.maps.Polyline | null>(null);
+  const myLocationOverlayRef = useRef<kakao.maps.CustomOverlay | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -320,6 +352,110 @@ export function DeliveryMap({
     }
   }, [highlightId, status]);
 
+  // 기사 실시간(참고용) 위치 마커 — 배송건 마커와 별도 레이어, id(driverId) 기준으로 diff한다.
+  useEffect(() => {
+    if (status !== "ready" || !mapRef.current || !window.kakao) return;
+    const map = mapRef.current;
+    const kakaoNs = window.kakao;
+    const next = driverMarkers ?? [];
+    const nextIds = new Set(next.map((d) => d.id));
+
+    for (const [id, overlay] of driverOverlaysRef.current) {
+      if (!nextIds.has(id)) {
+        overlay.setMap(null);
+        driverOverlaysRef.current.delete(id);
+      }
+    }
+
+    for (const d of next) {
+      driverOverlaysRef.current.get(d.id)?.setMap(null);
+
+      const wrap = document.createElement("div");
+      wrap.className = "flex flex-col items-center gap-0.5";
+      const label = document.createElement("span");
+      label.className = "rounded-full border bg-card px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-text-strong shadow-md";
+      label.textContent = d.label;
+      const pin = document.createElement("div");
+      pin.className = cn(
+        "flex size-8 items-center justify-center rounded-full border-2 border-white text-sm shadow-md",
+        d.colorClassName ?? "bg-primary"
+      );
+      pin.textContent = "🚚";
+      wrap.appendChild(label);
+      wrap.appendChild(pin);
+
+      const overlay = new kakaoNs.maps.CustomOverlay({
+        position: new kakaoNs.maps.LatLng(d.lat, d.lng),
+        content: wrap,
+        yAnchor: 1,
+        zIndex: 50,
+      });
+      overlay.setMap(map);
+      driverOverlaysRef.current.set(d.id, overlay);
+    }
+  }, [driverMarkers, status]);
+
+  // 배송순서 이동 경로선 — 기사 한 명으로 좁혀 볼 때만 의미가 있다(호출부가 그 때만 넘긴다).
+  useEffect(() => {
+    routePolylineRef.current?.setMap(null);
+    routePolylineRef.current = null;
+    if (!routePath || routePath.length < 2 || status !== "ready" || !mapRef.current || !window.kakao) return;
+    const kakaoNs = window.kakao;
+    const polyline = new kakaoNs.maps.Polyline({
+      path: routePath.map((p) => new kakaoNs.maps.LatLng(p.lat, p.lng)),
+      strokeWeight: 3,
+      strokeColor: "#1c1917",
+      strokeOpacity: 0.55,
+      strokeStyle: "shortdash",
+    });
+    polyline.setMap(mapRef.current);
+    routePolylineRef.current = polyline;
+  }, [routePath, status]);
+
+  // 전체화면 전환 시 카카오맵이 컨테이너 크기 변화를 인식하도록 relayout을 호출한다.
+  useEffect(() => {
+    function handleFullscreenChange() {
+      const active = document.fullscreenElement === wrapperRef.current;
+      setIsFullscreen(active);
+      setTimeout(() => mapRef.current?.relayout(), 0);
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      wrapperRef.current?.requestFullscreen();
+    }
+  }
+
+  // "현위치 찾기" — 실시간 추적이 아니라 누를 때 한 번만 조회해서 지도를 그 위치로 옮기고 파란 점을 찍는다.
+  function locateMe() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setIsLocating(false);
+        if (!mapRef.current || !window.kakao) return;
+        const kakaoNs = window.kakao;
+        const latLng = new kakaoNs.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+        mapRef.current.setCenter(latLng);
+
+        myLocationOverlayRef.current?.setMap(null);
+        const el = document.createElement("div");
+        el.className = "size-4 rounded-full border-2 border-white shadow-md";
+        el.style.backgroundColor = MY_LOCATION_COLOR;
+        const overlay = new kakaoNs.maps.CustomOverlay({ position: latLng, content: el, yAnchor: 0.5, zIndex: 40 });
+        overlay.setMap(mapRef.current);
+        myLocationOverlayRef.current = overlay;
+      },
+      () => setIsLocating(false),
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  }
+
   if (status === "error") {
     return (
       <div className={cn("flex items-center justify-center rounded-lg border bg-muted/40 p-6 text-center", className)}>
@@ -329,7 +465,7 @@ export function DeliveryMap({
   }
 
   return (
-    <div className={cn("relative overflow-hidden rounded-lg border", className)}>
+    <div ref={wrapperRef} className={cn("relative overflow-hidden rounded-lg border bg-background", isFullscreen ? "h-screen w-screen" : className)}>
       <div ref={containerRef} className="size-full" />
       {status === "loading" ? (
         <div className="absolute inset-0 flex items-center justify-center bg-muted/40">
@@ -339,6 +475,33 @@ export function DeliveryMap({
       {status === "ready" && markers.length === 0 ? (
         <div className="absolute inset-0 flex items-center justify-center bg-background/70">
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+        </div>
+      ) : null}
+      {status === "ready" ? (
+        <div className="absolute right-2 bottom-2 flex flex-col gap-1.5">
+          {showLocateButton ? (
+            <button
+              type="button"
+              onClick={locateMe}
+              disabled={isLocating}
+              aria-label="현위치 찾기"
+              title="현위치 찾기"
+              className="flex size-9 items-center justify-center rounded-full border bg-card text-foreground shadow-md hover:bg-muted disabled:opacity-60"
+            >
+              <Crosshair className="size-4" />
+            </button>
+          ) : null}
+          {showFullscreenButton ? (
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? "전체화면 종료" : "전체화면"}
+              title={isFullscreen ? "전체화면 종료" : "전체화면"}
+              className="flex size-9 items-center justify-center rounded-full border bg-card text-foreground shadow-md hover:bg-muted"
+            >
+              {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

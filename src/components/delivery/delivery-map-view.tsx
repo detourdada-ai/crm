@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
+import { DeliveryMap, type DeliveryMapMarker, type DriverLocationMarker } from "@/components/delivery/delivery-map";
 import { DeliveryOrderRow } from "@/components/delivery/delivery-order-row";
 import { reorderShipmentsAction } from "@/actions/delivery";
+import { listDriverLocationsAction } from "@/actions/driver-shifts";
 import { useShipmentRowActions } from "@/lib/hooks/use-shipment-row-actions";
 import { DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
@@ -14,6 +15,11 @@ import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import type { GroupBuildingLabel } from "@/lib/utils/delivery-group";
 import type { Driver } from "@/types/domain";
+
+/** 기사 위치 갱신 폴링 주기 — 기사 앱 자체가 5분마다 위치를 보내므로 그보다
+ *  촘촘히 당길 필요는 없지만, 사장님이 화면을 켜둔 채 기다릴 때 "방금 갱신된
+ *  값"을 최대 1분 지연 안에 보게 하는 정도로 잡는다(서버 부담과 신선도의 절충). */
+const DRIVER_LOCATION_POLL_MS = 60 * 1000;
 
 const DRIVER_COLOR_CLASSES = ["bg-primary", "bg-sky-600", "bg-emerald-600", "bg-amber-600", "bg-violet-600", "bg-rose-600"];
 const UNASSIGNED_COLOR = "bg-slate-400";
@@ -66,6 +72,43 @@ export function DeliveryMapView({
     return map;
   }, [drivers]);
 
+  // 사장님이 지도에서 "기사님 지금 어디예요?" 같은 CS 문의에 바로 답할 수 있도록
+  // 오늘 운행 중인 기사들의 참고용 최근 위치를 지도에 함께 띄운다. 배송건 마커와
+  // 같은 기사 색을 써서 "이 트럭이 이 색 배송건들의 기사"임을 바로 알 수 있게 한다.
+  const [driverLocations, setDriverLocations] = useState<
+    { driverId: string; name: string; lat: number; lng: number }[]
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      const result = await listDriverLocationsAction();
+      if (cancelled) return;
+      setDriverLocations(
+        result
+          .filter((r) => r.shift?.started_at && !r.shift?.ended_at && r.shift?.last_latitude != null && r.shift?.last_longitude != null)
+          .map((r) => ({ driverId: r.driver.id, name: r.driver.name, lat: r.shift!.last_latitude!, lng: r.shift!.last_longitude! }))
+      );
+    }
+    poll();
+    const interval = setInterval(poll, DRIVER_LOCATION_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const driverMarkers: DriverLocationMarker[] = useMemo(
+    () =>
+      driverLocations.map((d) => ({
+        id: d.driverId,
+        lat: d.lat,
+        lng: d.lng,
+        label: d.name,
+        colorClassName: driverColorById.get(d.driverId) ?? UNASSIGNED_COLOR,
+      })),
+    [driverLocations, driverColorById]
+  );
+
   // 인터뷰 8/21 Sprint2b §7: 기사 한 명으로 좁혀 볼 때만 마커에 배송순서(①②③...)를
   // 보여준다 — "전체"에서는 서로 다른 기사의 route_order가 섞여 숫자가 의미를
   // 갖지 않으므로 표시하지 않는다.
@@ -110,6 +153,11 @@ export function DeliveryMapView({
       }));
   }, [filteredOrders, driverColorById, showRank]);
 
+  // 배송순서 이동 경로선 — markers는 showRank일 때 이미 route_order 순으로 정렬돼
+  // 있으므로(filteredOrders가 sortByRouteOrder를 거침) 좌표만 순서대로 뽑으면 된다.
+  // 완료된 배송건까지 포함해 "오늘 다닌/다닐 전체 경로"를 보여준다.
+  const routePath = useMemo(() => (showRank ? markers.map((m) => ({ lat: m.lat, lng: m.lng })) : undefined), [markers, showRank]);
+
   const noCoordCount = filteredOrders.length - markers.length;
 
   function renderRow(order: OrderShipmentBoardRow) {
@@ -145,7 +193,14 @@ export function DeliveryMapView({
 
   return (
     <div className="space-y-3">
-      <DeliveryMap markers={markers} className="h-[420px] sm:h-[520px]" highlightId={highlightedOrderId} emptyMessage="표시할 배송지가 없습니다." />
+      <DeliveryMap
+        markers={markers}
+        driverMarkers={driverMarkers}
+        routePath={routePath}
+        className="h-[420px] sm:h-[520px]"
+        highlightId={highlightedOrderId}
+        emptyMessage="표시할 배송지가 없습니다."
+      />
       {noCoordCount > 0 ? (
         <p className="text-xs text-muted-foreground">주소 확인 필요 {noCoordCount}건은 좌표가 없어 지도에 표시되지 않습니다 — 목록에서는 계속 확인할 수 있습니다.</p>
       ) : null}
