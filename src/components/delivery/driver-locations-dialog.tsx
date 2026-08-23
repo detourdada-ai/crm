@@ -39,6 +39,8 @@ export function DriverLocationsDialog() {
   const [locations, setLocations] = useState<DriverLocation[] | null>(null);
   const [todayOrders, setTodayOrders] = useState<OrderShipmentBoardRow[]>([]);
   const [isPending, startTransition] = useTransition();
+  /** PART 9: "기사 선택 시 해당 기사의 Route를 강조" — 배송관리 Route 패널과 같은 패턴, 여기서도 필터가 아니라 강조일 뿐이다. */
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
 
   function fetchData() {
     startTransition(async () => {
@@ -78,6 +80,7 @@ export function DriverLocationsDialog() {
       label: l.driver.name,
       sublabel: statusText(l),
       colorClassName: driverColorById.get(l.driver.id),
+      dimmed: !!selectedDriverId && l.driver.id !== selectedDriverId,
     }));
 
   // "이동" — 기사별로 오늘 배송순서(route_order)대로 좌표를 이어 그 기사가 도는
@@ -88,7 +91,12 @@ export function DriverLocationsDialog() {
     .map((l) => {
       const stops = ordersByDriverId.get(l.driver.id) ?? [];
       const path = stops.filter((o) => o.latitude != null && o.longitude != null).map((o) => ({ lat: o.latitude!, lng: o.longitude! }));
-      return { id: l.driver.id, color: driverLineColorById.get(l.driver.id), path };
+      return {
+        id: l.driver.id,
+        color: driverLineColorById.get(l.driver.id),
+        path,
+        dimmed: !!selectedDriverId && l.driver.id !== selectedDriverId,
+      };
     })
     .filter((r) => r.path.length >= 2);
 
@@ -117,8 +125,21 @@ export function DriverLocationsDialog() {
             {(locations ?? []).map((l) => {
               const stops = ordersByDriverId.get(l.driver.id) ?? [];
               const doneCount = stops.filter((o) => o.delivery_status === "완료").length;
+              // PART 10: "현재 배송"은 아직 안 끝난 것 중 순서상 가장 앞선 건, "다음 배송"은 그 다음 건.
+              const remaining = stops.filter((o) => o.delivery_status !== "완료");
+              const current = remaining[0];
+              const next = remaining[1];
+              const isSelected = selectedDriverId === l.driver.id;
               return (
-                <div key={l.driver.id} className="space-y-1.5 rounded-md border px-3 py-2">
+                <button
+                  key={l.driver.id}
+                  type="button"
+                  onClick={() => setSelectedDriverId(isSelected ? null : l.driver.id)}
+                  className={cn(
+                    "block w-full space-y-1.5 rounded-md border px-3 py-2 text-left transition-colors",
+                    isSelected ? "border-primary bg-primary-soft" : "hover:bg-muted/40"
+                  )}
+                >
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <span className="flex items-center gap-1.5 font-medium text-text-strong">
                       <span className={cn("size-2.5 shrink-0 rounded-full", driverColorById.get(l.driver.id))} />
@@ -127,27 +148,33 @@ export function DriverLocationsDialog() {
                     <span className="text-xs text-muted-foreground">{statusText(l)}</span>
                   </div>
                   {stops.length > 0 ? (
-                    <div className="flex items-center gap-2">
-                      <div className="flex flex-1 flex-wrap gap-1">
-                        {stops.map((o) => (
-                          <span
-                            key={o.rowKey}
-                            title={`${o.recipient_name || o.buyer_name || "-"} · ${o.delivery_status}`}
-                            className={cn(
-                              "size-2.5 rounded-full",
-                              o.delivery_status === "완료" ? (driverColorById.get(l.driver.id) ?? "bg-primary") : "border border-border bg-transparent"
-                            )}
-                          />
-                        ))}
+                    <>
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-1 flex-wrap gap-1">
+                          {stops.map((o) => (
+                            <span
+                              key={o.rowKey}
+                              title={`${o.recipient_name || o.buyer_name || "-"} · ${o.delivery_status}`}
+                              className={cn(
+                                "size-2.5 rounded-full",
+                                o.delivery_status === "완료" ? (driverColorById.get(l.driver.id) ?? "bg-primary") : "border border-border bg-transparent"
+                              )}
+                            />
+                          ))}
+                        </div>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          완료 {doneCount}/{stops.length}
+                        </span>
                       </div>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        완료 {doneCount}/{stops.length}
-                      </span>
-                    </div>
+                      <p className="text-xs text-muted-foreground">
+                        현재 배송: {current ? (current.recipient_name || current.buyer_name || "-") : "오늘 배송을 모두 완료했습니다"}
+                        {next ? ` · 다음: ${next.recipient_name || next.buyer_name || "-"}` : ""}
+                      </p>
+                    </>
                   ) : (
                     <p className="text-xs text-muted-foreground">오늘 배정된 배송이 없습니다.</p>
                   )}
-                </div>
+                </button>
               );
             })}
             {locations != null && locations.length === 0 ? (

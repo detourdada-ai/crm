@@ -1,97 +1,70 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
-import { toast } from "sonner";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { useMemo } from "react";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
-import { DeliveryOrderRow } from "@/components/delivery/delivery-order-row";
-import { reorderShipmentsAction } from "@/actions/delivery";
-import { useShipmentRowActions } from "@/lib/hooks/use-shipment-row-actions";
-import { DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
-import { buildDriverColorMap } from "@/lib/utils/driver-colors";
-import { cn } from "@/lib/utils";
-import type { OrderItemSummary } from "@/actions/orders";
+import { buildDriverLineColorMap } from "@/lib/utils/driver-colors";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
-import type { GroupBuildingLabel } from "@/lib/utils/delivery-group";
 import type { Driver } from "@/types/domain";
 
 const UNASSIGNED_COLOR = "bg-slate-400";
 
 /**
- * 배송관리 목록/지도 완전 동일화(최종, 3차 수정): 목록(DeliveryBoard)이
- * "마커를 선택해야만 표준 카드가 잠깐 뜨고, 그 아래 목록은 간이 표시"였던
- * 이전 구조는 여전히 "지도 전용 목록 UI"였다(CPO 지적) — 목록에서 되는
- * 기사배정/배송상태/가방회수/순서변경이 지도의 목록 자체에는 없었기
- * 때문이다. 이번엔 지도 하단 목록도 DeliveryBoard와 완전히 동일하게
- * filteredOrders 전체를 DeliveryOrderRow로 그대로 렌더링하고(마커 선택시
- * 별도 패널을 띄우지 않고, 그 행으로 스크롤+강조만 한다), reorderEnabled일
- * 때 화살표도 선택된 하나가 아니라 모든 행에 동일하게 붙인다.
+ * 배송관리 IA 전면 재설계: 목록/지도가 탭으로 나뉘어 있던 구조를 없애고
+ * (DeliveryFilterStack 참고) 지도를 "배차 결과를 검토하는 Route Planning
+ * 패널"로 좁혔다 — 배송카드 목록은 더 이상 이 컴포넌트가 갖지 않는다
+ * (DeliveryBoard 하나로 통합, PART 3 "지도 전용 축약 카드를 만들지 않는다").
+ *
+ * PART 7: 기사 한 명을 먼저 선택해야만 순번/경로선이 보이던 이전 방식을
+ * 버리고, 화면에 보이는 모든 기사의 마커 순번(rank)·이동경로(routePaths)를
+ * 항상 동시에 그린다 — 각 마커의 rank는 "그 기사의 오늘 전체 배송
+ * 순서"에서의 위치이므로(완료 포함 전체 시퀀스 기준), DeliveryRoutePanel·
+ * 배송목록의 번호와 항상 일치한다.
  */
 export function DeliveryMapView({
   orders,
   drivers,
-  driverNames,
-  groupLabels,
-  itemSummaries,
-  driverCounts,
-  bagManagementEnabled = false,
-  activeDriverId = null,
-  reorderEnabled = false,
+  driverColorById,
+  highlightedOrderId,
+  onSelectOrder,
+  emphasizedDriverId,
 }: {
-  /** 이미 배송상태·배송그룹·기사 필터가 모두 적용된 최종 목록(마커/목록에 쓴다). */
+  /** 이미 배송상태·배송그룹·기사 필터가 모두 적용된 최종 목록(완료 포함) — 순번 계산은 이 전체 목록 기준이어야 Route 패널·배송목록과 번호가 어긋나지 않는다. */
   orders: OrderShipmentBoardRow[];
   drivers: Driver[];
-  /** 목록(DeliveryBoard)과 동일하게 상위에서 한 번만 계산해서 내려준다. */
-  driverNames: Record<string, string>;
-  groupLabels: Map<string, GroupBuildingLabel>;
-  itemSummaries: Record<string, OrderItemSummary>;
-  driverCounts: Record<string, number>;
-  bagManagementEnabled?: boolean;
-  /** 기사 필터로 특정 기사 한 명을 좁혀 봤을 때만 마커 순번(route_order)을 보여준다. */
-  activeDriverId?: string | null;
-  /** 특정 배송일 하나만 조회 중일 때만 true — route_order가 의미를 갖는 범위. */
-  reorderEnabled?: boolean;
+  /** DeliveryFilterStack이 한 번만 계산해서 지도·Route 패널에 동일하게 내려준다(PART 14 Single Source of Truth). */
+  driverColorById: Map<string, string>;
+  /** 배송목록에서 카드를 선택했을 때(또는 지도 마커를 클릭했을 때) 강조할 배송건. */
+  highlightedOrderId: string | null;
+  /** 지도 마커 클릭 시 상위(DeliveryFilterStack)에 선택을 알린다 — 배송목록이 그 카드로 스크롤+강조한다(PART 8). */
+  onSelectOrder: (rowKey: string) => void;
+  /** DeliveryRoutePanel에서 기사를 선택했을 때 — 다른 기사의 마커/경로선을 옅게 표시한다. URL 필터는 바꾸지 않는다(PART 6). */
+  emphasizedDriverId?: string | null;
 }) {
-  const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
-  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
-  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [isReordering, startReorder] = useTransition();
-  const rowActions = useShipmentRowActions();
-
-  const driverColorById = useMemo(() => buildDriverColorMap(drivers), [drivers]);
-
-  // 인터뷰 8/21 Sprint2b §7: 기사 한 명으로 좁혀 볼 때만 마커에 배송순서(①②③...)를
-  // 보여준다 — "전체"에서는 서로 다른 기사의 route_order가 섞여 숫자가 의미를
-  // 갖지 않으므로 표시하지 않는다.
-  const showRank = !!activeDriverId && activeDriverId !== DRIVER_UNASSIGNED_SENTINEL;
-
-  // 인터뷰 8/21 Sprint2b §7: 기사 한 명으로 좁혀 볼 때는 지도 마커 순번(①②③...)과
-  // 이 아래 목록의 표시 순서가 반드시 같아야 한다 — route_order로 정렬한다.
-  const filteredOrders = useMemo(() => (showRank ? sortByRouteOrder(orders) : orders), [orders, showRank]);
-  const showReorderControls = showRank && reorderEnabled;
-
-  function selectOrder(id: string) {
-    setHighlightedOrderId(id);
-    rowRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  function handleMoveRow(index: number, direction: -1 | 1) {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= filteredOrders.length) return;
-    const next = filteredOrders.slice();
-    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
-    startReorder(async () => {
-      const result = await reorderShipmentsAction(next.map((o) => o.rowKey));
-      if (!result.ok) toast.error(result.error ?? "순서 변경 중 오류가 발생했습니다.");
-    });
-  }
+  const driverLineColorById = useMemo(() => buildDriverLineColorMap(drivers), [drivers]);
 
   // 배송관리 지도는 "배차 중심" 화면이다 — 배송이 끝난 건은 더 이상 배차
   // 대상이 아니므로 지도에서 완전히 치운다(목록 카드는 그대로 남아 확인은
   // 계속 가능). 다 끝나면 지도가 자연히 비고, 그 다음부터는 헤더의
   // "기사위치" 팝업에서 기사별 운행 상황을 모니터링하는 흐름으로 넘어간다.
-  const mapEligibleOrders = useMemo(() => filteredOrders.filter((o) => o.delivery_status !== "완료"), [filteredOrders]);
+  const mapEligibleOrders = useMemo(() => orders.filter((o) => o.delivery_status !== "완료"), [orders]);
+
+  // 기사별 "오늘 전체" 순서(완료 포함) — 마커 rank·Route 패널·배송목록
+  // 번호가 항상 같은 기준을 보게 하기 위한 단일 계산.
+  const rankByRowKey = useMemo(() => {
+    const byDriver = new Map<string, OrderShipmentBoardRow[]>();
+    for (const o of orders) {
+      if (!o.driver_id) continue;
+      const list = byDriver.get(o.driver_id) ?? [];
+      list.push(o);
+      byDriver.set(o.driver_id, list);
+    }
+    const map = new Map<string, number>();
+    for (const list of byDriver.values()) {
+      sortByRouteOrder(list).forEach((o, i) => map.set(o.rowKey, i + 1));
+    }
+    return map;
+  }, [orders]);
 
   const markers: DeliveryMapMarker[] = useMemo(() => {
     return mapEligibleOrders
@@ -104,119 +77,50 @@ export function DeliveryMapView({
         sublabel: o.address_snapshot ?? undefined,
         statusLabel: o.delivery_status,
         colorClassName: o.driver_id ? (driverColorById.get(o.driver_id) ?? UNASSIGNED_COLOR) : UNASSIGNED_COLOR,
-        onClick: () => selectOrder(o.rowKey),
+        onClick: () => onSelectOrder(o.rowKey),
         actionLabel: "선택",
-        rank: showRank && o.route_order != null ? o.route_order : undefined,
+        rank: rankByRowKey.get(o.rowKey),
+        dimmed: !!emphasizedDriverId && o.driver_id !== emphasizedDriverId,
       }));
-  }, [mapEligibleOrders, driverColorById, showRank]);
+  }, [mapEligibleOrders, driverColorById, rankByRowKey, onSelectOrder, emphasizedDriverId]);
 
-  // 배송순서 이동 경로선 — markers는 showRank일 때 이미 route_order 순으로
-  // 정렬돼 있으므로(filteredOrders가 sortByRouteOrder를 거침) 좌표만 순서대로
-  // 뽑으면 된다. 완료 건은 markers에서 이미 빠졌으므로 "지금부터 남은 경로"만 보여준다.
-  const routePaths = useMemo(
-    () => (showRank ? [{ id: "route", path: markers.map((m) => ({ lat: m.lat, lng: m.lng })) }] : undefined),
-    [markers, showRank]
-  );
+  // 기사별 이동경로선 — 이제 기사를 먼저 선택하지 않아도 화면에 보이는
+  // 모든 기사의 경로를 동시에, 기사색으로 그린다(PART 7). 완료 건은
+  // markers에서 이미 빠졌으므로 "지금부터 남은 경로"만 보여준다.
+  const routePaths = useMemo(() => {
+    const byDriver = new Map<string, OrderShipmentBoardRow[]>();
+    for (const o of mapEligibleOrders) {
+      if (!o.driver_id || o.latitude == null || o.longitude == null) continue;
+      const list = byDriver.get(o.driver_id) ?? [];
+      list.push(o);
+      byDriver.set(o.driver_id, list);
+    }
+    return Array.from(byDriver.entries())
+      .map(([driverId, list]) => ({
+        id: driverId,
+        color: driverLineColorById.get(driverId),
+        path: sortByRouteOrder(list).map((o) => ({ lat: o.latitude!, lng: o.longitude! })),
+        dimmed: !!emphasizedDriverId && driverId !== emphasizedDriverId,
+      }))
+      .filter((r) => r.path.length >= 2);
+  }, [mapEligibleOrders, driverLineColorById, emphasizedDriverId]);
 
   const noCoordCount = mapEligibleOrders.length - markers.length;
 
-  function renderRow(order: OrderShipmentBoardRow) {
-    return (
-      <DeliveryOrderRow
-        key={order.rowKey}
-        order={order}
-        drivers={drivers}
-        driverNames={driverNames}
-        driverCounts={driverCounts}
-        groupLabel={order.delivery_group_id ? (groupLabels.get(order.delivery_group_id)?.full ?? null) : null}
-        selected={selectedRowIds.has(order.rowKey)}
-        onToggleSelect={(checked) =>
-          setSelectedRowIds((prev) => {
-            const next = new Set(prev);
-            if (checked) next.add(order.rowKey);
-            else next.delete(order.rowKey);
-            return next;
-          })
-        }
-        isPending={rowActions.isPending}
-        showSpinner={rowActions.isPending && rowActions.pendingRowId === order.rowKey}
-        onSetStatus={(next) => rowActions.setStatus(order.rowKey, next)}
-        onAssign={(id) => rowActions.assign(order.rowKey, id)}
-        onSetDirectPickup={() => rowActions.setDirectPickup(order.rowKey)}
-        onUnassign={() => rowActions.unassign(order.rowKey)}
-        onClearDirectPickup={() => rowActions.clearDirectPickup(order.rowKey)}
-        itemSummary={itemSummaries[order.rowKey]}
-        bagManagementEnabled={bagManagementEnabled}
-      />
-    );
-  }
-
   return (
-    <div className="space-y-3">
+    <div className="flex h-full min-h-0 flex-col gap-2">
       <DeliveryMap
         markers={markers}
         routePaths={routePaths}
-        className="h-[420px] sm:h-[520px]"
+        className="min-h-0 flex-1"
         highlightId={highlightedOrderId}
         emptyMessage="표시할 배송지가 없습니다."
       />
       {noCoordCount > 0 ? (
-        <p className="text-xs text-muted-foreground">주소 확인 필요 {noCoordCount}건은 좌표가 없어 지도에 표시되지 않습니다 — 목록에서는 계속 확인할 수 있습니다.</p>
+        <p className="shrink-0 text-xs text-muted-foreground">
+          주소 확인 필요 {noCoordCount}건은 좌표가 없어 지도에 표시되지 않습니다 — 목록에서는 계속 확인할 수 있습니다.
+        </p>
       ) : null}
-
-      {filteredOrders.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">해당 조건의 배송건이 없습니다.</p>
-      ) : (
-        <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
-          {filteredOrders.map((o, idx) => {
-            const isSelected = o.rowKey === highlightedOrderId;
-            const row = (
-              <div
-                key={o.rowKey}
-                ref={(el) => {
-                  if (el) rowRefs.current.set(o.rowKey, el);
-                  else rowRefs.current.delete(o.rowKey);
-                }}
-                onClick={() => setHighlightedOrderId(o.rowKey)}
-                className={cn("rounded-xl transition-colors", isSelected && "ring-2 ring-primary")}
-              >
-                {renderRow(o)}
-              </div>
-            );
-            if (!showReorderControls) return row;
-            return (
-              <div key={o.rowKey} className="flex items-start gap-2">
-                <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
-                  <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
-                    {idx + 1}
-                  </span>
-                  <div className="flex flex-col gap-0.5">
-                    <button
-                      type="button"
-                      disabled={idx === 0 || isReordering}
-                      onClick={() => handleMoveRow(idx, -1)}
-                      aria-label="위로 이동"
-                      className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                    >
-                      <ChevronUp className="size-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={idx === filteredOrders.length - 1 || isReordering}
-                      onClick={() => handleMoveRow(idx, 1)}
-                      aria-label="아래로 이동"
-                      className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                    >
-                      <ChevronDown className="size-3.5" />
-                    </button>
-                  </div>
-                </div>
-                <div className="min-w-0 flex-1">{row}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

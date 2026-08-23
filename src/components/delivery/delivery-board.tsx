@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type RefObject } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,6 +14,7 @@ import { sortByRouteOrder } from "@/lib/utils/route-order";
 import { useShipmentRowActions } from "@/lib/hooks/use-shipment-row-actions";
 import { DeliveryOrderRow } from "@/components/delivery/delivery-order-row";
 import { BulkAssignBar } from "@/components/delivery/bulk-assign-bar";
+import { cn } from "@/lib/utils";
 import type { Driver, FulfillmentMethod } from "@/types/domain";
 
 /**
@@ -37,6 +38,9 @@ export function DeliveryBoard({
   driverCounts,
   activeDriverId = null,
   reorderEnabled = false,
+  rowRefs,
+  highlightedOrderId = null,
+  emphasizedDriverId = null,
 }: {
   /** 이미 배송상태·배송그룹·기사 필터가 모두 적용된 최종 목록. */
   orders: OrderShipmentBoardRow[];
@@ -54,6 +58,12 @@ export function DeliveryBoard({
   activeDriverId?: string | null;
   /** 특정 배송일 하나만 조회 중일 때만 true — route_order가 의미를 갖는 범위. */
   reorderEnabled?: boolean;
+  /** IA 통합: 지도 마커를 클릭하면 상위(DeliveryFilterStack)가 이 ref에서 해당 행을 찾아 스크롤한다(PART 8). */
+  rowRefs?: RefObject<Map<string, HTMLDivElement>>;
+  /** 지도에서 선택된 배송건 — 목록에서도 같은 카드를 링으로 강조한다. */
+  highlightedOrderId?: string | null;
+  /** DeliveryRoutePanel에서 기사를 선택했을 때 — 다른 기사의 카드를 옅게 표시한다(필터링은 아니다, PART 6). */
+  emphasizedDriverId?: string | null;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDriverId, setBulkDriverId] = useState("");
@@ -180,6 +190,26 @@ export function DeliveryBoard({
     );
   }
 
+  /** PART 8: 지도 마커 클릭 → 이 ref로 해당 카드를 찾아 스크롤 + 링 강조.
+   *  PART 6: DeliveryRoutePanel에서 기사를 선택하면(필터가 아니라 강조) 다른 기사 카드를 옅게 표시. */
+  function renderRowWithRef(order: OrderShipmentBoardRow) {
+    const isHighlighted = order.rowKey === highlightedOrderId;
+    const isDimmed = !!emphasizedDriverId && order.driver_id !== emphasizedDriverId;
+    return (
+      <div
+        key={order.rowKey}
+        ref={(el) => {
+          if (!rowRefs) return;
+          if (el) rowRefs.current.set(order.rowKey, el);
+          else rowRefs.current.delete(order.rowKey);
+        }}
+        className={cn("rounded-xl transition-opacity", isHighlighted && "ring-2 ring-primary", isDimmed && "opacity-40")}
+      >
+        {renderRow(order)}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <BulkAssignBar
@@ -238,10 +268,10 @@ export function DeliveryBoard({
                   </button>
                 </div>
               </div>
-              <div className="min-w-0 flex-1">{renderRow(o)}</div>
+              <div className="min-w-0 flex-1">{renderRowWithRef(o)}</div>
             </div>
           ) : (
-            renderRow(o)
+            renderRowWithRef(o)
           )
         )}
       </div>

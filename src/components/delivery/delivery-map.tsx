@@ -25,8 +25,10 @@ export interface DeliveryMapMarker {
   href?: string;
   /** P15-B-4: 이 좌표 그룹 전체가 완료됐는지 판단하는 배지 색상 기준(그룹 크기 2+일 때만 사용). */
   done?: boolean;
-  /** 인터뷰 8/21 Sprint2b: 특정 기사 한 명으로 좁혀 볼 때만 의미 있는 배송순서(route_order) — 겹침 배지(2건+)에는 표시하지 않는다. */
+  /** 그 마커가 속한 기사의 오늘 경로 안에서 몇 번째 배송인지(1부터) — 겹침 배지(2건+)에는 표시하지 않는다. */
   rank?: number;
+  /** Route 패널에서 다른 기사를 선택했을 때, 이 마커의 기사가 선택된 기사가 아니면 옅게 표시한다. */
+  dimmed?: boolean;
 }
 
 /** 기사 실시간(참고용) 위치 마커 — 배송건 마커와는 별도 레이어. */
@@ -79,8 +81,8 @@ export function DeliveryMap({
   markers: DeliveryMapMarker[];
   /** 사장님 배송관리 지도에서만 넘긴다 — 기사 앱 지도에는 자기 위치를 자기 지도에 표시할 필요가 없다. */
   driverMarkers?: DriverLocationMarker[];
-  /** 기사(들)의 배송 순서(route_order)대로 정렬된 이동 경로선 — 기사별로 색을 다르게 줄 수 있다(기사위치 팝업은 여러 기사를 동시에 그린다). */
-  routePaths?: { id: string; color?: string; path: { lat: number; lng: number }[] }[];
+  /** 기사(들)의 배송 순서(route_order)대로 정렬된 이동 경로선 — 기사별로 색을 다르게 줄 수 있다(기사위치 팝업/배송관리 지도 모두 여러 기사를 동시에 그린다). */
+  routePaths?: { id: string; color?: string; path: { lat: number; lng: number }[]; dimmed?: boolean }[];
   emptyMessage?: string;
   className?: string;
   /**
@@ -159,7 +161,7 @@ export function DeliveryMap({
     // 바뀐 경우(배송완료 클릭)에도 배지 숫자/색을 다시 그려야 하기 때문.
     function memberIdSet(list: DeliveryMapMarker[]): string {
       return list
-        .map((m) => `${m.id}:${m.done ? 1 : 0}:${m.rank ?? ""}`)
+        .map((m) => `${m.id}:${m.done ? 1 : 0}:${m.rank ?? ""}:${m.dimmed ? 1 : 0}`)
         .sort()
         .join(",");
     }
@@ -191,6 +193,7 @@ export function DeliveryMap({
           "flex size-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-semibold text-white shadow-md",
           m.colorClassName ?? "bg-primary"
         );
+        el.style.opacity = m.dimmed ? "0.35" : "1";
         if (m.rank != null) el.textContent = String(m.rank);
         if (m.onClick || onGroupSelect) {
           el.style.cursor = "pointer";
@@ -408,7 +411,7 @@ export function DeliveryMap({
         path: route.path.map((p) => new kakaoNs.maps.LatLng(p.lat, p.lng)),
         strokeWeight: 3,
         strokeColor: route.color ?? "#1c1917",
-        strokeOpacity: 0.6,
+        strokeOpacity: route.dimmed ? 0.2 : 0.6,
         strokeStyle: "shortdash",
       });
       polyline.setMap(mapRef.current);
