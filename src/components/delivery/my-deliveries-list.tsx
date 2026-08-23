@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
+import { DriverDateFilter, formatDriverDateLabel } from "@/components/delivery/driver-date-filter";
 import { markDeliveredAction } from "@/actions/delivery";
 import { startShiftAction, endShiftAction, updateMyLocationAction } from "@/actions/driver-shifts";
+import { kstTodayIso } from "@/lib/utils/kst-date";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import type { DriverShift } from "@/types/domain";
 
@@ -34,10 +36,13 @@ const LOCATION_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
 export function MyDeliveriesList({
   orders: initialOrders,
   initialShift,
+  selectedDate,
 }: {
   orders: OrderShipmentBoardRow[];
   /** S2-C: 오늘 운행시작/종료 여부 + 최근 위치. 배송 상태와 무관 — 없어도(운행시작 전이어도) 배송완료 처리는 그대로 가능하다. */
   initialShift: DriverShift | null;
+  /** 배송날짜 필터로 지금 보고 있는 날짜(YYYY-MM-DD) — 운행시작/종료는 이 날짜와 무관하게 항상 실제 "오늘" 기준이다. */
+  selectedDate: string;
 }) {
   const [orders, setOrders] = useState(initialOrders);
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
@@ -154,21 +159,33 @@ export function MyDeliveriesList({
     });
   }
 
+  const isToday = selectedDate === kstTodayIso();
+  const dateLabel = isToday ? "오늘" : formatDriverDateLabel(selectedDate);
+
   if (orders.length === 0) {
-    return <p className="py-12 text-center text-sm text-muted-foreground">오늘 배정된 배송이 없습니다.</p>;
+    return (
+      <div className="space-y-4">
+        <DriverDateFilter selectedDate={selectedDate} />
+        <p className="py-12 text-center text-sm text-muted-foreground">{dateLabel} 배정된 배송이 없습니다.</p>
+      </div>
+    );
   }
 
   // S2-C STEP2/8: 모든 배송을 마치고 운행 중이면 운행종료를 안내한다.
   // 운행시작을 누르지 않은 기사도 배송완료는 그대로 가능하므로(원칙 9),
   // 이 안내는 isRunning일 때만 뜬다 — 운행 기록이 없으면 그냥 조용히 끝난다.
-  const showEndPrompt = remaining.length === 0 && isRunning && !endPromptDismissed;
+  // 배송날짜 필터로 오늘이 아닌 다른 날짜를 보고 있을 때는 그 날짜의 잔여
+  // 건수로 "오늘 운행종료"를 물어보면 안 된다 — 반드시 오늘 조회일 때만 뜬다.
+  const showEndPrompt = isToday && remaining.length === 0 && isRunning && !endPromptDismissed;
 
   return (
     <div className="space-y-4">
+      <DriverDateFilter selectedDate={selectedDate} />
+
       <div className="space-y-3 rounded-lg border bg-card px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs text-muted-foreground">오늘 배송</p>
+            <p className="text-xs text-muted-foreground">{dateLabel} 배송</p>
             <p className="text-lg font-semibold text-text-strong">
               {orders.length}건{" "}
               <span className="text-sm font-normal text-muted-foreground">
@@ -230,7 +247,7 @@ export function MyDeliveriesList({
               onClose={() => setSelectedIds(null)}
             />
           ) : remaining.length === 0 ? (
-            <p className="py-6 text-center text-sm font-medium text-text-strong">오늘 배송을 모두 완료했습니다.</p>
+            <p className="py-6 text-center text-sm font-medium text-text-strong">{dateLabel} 배송을 모두 완료했습니다.</p>
           ) : (
             <p className="rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground">지도에서 배송 위치를 선택하세요.</p>
           )}

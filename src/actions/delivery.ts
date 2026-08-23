@@ -298,13 +298,22 @@ export async function setFulfillmentMethodAction(shipmentIds: string[], method: 
   }
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
- * P15-B: 기사 화면 — "오늘" 이 기사에게 배정된 배송건(배송중+완료, 취소 제외)을
- * 전부 반환한다. S1-1 Phase 5: order 대신 order_shipments 기준.
+ * P15-B: 기사 화면 — 지정한 날짜(기본값 오늘)에 이 기사에게 배정된 배송건
+ * (배송중+완료, 취소 제외)을 전부 반환한다. S1-1 Phase 5: order 대신
+ * order_shipments 기준.
+ *
+ * 기사 배송날짜 필터: 주말에 테스트하면서 "오늘"에는 배정된 배송이 없어
+ * 화면이 비어 보이는 문제(다음 영업일인 월요일 배송을 확인할 방법이 없었음)
+ * 때문에 날짜를 파라미터로 받도록 확장 — 형식이 이상하면 조용히 오늘로
+ * 폴백한다(URL을 직접 조작한 경우 등).
  */
-export async function listMyDeliveriesAction(): Promise<OrderShipmentBoardRow[]> {
+export async function listMyDeliveriesAction(date?: string): Promise<OrderShipmentBoardRow[]> {
   const { driverId } = await requireDriverSession();
-  return orderShipmentsRepository.findByDriverIdAndDeliveryDate(driverId, kstTodayIso());
+  const targetDate = date && ISO_DATE_RE.test(date) ? date : kstTodayIso();
+  return orderShipmentsRepository.findByDriverIdAndDeliveryDate(driverId, targetDate);
 }
 
 export async function markDeliveredAction(shipmentId: string): Promise<DeliveryActionState> {
