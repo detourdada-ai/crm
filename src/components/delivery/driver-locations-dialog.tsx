@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Navigation, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -30,6 +30,23 @@ function statusText({ shift }: DriverLocation): string {
   return `운행중 · ${mins}분 전`;
 }
 
+const CLOCK_TICK_MS = 15 * 1000;
+const AUTO_REFRESH_MS = 60 * 1000;
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/** 브라우저 현재 시간 기준(§PART1 — KST 강제 아님, 기사 단말의 로컬 시간을 그대로 보여준다). */
+function formatHeaderDate(d: Date): string {
+  const weekday = new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(d);
+  return `${d.getFullYear()}.${pad2(d.getMonth() + 1)}.${pad2(d.getDate())} (${weekday})`;
+}
+
+function formatHeaderTime(d: Date): string {
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 /**
  * 배송관리 지도(delivery-map-view)는 "배차 편집" 전용 화면이라 배송이 끝난
  * 건은 지도에서 아예 치운다 — 이 다이얼로그는 그와 완전히 다른 목적,
@@ -54,6 +71,12 @@ export function DriverLocationsDialog() {
   const [isPending, startTransition] = useTransition();
   /** 기사를 하나 선택하면 그 기사의 배송건만 지도/목록에 남긴다(필터). */
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  const [now, setNow] = useState<Date>(() => new Date());
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const isPendingRef = useRef(isPending);
+  useEffect(() => {
+    isPendingRef.current = isPending;
+  }, [isPending]);
 
   function fetchData() {
     startTransition(async () => {
@@ -61,6 +84,7 @@ export function DriverLocationsDialog() {
       const [locationResult, boardResult] = await Promise.all([listDriverLocationsAction(), getDeliveryBoardAction(today, today)]);
       setLocations(locationResult);
       setTodayOrders(boardResult.orders);
+      setLastUpdatedAt(new Date());
     });
   }
 
@@ -68,6 +92,21 @@ export function DriverLocationsDialog() {
     setOpen(next);
     if (next) fetchData();
   }
+
+  // §PART2: 열려 있는 동안 60초마다 데이터만 다시 조회한다(페이지 새로고침
+  // 아님) — 선택한 기사(selectedDriverId)는 이 refetch와 무관하게 그대로
+  // 유지된다. §PART1: 상단 시계는 15초마다 갱신(분 단위 표시라 그 이상 잦을 필요 없음).
+  useEffect(() => {
+    if (!open) return;
+    const clockTimer = setInterval(() => setNow(new Date()), CLOCK_TICK_MS);
+    const refreshTimer = setInterval(() => {
+      if (!isPendingRef.current) fetchData();
+    }, AUTO_REFRESH_MS);
+    return () => {
+      clearInterval(clockTimer);
+      clearInterval(refreshTimer);
+    };
+  }, [open]);
 
   const driverColorById = useMemo(() => buildDriverColorMap((locations ?? []).map((l) => l.driver)), [locations]);
   const driverLineColorById = useMemo(() => buildDriverLineColorMap((locations ?? []).map((l) => l.driver)), [locations]);
@@ -163,7 +202,12 @@ export function DriverLocationsDialog() {
         className="fixed inset-0 top-0 left-0 flex h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-3 rounded-none border-0 p-4 sm:max-w-none"
       >
         <DialogHeader>
-          <DialogTitle>기사 위치</DialogTitle>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <DialogTitle>기사 위치</DialogTitle>
+            <span className="text-sm font-medium text-muted-foreground">
+              {formatHeaderDate(now)} · {formatHeaderTime(now)}
+            </span>
+          </div>
           <DialogDescription>지금 운행 중인 기사들의 위치와 운행상태를 확인합니다. 기사가 앱에서 마지막으로 남긴 참고용 위치와, 오늘 배송의 완료/미완료 현황입니다.</DialogDescription>
         </DialogHeader>
         <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1">
@@ -277,10 +321,13 @@ export function DriverLocationsDialog() {
           </div>
         </div>
         <DialogFooter className="gap-2 rounded-none sm:justify-between">
-          <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={isPending} onClick={fetchData}>
-            <RefreshCw className="size-4" />
-            새로고침
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={isPending} onClick={fetchData}>
+              <RefreshCw className="size-4" />
+              새로고침
+            </Button>
+            {lastUpdatedAt ? <span className="text-xs text-muted-foreground">마지막 갱신 {formatHeaderTime(lastUpdatedAt)}</span> : null}
+          </div>
           <Button type="button" variant="outline" onClick={() => setOpen(false)}>
             닫기
           </Button>

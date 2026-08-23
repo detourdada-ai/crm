@@ -115,7 +115,7 @@ async function run() {
       OWNER,
       [
         { key: "A-unassigned", recipient: `${'QA-CPO-'}A 미배정`, lat: 37.5665, lng: 126.978, driverId: null, status: "배송대기", fulfillment: "delivery", routeOrder: null },
-        { key: "B-first", recipient: `QA-CPO-B 1번`, lat: 37.56, lng: 126.995, driverId: driver.driverId, status: "배송중", fulfillment: "delivery", routeOrder: 1 },
+        { key: "B-first", recipient: `QA-CPO-B 1번`, lat: 37.56, lng: 126.995, driverId: driver.driverId, status: "배송중", fulfillment: "delivery", routeOrder: 1, memo: "QA-CPO 메모: 문 앞에 놓아주세요." },
         { key: "C-second", recipient: `QA-CPO-C 2번`, lat: 37.562, lng: 126.998, driverId: driver.driverId, status: "배송중", fulfillment: "delivery", routeOrder: 2 },
         { key: "D-third", recipient: `QA-CPO-D 3번`, lat: 37.564, lng: 127.001, driverId: driver.driverId, status: "배송중", fulfillment: "delivery", routeOrder: 3 },
         { key: "E-pickup", recipient: `QA-CPO-E 직접수령`, lat: 37.56, lng: 126.99, driverId: null, status: "배송대기", fulfillment: "direct_pickup", routeOrder: null },
@@ -188,9 +188,15 @@ async function run() {
     await page.goto(`${BASE_URL}/driver`, { waitUntil: "networkidle" });
     text = await mainText(page);
     record("9. 기사 앱 진입 성공(권한/세션 정상)", text.includes("내 배송"));
+    record("9b. 오늘 배송 건수/남은/완료 요약 표시", /오늘 배송|건.*남은.*완료/.test(text));
     record("10. 기사 앱 순서 = 관리자 route_order(현재 배송 ① B)", text.includes("현재 배송") && text.includes("QA-CPO-B"));
+    record("10b. 현재 배송 주소 표시", text.includes("서울 강남구 테헤란로 152"));
+    record("10c. 현재 배송 고객 메시지 표시", text.includes("문 앞에 놓아주세요"));
     record("11. 다음 배송 = ② C", text.includes("다음 배송") && text.includes("QA-CPO-C"));
     record("12. 직접수령(E)·미배정(A) 기사 앱에서 제외", !text.includes("QA-CPO-E") && !text.includes("QA-CPO-A"));
+
+    const driverMapBox = await page.locator('[data-testid="delivery-map"]').first().boundingBox();
+    record("12b. 기사 앱 지도 표시(가시 영역 확보)", !!driverMapBox && driverMapBox.width > 100 && driverMapBox.height > 100);
 
     let beforeText = text;
     await page.getByRole("button", { name: "배송완료", exact: true }).first().click({ timeout: 5000 });

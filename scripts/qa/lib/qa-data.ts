@@ -24,6 +24,8 @@ export interface QaOrderDef {
   status: "배송대기" | "배송중" | "완료";
   fulfillment: "delivery" | "direct_pickup";
   routeOrder: number | null;
+  /** 기사 앱 "고객 메시지" 표시 검증용(§CPO 작업지시 PART9) — 지정하지 않으면 null. */
+  memo?: string;
 }
 
 export interface QaSeedResult {
@@ -73,6 +75,7 @@ export async function seedQaOrders(owner: string, defs: QaOrderDef[], runTag: st
       delivery_status: def.status,
       fulfillment_method: def.fulfillment,
       driver_id: def.driverId,
+      delivery_memo: def.memo ?? null,
       owner_username: owner,
       tenant_id: tenant.id,
     });

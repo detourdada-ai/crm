@@ -434,7 +434,11 @@ export function DeliveryMap({
   }
 
   return (
-    <div ref={wrapperRef} className={cn("relative overflow-hidden rounded-lg border bg-background", isFullscreen ? "h-screen w-screen" : className)}>
+    <div
+      ref={wrapperRef}
+      data-testid="delivery-map"
+      className={cn("relative overflow-hidden rounded-lg border bg-background", isFullscreen ? "h-screen w-screen" : className)}
+    >
       <div ref={containerRef} className="size-full" />
       {status === "loading" ? (
         <div className="absolute inset-0 flex items-center justify-center bg-muted/40">

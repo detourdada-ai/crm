@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, MapPin, Navigation, Phone } from "lucide-react";
+import { CheckCircle2, MapPin, Phone, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { DriverDateFilter, formatDriverDateLabel } from "@/components/delivery/driver-date-filter";
@@ -19,20 +18,17 @@ import type { DriverShift } from "@/types/domain";
 const LOCATION_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
- * P15-B-4: 기사 화면 — "오늘 배송 전체 목록에서 1건 선택 → 아래 카드" 구조를
- * 없애고, 지도 마커(= 좌표 하나)를 선택하면 그 위치의 배송이 곧바로 카드
- * 목록으로 펼쳐지는 구조로 바꾼다. 배송완료는 여전히 각 카드에서 배송건
- * 1건씩만 처리한다(다건 동시완료 없음 — P15-B-2 확정 원칙 유지).
+ * 기사위치 + 기사 앱 UI/UX 최종 정리(§CPO 작업지시): 기사에게 필요한 질문은
+ * 셋뿐이다 — 지금 어디인가(지도), 지금 어디로 가야 하는가(현재 배송),
+ * 그 다음은(다음 배송). 이후 배송은 참고용 목록으로만 보여준다. 예전의
+ * "지도 마커를 눌러야 카드가 보이는" 구조와 "위치 확인 필요" 별도 업무
+ * 블록은 제거했다 — 이후/완료를 포함해 오늘 배송은 항상 전부 보이고,
+ * 지도 마커 클릭은 그 카드로 스크롤+강조하는 용도로만 쓴다(양방향 강조,
+ * 사장님 화면과 동일 패턴).
  *
- * 마커 좌표는 절대 임의로 움직이지 않는다 — 겹치는 좌표는 숫자 배지로
- * 표시하고, 그 배지에 속한 모든 rowKey(=shipmentId)를 DeliveryMap의
- * onGroupSelect로 그대로 받아 카드로 펼친다. 좌표가 없어 지도에 표시되지
- * 않는 배송건은 마커로 선택할 수 없으므로 카드 영역 하단에 항상 별도로
- * 노출한다.
- *
- * S1-1 Phase 5: order.id가 아니라 rowKey(=shipmentId)를 식별자로 쓴다 —
- * 같은 주문이 발송일이 달라 배송건 두 개로 쪼개진 경우에도 각 배송건을
- * 독립적으로 완료 처리할 수 있어야 하기 때문이다.
+ * "현재/다음/이후"는 getDeliveryProgress 하나로만 계산한다 — 기사위치
+ * 팝업(driver-locations-dialog.tsx)과 완전히 같은 함수이므로 두 화면의
+ * 번호·현재/다음 판정이 항상 일치한다(§PART13, 별도 계산 절대 금지).
  */
 export function MyDeliveriesList({
   orders: initialOrders,
@@ -46,13 +42,14 @@ export function MyDeliveriesList({
   selectedDate: string;
 }) {
   const [orders, setOrders] = useState(initialOrders);
-  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
+  const [highlightedRowKey, setHighlightedRowKey] = useState<string | null>(null);
   const [pendingShipmentId, setPendingShipmentId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [shift, setShift] = useState(initialShift);
   const [shiftPending, setShiftPending] = useState(false);
   /** "취소"를 눌러 운행종료 안내를 닫았는지 — 다시 새로고침하면 초기화된다. */
   const [endPromptDismissed, setEndPromptDismissed] = useState(false);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const isRunning = !!shift?.started_at && !shift?.ended_at;
 
@@ -108,29 +105,20 @@ export function MyDeliveriesList({
     return () => clearInterval(interval);
   }, [isRunning]);
 
-  // S2-B STEP7: 사장님이 배송관리에서 지정한 배송 순서(route_order) 그대로
-  // 번호를 매긴다 — orders는 이미 서버에서 route_order 순으로 정렬돼 온다
-  // (order-shipments.repository.ts findByDriverIdAndDeliveryDate). 지도
-  // 마커의 숫자 배지(= 그 위치에 남은 건수)와는 완전히 다른 개념이라 절대
-  // 섞지 않는다 — 이 번호는 카드에만 붙는 "전체 배송 경로 순서"다.
-  const sequenceByRowKey = useMemo(() => new Map(orders.map((o, i) => [o.rowKey, i + 1])), [orders]);
+  // "현재/다음 배송"은 기사위치 팝업과 완전히 같은 기준으로 계산한다(§PART13).
+  const { completed, remaining, current, next, upcoming, ordered } = useMemo(() => getDeliveryProgress(orders), [orders]);
 
-  // "현재 배송/다음 배송"은 이 화면·기사위치·기사 지도가 전부 같은 기준
-  // (route_order 가장 앞선 미완료 배송)을 쓰도록 공용 함수로 통일한다.
-  const { completed, remaining, current, next } = useMemo(() => getDeliveryProgress(orders), [orders]);
-  const noCoordOrders = useMemo(() => orders.filter((o) => o.latitude == null || o.longitude == null), [orders]);
+  // 카드 번호 = 지도 마커 번호 = route_order 기준 오늘 전체 순서(완료 포함).
+  const sequenceByRowKey = useMemo(() => new Map(ordered.map((o, i) => [o.rowKey, i + 1])), [ordered]);
 
-  const selectedOrders = useMemo(() => {
-    if (!selectedIds) return null;
-    const idSet = new Set(selectedIds);
-    return orders.filter((o) => idSet.has(o.rowKey));
-  }, [orders, selectedIds]);
+  const selectOrder = useCallback((rowKey: string) => {
+    setHighlightedRowKey(rowKey);
+    rowRefs.current.get(rowKey)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
 
-  // 기사 지도도 카드 목록과 같은 시각 위계를 쓴다(§CPO 작업지시) — 완료는
-  // 흐리게, 현재 배송은 가장 눈에 띄게, 다음 배송은 구분되게, 그 이후는
-  // 옅게. "현재/다음"의 기준은 getDeliveryProgress와 완전히 동일하다.
+  // 지도 마커도 기사위치 팝업과 같은 완료/현재/다음/이후 4단계 시각 위계를 쓴다.
   const markers: DeliveryMapMarker[] = useMemo(() => {
-    return orders
+    return ordered
       .filter((o): o is OrderShipmentBoardRow & { latitude: number; longitude: number } => o.latitude != null && o.longitude != null)
       .map((o) => {
         const isDone = o.delivery_status === "완료";
@@ -145,16 +133,12 @@ export function MyDeliveriesList({
           statusLabel: isDone ? "완료" : isCurrent ? "현재 배송" : isNext ? "다음 배송" : undefined,
           colorClassName: isDone ? "bg-muted-foreground" : isCurrent ? "bg-primary" : isNext ? "bg-amber-500" : "bg-slate-600",
           done: isDone,
+          rank: sequenceByRowKey.get(o.rowKey),
           dimmed: !isDone && !isCurrent && !isNext,
+          onClick: () => selectOrder(o.rowKey),
         };
       });
-  }, [orders, current, next]);
-
-  /** 같은 좌표(배지)를 다시 클릭하면 선택을 해제한다. */
-  const handleGroupSelect = useCallback((ids: string[]) => {
-    const key = (list: string[]) => [...list].sort().join(",");
-    setSelectedIds((prev) => (prev && key(prev) === key(ids) ? null : ids));
-  }, []);
+  }, [ordered, current, next, sequenceByRowKey, selectOrder]);
 
   function handleComplete(shipmentId: string) {
     setPendingShipmentId(shipmentId);
@@ -182,12 +166,16 @@ export function MyDeliveriesList({
     );
   }
 
-  // S2-C STEP2/8: 모든 배송을 마치고 운행 중이면 운행종료를 안내한다.
-  // 운행시작을 누르지 않은 기사도 배송완료는 그대로 가능하므로(원칙 9),
-  // 이 안내는 isRunning일 때만 뜬다 — 운행 기록이 없으면 그냥 조용히 끝난다.
-  // 배송날짜 필터로 오늘이 아닌 다른 날짜를 보고 있을 때는 그 날짜의 잔여
-  // 건수로 "오늘 운행종료"를 물어보면 안 된다 — 반드시 오늘 조회일 때만 뜬다.
+  // 모든 배송을 마치고 운행 중이면 운행종료를 안내한다. 운행시작을 누르지
+  // 않은 기사도 배송완료는 그대로 가능하므로(원칙 9), 이 안내는 isRunning일
+  // 때만 뜬다. 배송날짜 필터로 오늘이 아닌 다른 날짜를 보고 있을 때는 그
+  // 날짜의 잔여 건수로 "오늘 운행종료"를 물어보면 안 되므로 오늘 조회일 때만 뜬다.
   const showEndPrompt = isToday && remaining.length === 0 && isRunning && !endPromptDismissed;
+
+  function registerRowRef(rowKey: string, el: HTMLDivElement | null) {
+    if (el) rowRefs.current.set(rowKey, el);
+    else rowRefs.current.delete(rowKey);
+  }
 
   return (
     <div className="space-y-4">
@@ -211,11 +199,14 @@ export function MyDeliveriesList({
             </Button>
           ) : isRunning ? (
             <span className="flex items-center gap-1.5 text-xs font-medium text-success">
-              <Navigation className="size-3.5" />
+              <span className="size-1.5 rounded-full bg-success" />
               운행 중
             </span>
           ) : (
-            <span className="text-xs text-muted-foreground">운행 종료됨</span>
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="size-1.5 rounded-full bg-muted-foreground" />
+              운행 종료됨
+            </span>
           )}
         </div>
         {!shift?.started_at ? (
@@ -241,142 +232,85 @@ export function MyDeliveriesList({
         ) : null}
       </div>
 
-      {/* PART 16: 지도 마커를 눌러야만 카드가 보이던 기존 흐름은 그대로 두고,
-          그와 별개로 "지금 뭘 배송해야 하는지"를 route_order 기준으로 항상
-          보여준다 — 완료된 건은 여기서 제외된다. */}
+      <DeliveryMap
+        markers={markers}
+        highlightId={highlightedRowKey}
+        className="h-64 sm:h-80"
+        emptyMessage="지도에 표시할 배송지가 없습니다."
+      />
+
       {current ? (
-        <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">현재 배송</p>
-            <div className="flex items-center justify-between gap-2">
-              <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-text-strong">
-                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
-                  {sequenceByRowKey.get(current.rowKey)}
-                </span>
-                <span className="truncate">{current.recipient_name || current.buyer_name || "-"}</span>
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                className="shrink-0 gap-1"
-                disabled={isPending && pendingShipmentId === current.rowKey}
-                onClick={() => handleComplete(current.rowKey)}
-              >
-                <CheckCircle2 className="size-3.5" />
-                {isPending && pendingShipmentId === current.rowKey ? "처리 중" : "배송완료"}
-              </Button>
-            </div>
-          </div>
-          {next ? (
-            <div className="space-y-1.5 border-t pt-3 sm:border-t-0 sm:border-l sm:pt-0 sm:pl-4">
-              <p className="text-xs font-medium text-muted-foreground">다음 배송</p>
-              <p className="flex items-center gap-1.5 text-sm text-text-strong">
-                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-text-strong">
-                  {sequenceByRowKey.get(next.rowKey)}
-                </span>
-                <span className="truncate">{next.recipient_name || next.buyer_name || "-"}</span>
-              </p>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="lg:grid lg:grid-cols-[1fr_380px] lg:items-start lg:gap-4">
-        <DeliveryMap
-          markers={markers}
-          className="h-64 sm:h-80 lg:h-[560px]"
-          onGroupSelect={handleGroupSelect}
-          emptyMessage="지도에 표시할 배송지가 없습니다."
-        />
-        <div className="mt-4 lg:mt-0">
-          {selectedOrders ? (
-            <OrderCardGroup
-              orders={selectedOrders}
-              sequenceByRowKey={sequenceByRowKey}
-              pendingShipmentId={isPending ? pendingShipmentId : null}
-              onComplete={handleComplete}
-              onClose={() => setSelectedIds(null)}
-            />
-          ) : remaining.length === 0 ? (
-            <p className="py-6 text-center text-sm font-medium text-text-strong">{dateLabel} 배송을 모두 완료했습니다.</p>
-          ) : (
-            <p className="rounded-lg border bg-card py-6 text-center text-sm text-muted-foreground">지도에서 배송 위치를 선택하세요.</p>
-          )}
-        </div>
-      </div>
-
-      {noCoordOrders.length > 0 ? (
-        <OrderCardGroup
-          title={`위치 확인 필요 ${noCoordOrders.length}건`}
-          orders={noCoordOrders}
-          sequenceByRowKey={sequenceByRowKey}
-          pendingShipmentId={isPending ? pendingShipmentId : null}
-          onComplete={handleComplete}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function OrderCardGroup({
-  title,
-  orders,
-  sequenceByRowKey,
-  pendingShipmentId,
-  onComplete,
-  onClose,
-}: {
-  title?: string;
-  orders: OrderShipmentBoardRow[];
-  sequenceByRowKey: Map<string, number>;
-  pendingShipmentId: string | null;
-  onComplete: (shipmentId: string) => void;
-  onClose?: () => void;
-}) {
-  const { remaining, completed } = getDeliveryProgress(orders);
-
-  return (
-    <div className="space-y-3 rounded-lg border bg-card p-4">
-      {title || onClose ? (
-        <div className="flex items-start justify-between gap-2">
-          {title ? (
-            <div>
-              <p className="text-sm font-medium text-text-strong">{title}</p>
-              <p className="text-xs text-muted-foreground">
-                남은 {remaining.length}건 · 완료 {completed.length}건
-              </p>
-            </div>
-          ) : (
-            <div />
-          )}
-          {onClose ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-              닫기
+        <FocusDeliveryCard
+          title="현재 배송"
+          order={current}
+          sequenceNumber={sequenceByRowKey.get(current.rowKey)}
+          emphasized
+          isHighlighted={highlightedRowKey === current.rowKey}
+          registerRef={registerRowRef}
+          onSelect={selectOrder}
+          action={
+            <Button
+              type="button"
+              size="lg"
+              className="h-12 w-full gap-2"
+              disabled={isPending && pendingShipmentId === current.rowKey}
+              onClick={() => handleComplete(current.rowKey)}
+            >
+              <CheckCircle2 className="size-5" />
+              {isPending && pendingShipmentId === current.rowKey ? "처리하는 중..." : "배송완료"}
             </Button>
-          ) : null}
-        </div>
+          }
+        />
+      ) : (
+        <p className="rounded-lg border bg-card py-8 text-center text-sm font-medium text-text-strong">
+          {dateLabel} 배송을 모두 완료했습니다.
+        </p>
+      )}
+
+      {next ? (
+        <FocusDeliveryCard
+          title="다음 배송"
+          order={next}
+          sequenceNumber={sequenceByRowKey.get(next.rowKey)}
+          emphasized={false}
+          isHighlighted={highlightedRowKey === next.rowKey}
+          registerRef={registerRowRef}
+          onSelect={selectOrder}
+        />
       ) : null}
 
-      {remaining.length > 0 ? (
-        <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1 lg:max-h-[460px]">
-          {remaining.map((o) => (
-            <OrderCard
-              key={o.rowKey}
-              order={o}
-              sequenceNumber={sequenceByRowKey.get(o.rowKey)}
-              isPending={pendingShipmentId === o.rowKey}
-              onComplete={onComplete}
-            />
-          ))}
+      {upcoming.length > 0 ? (
+        <div className="space-y-2">
+          <p className="px-1 text-xs font-medium text-muted-foreground">이후 배송 {upcoming.length}건</p>
+          <div className="space-y-2">
+            {upcoming.map((o) => (
+              <UpcomingDeliveryCard
+                key={o.rowKey}
+                order={o}
+                sequenceNumber={sequenceByRowKey.get(o.rowKey)}
+                isHighlighted={highlightedRowKey === o.rowKey}
+                registerRef={registerRowRef}
+                onSelect={selectOrder}
+              />
+            ))}
+          </div>
         </div>
       ) : null}
 
       {completed.length > 0 ? (
         <details className="rounded-lg border">
           <summary className="cursor-pointer select-none px-3 py-2 text-sm text-muted-foreground">완료된 배송 {completed.length}건</summary>
-          <div className="space-y-3 border-t p-3">
+          <div className="space-y-2 border-t p-3">
             {completed.map((o) => (
-              <OrderCard key={o.rowKey} order={o} sequenceNumber={sequenceByRowKey.get(o.rowKey)} isPending={false} onComplete={onComplete} />
+              <UpcomingDeliveryCard
+                key={o.rowKey}
+                order={o}
+                sequenceNumber={sequenceByRowKey.get(o.rowKey)}
+                isHighlighted={highlightedRowKey === o.rowKey}
+                registerRef={registerRowRef}
+                onSelect={selectOrder}
+                done
+              />
             ))}
           </div>
         </details>
@@ -385,51 +319,109 @@ function OrderCardGroup({
   );
 }
 
-function OrderCard({
+function DeliveryAddress({ order }: { order: OrderShipmentBoardRow }) {
+  const primary = order.road_address_snapshot || order.address_snapshot;
+  const detail = order.detail_address_snapshot;
+  return (
+    <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
+      <MapPin className="mt-0.5 size-3.5 shrink-0" />
+      <span>
+        {primary ?? "-"}
+        {detail ? <span className="block">{detail}</span> : null}
+      </span>
+    </p>
+  );
+}
+
+/** 현재/다음 배송 — 기사 앱에서 가장 중요한 두 카드(§PART10~11). 배송완료 버튼은 현재 배송에만 붙는다. */
+function FocusDeliveryCard({
+  title,
   order,
   sequenceNumber,
-  isPending,
-  onComplete,
+  emphasized,
+  isHighlighted,
+  registerRef,
+  onSelect,
+  action,
 }: {
+  title: string;
   order: OrderShipmentBoardRow;
-  /** S2-B: 전체 배송 경로에서 이 배송건의 순서 — 지도 마커 배지(위치별 남은 건수)와는 다른 숫자다. */
   sequenceNumber?: number;
-  isPending: boolean;
-  onComplete: (shipmentId: string) => void;
+  emphasized: boolean;
+  isHighlighted: boolean;
+  registerRef: (rowKey: string, el: HTMLDivElement | null) => void;
+  onSelect: (rowKey: string) => void;
+  action?: React.ReactNode;
 }) {
-  const isDone = order.delivery_status === "완료";
   return (
-    <div className={cn("space-y-2 rounded-lg border p-3", isDone ? "bg-muted/30" : "bg-background")}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="flex items-center gap-2 text-base font-semibold text-text-strong">
-          {sequenceNumber != null ? (
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
-              {sequenceNumber}
-            </span>
-          ) : null}
-          {order.recipient_name || order.buyer_name || "-"}
-        </p>
-        <Badge variant={isDone ? "outline" : "secondary"} className="shrink-0">
-          {isDone ? "완료" : "배송중"}
-        </Badge>
-      </div>
-      <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
-        <MapPin className="mt-0.5 size-3.5 shrink-0" />
-        {order.address_snapshot ?? "-"}
+    <div
+      ref={(el) => registerRef(order.rowKey, el)}
+      onClick={() => onSelect(order.rowKey)}
+      className={cn(
+        "space-y-2 rounded-lg border p-4 transition-shadow",
+        emphasized ? "border-primary bg-primary-soft/40" : "bg-card",
+        isHighlighted && "ring-2 ring-primary"
+      )}
+    >
+      <p className="text-xs font-medium text-muted-foreground">{title}</p>
+      <p className="flex items-center gap-2 text-base font-semibold text-text-strong">
+        <span
+          className={cn(
+            "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+            emphasized ? "bg-primary text-primary-foreground" : "bg-muted text-text-strong"
+          )}
+        >
+          {sequenceNumber}
+        </span>
+        {order.recipient_name || order.buyer_name || "-"}
       </p>
+      <DeliveryAddress order={order} />
       {order.phone_snapshot ? (
-        <a href={`tel:${order.phone_snapshot}`} className="flex items-center gap-1.5 text-sm text-primary">
+        <a href={`tel:${order.phone_snapshot}`} className="flex items-center gap-1.5 text-sm text-primary" onClick={(e) => e.stopPropagation()}>
           <Phone className="size-3.5" />
           {order.phone_snapshot}
         </a>
       ) : null}
-      {order.delivery_memo ? <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">메모: {order.delivery_memo}</p> : null}
-      {!isDone ? (
-        <Button type="button" size="lg" className="h-12 w-full gap-2" disabled={isPending} onClick={() => onComplete(order.rowKey)}>
-          <CheckCircle2 className="size-5" />
-          {isPending ? "처리하는 중..." : "배송완료"}
-        </Button>
-      ) : null}
+      {order.delivery_memo ? <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">💬 {order.delivery_memo}</p> : null}
+      {action ? <div onClick={(e) => e.stopPropagation()}>{action}</div> : null}
+    </div>
+  );
+}
+
+/** 이후/완료 배송 — 참고용 목록이라 현재/다음보다 정보 밀도를 낮춘다(§PART12,15). */
+function UpcomingDeliveryCard({
+  order,
+  sequenceNumber,
+  isHighlighted,
+  registerRef,
+  onSelect,
+  done = false,
+}: {
+  order: OrderShipmentBoardRow;
+  sequenceNumber?: number;
+  isHighlighted: boolean;
+  registerRef: (rowKey: string, el: HTMLDivElement | null) => void;
+  onSelect: (rowKey: string) => void;
+  done?: boolean;
+}) {
+  return (
+    <div
+      ref={(el) => registerRef(order.rowKey, el)}
+      onClick={() => onSelect(order.rowKey)}
+      className={cn(
+        "cursor-pointer space-y-1.5 rounded-lg border p-3 transition-shadow",
+        done ? "bg-muted/30" : "bg-background",
+        isHighlighted && "ring-2 ring-primary"
+      )}
+    >
+      <p className="flex items-center gap-2 text-sm font-medium text-text-strong">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-text-strong">
+          {sequenceNumber}
+        </span>
+        {order.recipient_name || order.buyer_name || "-"}
+      </p>
+      <DeliveryAddress order={order} />
+      {order.delivery_memo ? <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">💬 {order.delivery_memo}</p> : null}
     </div>
   );
 }
