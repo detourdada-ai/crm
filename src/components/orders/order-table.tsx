@@ -22,6 +22,7 @@ export function OrderTable({
   showOwner = false,
   bagManagementEnabled = false,
   editableBag = false,
+  visibleColumns,
 }: {
   /** S1-3: rowKey가 있으면(배송건 단위 조회) 그것을 React key/상품요약 조회 키로 쓴다 — 같은 주문이 배송일별로 여러 행이 될 수 있어 order.id만으로는 행이 충돌한다. */
   orders: (Order & { rowKey?: string })[];
@@ -33,10 +34,14 @@ export function OrderTable({
   bagManagementEnabled?: boolean;
   /** 컬럼이 보일 때, 인라인으로 값을 수정할 수 있게 할지(false면 읽기 전용 배지만). */
   editableBag?: boolean;
+  /** STD-8: 계정이 선택한 노출 컬럼 id 목록. undefined/null이면(저장된 적 없음) 전부 노출(기존 동작 그대로). */
+  visibleColumns?: string[] | null;
 }) {
   if (orders.length === 0) {
     return <p className="py-12 text-center text-sm text-muted-foreground">주문 내역이 없습니다.</p>;
   }
+
+  const isVisible = (columnId: string) => !visibleColumns || visibleColumns.includes(columnId);
 
   return (
     <div className="overflow-x-auto">
@@ -51,23 +56,33 @@ export function OrderTable({
             <SortableTableHead field="total_amount" className="text-right" defaultDir="asc">
               금액
             </SortableTableHead>
-            <SortableTableHead field="order_date" className="hidden lg:table-cell">
-              주문일
-            </SortableTableHead>
-            <TableHead className="hidden lg:table-cell text-right">수량</TableHead>
-            <SortableTableHead field="phone_snapshot" className="hidden lg:table-cell">
-              연락처
-            </SortableTableHead>
-            <SortableTableHead field="address_snapshot" className="hidden xl:table-cell">
-              배송지주소
-            </SortableTableHead>
-            <TableHead className="hidden xl:table-cell">배송메세지</TableHead>
-            {bagManagementEnabled ? <TableHead className="hidden lg:table-cell">가방번호 / 회수</TableHead> : null}
-            <SortableTableHead field="driver_id" className="hidden lg:table-cell">
-              담당기사
-            </SortableTableHead>
-            {showCustomerLink ? <TableHead className="hidden lg:table-cell">고객</TableHead> : null}
-            {showOwner ? <TableHead className="hidden lg:table-cell">담당자</TableHead> : null}
+            {isVisible("orderDate") ? (
+              <SortableTableHead field="order_date" className="hidden lg:table-cell">
+                주문일
+              </SortableTableHead>
+            ) : null}
+            {isVisible("quantity") ? <TableHead className="hidden lg:table-cell text-right">수량</TableHead> : null}
+            {isVisible("phone") ? (
+              <SortableTableHead field="phone_snapshot" className="hidden lg:table-cell">
+                연락처
+              </SortableTableHead>
+            ) : null}
+            {isVisible("address") ? (
+              <SortableTableHead field="address_snapshot" className="hidden xl:table-cell">
+                배송지주소
+              </SortableTableHead>
+            ) : null}
+            {isVisible("memo") ? <TableHead className="hidden xl:table-cell">배송메세지</TableHead> : null}
+            {bagManagementEnabled && isVisible("bag") ? (
+              <TableHead className="hidden lg:table-cell">가방번호 / 회수</TableHead>
+            ) : null}
+            {isVisible("driver") ? (
+              <SortableTableHead field="driver_id" className="hidden lg:table-cell">
+                담당기사
+              </SortableTableHead>
+            ) : null}
+            {showCustomerLink && isVisible("customerLink") ? <TableHead className="hidden lg:table-cell">고객</TableHead> : null}
+            {showOwner && isVisible("owner") ? <TableHead className="hidden lg:table-cell">담당자</TableHead> : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -103,20 +118,30 @@ export function OrderTable({
                   <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
                 </TableCell>
                 <TableCell className="text-right">{formatCurrency(summary ? summary.totalAmount : Number(order.total_amount))}</TableCell>
-                <TableCell className="hidden lg:table-cell text-muted-foreground">
-                  {formatDateTime(order.order_date)}
-                </TableCell>
-                <TableCell className="hidden lg:table-cell text-right text-muted-foreground">
-                  {summary?.totalQuantity ?? "-"}
-                </TableCell>
-                <TableCell className="hidden lg:table-cell text-muted-foreground">{order.phone_snapshot ?? "-"}</TableCell>
-                <TableCell className="hidden xl:table-cell max-w-xs truncate text-muted-foreground">
-                  {order.address_snapshot ?? "-"}
-                </TableCell>
-                <TableCell className="hidden xl:table-cell max-w-40 truncate text-muted-foreground">
-                  {order.delivery_memo ?? "-"}
-                </TableCell>
-                {bagManagementEnabled ? (
+                {isVisible("orderDate") ? (
+                  <TableCell className="hidden lg:table-cell text-muted-foreground">
+                    {formatDateTime(order.order_date)}
+                  </TableCell>
+                ) : null}
+                {isVisible("quantity") ? (
+                  <TableCell className="hidden lg:table-cell text-right text-muted-foreground">
+                    {summary?.totalQuantity ?? "-"}
+                  </TableCell>
+                ) : null}
+                {isVisible("phone") ? (
+                  <TableCell className="hidden lg:table-cell text-muted-foreground">{order.phone_snapshot ?? "-"}</TableCell>
+                ) : null}
+                {isVisible("address") ? (
+                  <TableCell className="hidden xl:table-cell max-w-xs truncate text-muted-foreground">
+                    {order.address_snapshot ?? "-"}
+                  </TableCell>
+                ) : null}
+                {isVisible("memo") ? (
+                  <TableCell className="hidden xl:table-cell max-w-40 truncate text-muted-foreground">
+                    {order.delivery_memo ?? "-"}
+                  </TableCell>
+                ) : null}
+                {bagManagementEnabled && isVisible("bag") ? (
                   <TableCell className="hidden lg:table-cell">
                     {editableBag ? (
                       <OrderBagCell
@@ -134,17 +159,19 @@ export function OrderTable({
                     )}
                   </TableCell>
                 ) : null}
-                <TableCell className="hidden lg:table-cell text-muted-foreground">
-                  {order.driver_id ? (driverNames?.[order.driver_id] ?? "-") : "-"}
-                </TableCell>
-                {showCustomerLink ? (
+                {isVisible("driver") ? (
+                  <TableCell className="hidden lg:table-cell text-muted-foreground">
+                    {order.driver_id ? (driverNames?.[order.driver_id] ?? "-") : "-"}
+                  </TableCell>
+                ) : null}
+                {showCustomerLink && isVisible("customerLink") ? (
                   <TableCell className="hidden lg:table-cell">
                     <Link href={`/customers/${order.customer_id}`} className="text-primary hover:underline">
                       보기
                     </Link>
                   </TableCell>
                 ) : null}
-                {showOwner ? (
+                {showOwner && isVisible("owner") ? (
                   <TableCell className="hidden lg:table-cell text-muted-foreground">{order.owner_username}</TableCell>
                 ) : null}
               </TableRow>

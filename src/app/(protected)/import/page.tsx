@@ -1,3 +1,5 @@
+import { Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ImportWorkspace } from "@/components/import/import-workspace";
 import { ImportHistoryTable } from "@/components/import/import-history-table";
@@ -14,6 +16,14 @@ export default async function ImportPage() {
       <PageHeader
         title="엑셀 등록"
         description="주문 엑셀을 업로드하면 고객과 주문이 자동으로 등록됩니다. 기존 고객의 주문은 동일인 후보를 확인할 수 있습니다."
+        action={
+          <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <a href="/api/import/template">
+              <Download className="size-4" />
+              표준 엑셀 템플릿
+            </a>
+          </Button>
+        }
       />
 
       <ImportWorkspace />

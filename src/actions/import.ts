@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ExcelParseError, parseSpreadsheet } from "@/lib/services/excel-parser.service";
 import { autoMapColumns } from "@/lib/services/column-mapping.service";
+import { getSavedColumnMapping, saveColumnMapping } from "@/lib/services/import-mapping-settings.service";
 import { runImport, deleteImport, deleteAllImports } from "@/lib/services/import.service";
 import { importsRepository } from "@/lib/repositories/imports.repository";
 import { toActionError } from "@/lib/utils/action-error";
@@ -32,9 +33,11 @@ export async function analyzeImportFileAction(
   }
 
   try {
+    const session = await requireSession();
     const buffer = await file.arrayBuffer();
     const parsed = parseSpreadsheet(buffer, file.name);
-    const { mapping, unmapped, unrecognizedHeaders } = autoMapColumns(parsed.headers);
+    const savedMapping = await getSavedColumnMapping(session.username);
+    const { mapping, unmapped, unrecognizedHeaders } = autoMapColumns(parsed.headers, savedMapping ?? undefined);
     return { ok: true, fileName: file.name, parsed, mapping, unmapped, unrecognizedHeaders };
   } catch (e) {
     if (e instanceof ExcelParseError) return { ok: false, error: e.message };
@@ -61,6 +64,9 @@ export async function confirmImportAction(
   try {
     const session = await requireSession();
     const { importId, summary, errors } = await runImport({ fileName, parsed, mapping, ownerUsername: session.username });
+    // STD-4: 다음 업로드부터 같은 헤더는 자동매핑되도록 저장 — import는 이미
+    // 끝났으므로 저장 실패로 이번 확정 자체를 실패시키지 않는다(best-effort).
+    saveColumnMapping(session.username, mapping).catch(() => {});
     return { ok: true, importId, summary, errors };
   } catch (e) {
     return { ok: false, error: toActionError(e, "가져오기 중 오류가 발생했습니다.") };

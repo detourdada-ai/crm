@@ -73,6 +73,14 @@ export async function GET(request: NextRequest) {
 
   orders = filterOrdersByDriver(orders, params.get("driverFilter"));
 
+  const product = params.get("product");
+  if (product) {
+    const productShipmentIds = new Set(
+      boardResult.items.filter((i) => i.product_name === product).map((i) => i.shipment_id).filter((id): id is string => id !== null)
+    );
+    orders = orders.filter((o) => productShipmentIds.has(o.shipmentId));
+  }
+
   if (orders.length > EXPORT_MAX_ROWS) {
     return NextResponse.json(
       { error: `조회 결과가 ${orders.length}건으로 한 번에 내려받을 수 있는 최대 건수(${EXPORT_MAX_ROWS}건)를 초과합니다. 기간·필터를 좁혀주세요.` },

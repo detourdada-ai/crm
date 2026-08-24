@@ -115,6 +115,13 @@ export interface OrderSearchParams {
   deliveryDateTo?: string;
   sortBy?: OrderSortField;
   sortAscending?: boolean;
+  /**
+   * STD-6/7: 상품 집계 칩을 클릭했을 때 "이 상품이 포함된 주문 id" 목록으로
+   * 좁힌다. order_items.product_name 기준으로 미리 조회한 order_id 목록을
+   * 넘겨받는 형태 — actions/orders.ts에서 findOrderIdsByProductName()으로
+   * 구해서 넘긴다(레포지토리는 문자열 매칭을 모르고 id 필터만 안다).
+   */
+  productOrderIds?: string[];
 }
 
 /**
@@ -274,7 +281,9 @@ export const ordersRepository = {
     deliveryDateTo,
     sortBy = "delivery_date",
     sortAscending = false,
+    productOrderIds,
   }: OrderSearchParams) {
+    if (productOrderIds && productOrderIds.length === 0) return { orders: [] as Order[], total: 0 };
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
     let q = getSupabaseAdmin().from("orders").select("*", { count: "exact" });
@@ -282,6 +291,7 @@ export const ordersRepository = {
     if (deliveryStatus) q = q.eq("delivery_status", deliveryStatus);
     if (bagReturned !== undefined) q = q.eq("bag_returned", bagReturned);
     if (orderSource) q = q.eq("order_source", orderSource);
+    if (productOrderIds) q = q.in("id", productOrderIds);
     if (query && query.trim()) {
       const term = query.trim();
       // F8: 고객명/전화번호(하이픈 유무 무관)/원본·내부 주문번호를 한 번에 검색.
@@ -308,6 +318,59 @@ export const ordersRepository = {
       .range(from, to);
     if (error) throw error;
     return { orders: (data as Order[]) ?? [], total: count ?? 0 };
+  },
+
+  /**
+   * STD-5: search()와 동일한 필터를 페이지네이션 없이 적용해 "이 필터에
+   * 걸리는 전체 주문 id"만 얻는다 — 상품 집계(현재 페이지가 아니라 필터
+   * 전체 기준)를 계산하려면 order_items를 이 id 전체에 대해 조회해야 하기
+   * 때문. search()와 필터 조건을 반드시 같이 맞춰야 한다(필터 로직이
+   * 갈라지면 "목록에 안 보이는데 집계엔 잡히는" 불일치가 생긴다).
+   */
+  async findAllMatchingOrderIds({
+    ownerUsername,
+    deliveryStatus,
+    bagReturned,
+    query,
+    orderSource,
+    orderDateFrom,
+    orderDateTo,
+    deliveryDate,
+    deliveryDateFrom,
+    deliveryDateTo,
+  }: OrderSearchParams): Promise<string[]> {
+    let q = getSupabaseAdmin().from("orders").select("id");
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    if (deliveryStatus) q = q.eq("delivery_status", deliveryStatus);
+    if (bagReturned !== undefined) q = q.eq("bag_returned", bagReturned);
+    if (orderSource) q = q.eq("order_source", orderSource);
+    if (query && query.trim()) {
+      const term = query.trim();
+      const digits = digitsOnly(term);
+      const phoneVariant = digits.length >= 8 ? formatPhoneNumber(digits) : null;
+      const phoneClause = phoneVariant && phoneVariant !== term ? `,phone_snapshot.ilike.%${phoneVariant}%` : "";
+      q = q.or(
+        `recipient_name.ilike.%${term}%,phone_snapshot.ilike.%${term}%${phoneClause},order_number.ilike.%${term}%,internal_order_number.ilike.%${term}%`
+      );
+    }
+    if (orderDateFrom) q = q.gte("order_date", kstDayStartIso(orderDateFrom));
+    if (orderDateTo) q = q.lte("order_date", kstDayEndIso(orderDateTo));
+    if (deliveryDateFrom || deliveryDateTo) {
+      if (deliveryDateFrom) q = q.gte("delivery_date", kstDayStartIso(deliveryDateFrom));
+      if (deliveryDateTo) q = q.lte("delivery_date", kstDayEndIso(deliveryDateTo));
+    } else if (deliveryDate) {
+      q = q.gte("delivery_date", kstDayStartIso(deliveryDate)).lte("delivery_date", kstDayEndIso(deliveryDate));
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data ?? []).map((r) => r.id as string);
+  },
+
+  /** STD-6: 상품 집계 칩 클릭 시 그 상품이 포함된 주문 id 목록을 구한다(문자열 매칭은 여기서만 한다). */
+  async findOrderIdsByProductName(productName: string): Promise<string[]> {
+    const { data, error } = await getSupabaseAdmin().from("order_items").select("order_id").eq("product_name", productName);
+    if (error) throw error;
+    return Array.from(new Set((data ?? []).map((r) => r.order_id as string)));
   },
 
   /**
@@ -341,7 +404,10 @@ export const ordersRepository = {
     deliveryDateTo,
     sortBy = "delivery_date",
     sortAscending = false,
-  }: OrderSearchParams): Promise<{ rows: OrderShipmentRow[]; total: number }> {
+    productOrderIds,
+  }: OrderSearchParams): Promise<{ rows: OrderShipmentRow[]; total: number; allShipmentIds: string[] }> {
+    if (productOrderIds && productOrderIds.length === 0) return { rows: [], total: 0, allShipmentIds: [] };
+    const productOrderIdSet = productOrderIds ? new Set(productOrderIds) : null;
     let sq = getSupabaseAdmin().from("order_shipments").select("id, order_id, delivery_date");
     if (ownerUsername) sq = sq.eq("owner_username", ownerUsername);
     if (deliveryDateFrom) sq = sq.gte("delivery_date", kstDayStartIso(deliveryDateFrom));
@@ -349,7 +415,7 @@ export const ordersRepository = {
     const { data: shipmentRows, error: shipmentError } = await sq;
     if (shipmentError) throw shipmentError;
     const shipments = shipmentRows ?? [];
-    if (shipments.length === 0) return { rows: [], total: 0 };
+    if (shipments.length === 0) return { rows: [], total: 0, allShipmentIds: [] };
 
     const orderIds = Array.from(new Set(shipments.map((s) => s.order_id)));
     const { data: orderRows, error: orderError } = await getSupabaseAdmin().from("orders").select("*").in("id", orderIds);
@@ -367,6 +433,7 @@ export const ordersRepository = {
       if (deliveryStatus && order.delivery_status !== deliveryStatus) continue;
       if (bagReturned !== undefined && order.bag_returned !== bagReturned) continue;
       if (orderSource && order.order_source !== orderSource) continue;
+      if (productOrderIdSet && !productOrderIdSet.has(order.id)) continue;
       if (orderDateFrom && order.order_date < kstDayStartIso(orderDateFrom)) continue;
       if (orderDateTo && order.order_date > kstDayEndIso(orderDateTo)) continue;
       if (term) {
@@ -396,9 +463,10 @@ export const ordersRepository = {
       return b.order_date < a.order_date ? -1 : 1;
     });
     const total = rows.length;
+    const allShipmentIds = rows.map((r) => r.shipmentId);
     const from = (page - 1) * pageSize;
     rows = rows.slice(from, from + pageSize);
-    return { rows, total };
+    return { rows, total, allShipmentIds };
   },
 
   async findByImportId(importId: string): Promise<Order[]> {

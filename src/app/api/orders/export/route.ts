@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
     deliveryDateTo: deliveryRange?.end,
     sortBy: (params.get("sort") as OrderSortField) || "delivery_date",
     sortAscending: params.get("dir") === "asc",
+    productName: params.get("product") ?? undefined,
   });
 
   if (total > orders.length) {

@@ -25,6 +25,11 @@ const FIELD_ALIASES: Record<MappableField, string[]> = {
     "받는분",
     "주문자명",
     "주문자",
+    // 베타 오픈 준비 — 주문 데이터 표준화: 스마트스토어 외 일반 엑셀에서
+    // 흔히 쓰이는 이름 컬럼들("성명"/"이름"/"고객명").
+    "성명",
+    "이름",
+    "고객명",
     "recipient",
     "receivername",
     "customername",
@@ -105,13 +110,32 @@ function normalizeHeader(header: string): string {
     .trim();
 }
 
-export function autoMapColumns(headers: string[]): ColumnMappingResult {
+/**
+ * STD-4: `savedMapping`은 이 계정이 지난번 업로드에서 실제로 확정한 매핑
+ * (import-mapping-settings.service.ts에 저장됨)이다. 같은 헤더 문자열이
+ * 이번 파일에도 그대로 있으면 별칭 추측보다 우선 적용한다 — 별칭 목록에
+ * 없는 회사 고유 헤더("사장님이름" 같은)라도 한 번 수동으로 매핑해두면
+ * 다음부터는 자동으로 맞는다는 게 핵심 가치이기 때문이다.
+ */
+export function autoMapColumns(headers: string[], savedMapping?: ColumnMapping): ColumnMappingResult {
   const normalizedHeaders = headers.map((h) => ({ raw: h, normalized: normalizeHeader(h) }));
   const mapping: ColumnMapping = {};
   const usedHeaders = new Set<string>();
   const unmapped: MappableField[] = [];
 
+  if (savedMapping) {
+    for (const field of MAPPABLE_FIELDS) {
+      const savedHeader = savedMapping[field.key];
+      if (!savedHeader || usedHeaders.has(savedHeader)) continue;
+      if (headers.includes(savedHeader)) {
+        mapping[field.key] = savedHeader;
+        usedHeaders.add(savedHeader);
+      }
+    }
+  }
+
   for (const field of MAPPABLE_FIELDS) {
+    if (mapping[field.key]) continue;
     const aliases = FIELD_ALIASES[field.key];
     let matchedHeader: string | undefined;
 

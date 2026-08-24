@@ -4,6 +4,7 @@ import { DeliveryFilterStack } from "@/components/delivery/delivery-filter-stack
 import { DriverManagementDialog } from "@/components/delivery/driver-management-dialog";
 import { DriverLocationsDialog } from "@/components/delivery/driver-locations-dialog";
 import { DeliveryStatusFlow, type DeliveryFilter, type DeliveryFlowCount } from "@/components/delivery/delivery-status-flow";
+import { ProductSummaryBar } from "@/components/common/product-summary-bar";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { listAccounts } from "@/lib/auth/credentials";
 import { isValidDateString } from "@/lib/utils/date";
 import { kstTodayIso, resolveKstQuickRange, isQuickDateFilter, type QuickDateFilterValue } from "@/lib/utils/kst-date";
 import { digitsOnly } from "@/lib/utils/phone";
+import { aggregateProductSummary } from "@/lib/utils/product-summary";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 function isDeliveryFilter(value: string | undefined): value is DeliveryFilter {
@@ -56,6 +58,7 @@ export default async function DeliveryPage({
     filter?: string;
     group?: string;
     driverFilter?: string;
+    product?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -104,7 +107,7 @@ export default async function DeliveryPage({
     listKnownRegionsAction(),
     isSingleDay && range ? listDeliveryGroupsAction(range.start) : Promise.resolve(null),
   ]);
-  const { orders: fetchedOrders, drivers, itemSummaries } = boardResult;
+  const { orders: fetchedOrders, drivers, itemSummaries, items } = boardResult;
   const isAdmin = session.role === "admin";
   const accountUsernames = accounts.filter((a) => a.role !== "driver").map((a) => a.username);
 
@@ -124,6 +127,18 @@ export default async function DeliveryPage({
         (qDigits.length >= 3 && digitsOnly(o.phone_snapshot ?? "").includes(qDigits)) ||
         (o.order_number ?? "").toLowerCase().includes(q)
     );
+  }
+
+  // STD-5/6/7: 집계는 검색까지 반영된(상태탭 진입 전) 범위 기준 — 주문관리와
+  // 같은 "현재 필터링된 목록" 원칙. 필터(칩 클릭)는 해당 상품이 포함된
+  // 배송건으로 orders를 한 번 더 좁힌다(주문관리 productOrderIds와 동일한
+  // 발상, 여기선 이미 전부 in-memory이므로 Set 필터로 충분하다).
+  const productSummary = aggregateProductSummary(items, "shipment_id");
+  if (params.product) {
+    const productShipmentIds = new Set(
+      items.filter((i) => i.product_name === params.product).map((i) => i.shipment_id).filter((id): id is string => id !== null)
+    );
+    orders = orders.filter((o) => productShipmentIds.has(o.shipmentId));
   }
 
   // 배송관리 최종 IA: 핵심 흐름(배정필요→배송중→완료) 세 버킷과, 그 흐름과
@@ -177,9 +192,25 @@ export default async function DeliveryPage({
     if (params.q) search.set("q", params.q);
     if (params.group) search.set("group", params.group);
     if (params.driverFilter) search.set("driverFilter", params.driverFilter);
+    if (params.product) search.set("product", params.product);
     // 기본값이 "배정필요"로 바뀌었으므로, 그 값으로 이동할 때만 filter
     // param을 생략한다(그래야 배정필요 칩을 눌러도 URL이 깨끗하게 유지된다).
     if (next !== "unassigned") search.set("filter", next);
+    const qs = search.toString();
+    return qs ? `/delivery?${qs}` : "/delivery";
+  }
+
+  // STD-6: 상품 집계 칩 클릭 — 같은 상품을 다시 누르면 필터가 풀린다.
+  function buildProductHref(productName: string | null) {
+    const search = new URLSearchParams();
+    if (params.dateFilter) search.set("dateFilter", params.dateFilter);
+    if (params.dateFrom) search.set("dateFrom", params.dateFrom);
+    if (params.dateTo) search.set("dateTo", params.dateTo);
+    if (params.q) search.set("q", params.q);
+    if (params.group) search.set("group", params.group);
+    if (params.driverFilter) search.set("driverFilter", params.driverFilter);
+    if (activeFilter !== "unassigned") search.set("filter", activeFilter);
+    if (productName) search.set("product", productName);
     const qs = search.toString();
     return qs ? `/delivery?${qs}` : "/delivery";
   }
@@ -197,6 +228,7 @@ export default async function DeliveryPage({
     if (params.group) search.set("group", params.group);
     if (params.driverFilter) search.set("driverFilter", params.driverFilter);
     if (activeFilter !== "all") search.set("filter", activeFilter);
+    if (params.product) search.set("product", params.product);
     const qs = search.toString();
     return qs ? `/api/delivery/export?${qs}` : "/api/delivery/export";
   }
@@ -226,6 +258,14 @@ export default async function DeliveryPage({
       />
 
       <DeliveryStatusFlow counts={flowCounts} active={activeFilter} buildHref={buildFilterHref} />
+
+      <ProductSummaryBar
+        entries={productSummary}
+        totalCount={orders.length}
+        totalLabel="현재 목록"
+        activeProduct={params.product}
+        buildHref={buildProductHref}
+      />
 
       <DeliveryFilterBar dateFilter={dateFilter} dateFrom={range?.start ?? today} dateTo={range?.end ?? today} />
 

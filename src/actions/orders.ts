@@ -12,6 +12,7 @@ import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { geocodeAddress } from "@/lib/services/geocoding.service";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
+import { aggregateProductSummary, type ProductSummaryEntry } from "@/lib/utils/product-summary";
 import { toActionError } from "@/lib/utils/action-error";
 import { isUuid } from "@/lib/utils/id";
 import { kstDayDateStrOf } from "@/lib/utils/kst-date";
@@ -47,6 +48,16 @@ export interface SearchOrdersParams {
   deliveryDateTo?: string;
   sortBy?: OrderSortField;
   sortAscending?: boolean;
+  /** STD-6: 상품 집계 칩을 클릭하면 이 상품명 하나로 목록을 좁힌다. */
+  productName?: string;
+  /**
+   * STD-5: 상품별 집계(productSummary)를 계산할지 여부. 기본 false — 이
+   * 화면은 카운트만 필요한 searchOrdersAction 호출(상태칩 개수, EmptyState용
+   * 전체건수 등)을 여러 번 병렬로 날리는데, 그때마다 집계용 추가 쿼리
+   * (findAllMatchingOrderIds + findItemsBy...)를 돌리면 불필요한 DB 왕복이
+   * 배로 늘어난다. 실제 목록을 그리는 메인 호출에서만 true로 넘긴다.
+   */
+  includeProductSummary?: boolean;
 }
 
 /** S1-3: 목록 한 행 — 배송일 필터가 걸려 있으면 배송건 하나(rowKey=shipmentId), 아니면 주문 전체(rowKey=order.id)다. */
@@ -57,6 +68,8 @@ export interface SearchOrdersResult {
   total: number;
   itemSummaries: Record<string, OrderItemSummary>;
   driverNames: Record<string, string>;
+  /** STD-5: 현재 필터(productName 제외)에 걸리는 전체 목록 기준 상품별 수량 집계. */
+  productSummary: ProductSummaryEntry[];
 }
 
 function summarize(items: OrderItem[]): OrderItemSummary {
@@ -120,12 +133,23 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
   const session = await requireSession();
   const ownerUsername = ownerScopeFor(session);
 
+  // STD-6: 상품 집계 칩을 클릭하면 productName이 실려온다 — 이 상품이 포함된
+  // 주문 id로 먼저 좁혀서 아래 두 조회 경로(주문 단위/배송건 단위) 모두에
+  // 공통 필터로 넘긴다(STD-7: 두 화면이 같은 필터 체계를 공유).
+  const productOrderIds = params.productName
+    ? await ordersRepository.findOrderIdsByProductName(params.productName)
+    : undefined;
+
   // S1-3: 배송일 필터가 걸려 있으면(기본값이 "오늘"이라 사실상 항상) 배송건
   // 단위로 조회한다 — 같은 주문이라도 상품주문별 발송일이 다르면 여러 행으로
   // 나타난다. 배송일 필터가 없는("전체") 경우에만 기존 주문 단위 조회로
   // 돌아간다.
   if (params.deliveryDateFrom || params.deliveryDateTo) {
-    const { rows, total } = await ordersRepository.searchByShipmentDate({ ...params, ownerUsername });
+    const { rows, total, allShipmentIds } = await ordersRepository.searchByShipmentDate({
+      ...params,
+      ownerUsername,
+      productOrderIds,
+    });
     const orders: OrderListRow[] = rows.map((r) => ({ ...r, rowKey: r.rowKey, shipmentId: r.shipmentId }));
     const itemSummaries = await buildShipmentItemSummaries(rows);
 
@@ -133,10 +157,18 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
     const drivers = await driversRepository.findByIds(driverIds);
     const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
 
-    return { orders, total, itemSummaries, driverNames };
+    // STD-5: 집계는 현재 페이지가 아니라 이 필터(productName 제외)에 걸리는
+    // 전체 배송건 기준이어야 "오늘 배송 23건, 제육볶음 12개..." 같은 정확한
+    // 합계가 나온다 — allShipmentIds는 페이지네이션 전 전체 목록. 카운트만
+    // 필요한 호출(상태칩/EmptyState용)은 이 추가 쿼리를 건너뛴다.
+    const productSummary = params.includeProductSummary
+      ? aggregateProductSummary(await ordersRepository.findItemsByShipmentIds(allShipmentIds), "shipment_id")
+      : [];
+
+    return { orders, total, itemSummaries, driverNames, productSummary };
   }
 
-  const { orders: rawOrders, total } = await ordersRepository.search({ ...params, ownerUsername });
+  const { orders: rawOrders, total } = await ordersRepository.search({ ...params, ownerUsername, productOrderIds });
   const orders: OrderListRow[] = rawOrders.map((o) => ({ ...o, rowKey: o.id }));
   const itemSummaries = await buildOrderItemSummaries(rawOrders);
 
@@ -144,7 +176,14 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
   const drivers = await driversRepository.findByIds(driverIds);
   const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
 
-  return { orders, total, itemSummaries, driverNames };
+  let productSummary: ProductSummaryEntry[] = [];
+  if (params.includeProductSummary) {
+    const allOrderIds = await ordersRepository.findAllMatchingOrderIds({ ...params, ownerUsername });
+    const allItems = await ordersRepository.findItemsByOrderIds(allOrderIds);
+    productSummary = aggregateProductSummary(allItems, "order_id");
+  }
+
+  return { orders, total, itemSummaries, driverNames, productSummary };
 }
 
 export interface OrderDetail {

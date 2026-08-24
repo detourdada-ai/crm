@@ -2,18 +2,27 @@
 
 import { revalidatePath } from "next/cache";
 import { orderShipmentsRepository, type OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
+import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { settlementsRepository } from "@/lib/repositories/settlements.repository";
 import { buildShipmentItemSummaries, type OrderItemSummary } from "@/actions/orders";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession, requireDriverSession } from "@/lib/auth/current-session";
 import { kstDayStrOf, kstTodayIso } from "@/lib/utils/kst-date";
-import type { Driver, FulfillmentMethod } from "@/types/domain";
+import type { Driver, FulfillmentMethod, OrderItem } from "@/types/domain";
 
 export interface DeliveryBoardResult {
   orders: OrderShipmentBoardRow[];
   drivers: Driver[];
   itemSummaries: Record<string, OrderItemSummary>;
+  /**
+   * STD-5/6/7: 상품별 집계+필터를 page.tsx가 in-memory로 계산할 수 있도록
+   * 이 날짜 범위 전체(상태/검색 필터 전)의 raw order_items를 그대로 넘긴다
+   * — 이 화면은 이미 상태/검색 필터를 서버 액션이 아니라 page.tsx에서
+   * in-memory로 처리하는 구조라(agent 조사 결과), 상품 필터도 같은 자리에서
+   * 처리하는 게 기존 패턴과 일치한다.
+   */
+  items: OrderItem[];
 }
 
 /**
@@ -31,8 +40,11 @@ export async function getDeliveryBoardAction(dateFrom: string | null, dateTo?: s
     orderShipmentsRepository.findByDeliveryDate(dateFrom, ownerScope, dateTo),
     driversRepository.listActive(ownerScope),
   ]);
-  const itemSummaries = await buildShipmentItemSummaries(orders);
-  return { orders, drivers, itemSummaries };
+  const [itemSummaries, items] = await Promise.all([
+    buildShipmentItemSummaries(orders),
+    ordersRepository.findItemsByShipmentIds(orders.map((o) => o.shipmentId)),
+  ]);
+  return { orders, drivers, itemSummaries, items };
 }
 
 export interface DeliveryActionState {

@@ -31,7 +31,10 @@ export type MappableField =
 export type MappableFieldCategory = "주문" | "고객" | "배송" | "상품";
 
 export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boolean; category: MappableFieldCategory }[] = [
-  { key: "order_number", label: "주문번호", required: true, category: "주문" },
+  // 베타 오픈 준비 — 주문 데이터 표준화: 스마트스토어 등 채널 주문에만 있는
+  // 값이라 일반 엑셀(전화/문자 주문 등)에는 없는 경우가 많다. 비어 있으면
+  // import.service.ts가 그 행을 독립된 주문 1건으로 처리한다.
+  { key: "order_number", label: "주문번호", required: false, category: "주문" },
   { key: "order_date", label: "주문일시(결제일)", required: true, category: "주문" },
   { key: "recipient_name", label: "수취인명", required: true, category: "고객" },
   { key: "phone", label: "수취인 연락처", required: true, category: "고객" },
@@ -51,7 +54,9 @@ export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boo
   { key: "option_name", label: "옵션명", required: false, category: "상품" },
   { key: "quantity", label: "수량", required: true, category: "상품" },
   { key: "unit_price", label: "단가", required: false, category: "상품" },
-  { key: "amount", label: "금액", required: true, category: "상품" },
+  // 금액이 없으면 0으로 처리된다(import.service.ts parseNumber 기본값) — 판매금액을
+  // 관리하지 않는 사업장(반찬/도시락 등)의 일반 엑셀에는 없는 경우가 많다.
+  { key: "amount", label: "금액", required: false, category: "상품" },
   { key: "bag_no", label: "가방번호", required: false, category: "배송" },
 ];
 

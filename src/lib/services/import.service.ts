@@ -255,26 +255,30 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   let repeatOrderCount = 0;
   let successRows = 0;
   // P5: 261→157 같은 차이를 "임의로 정상 처리"라고 뭉개지 않기 위한 세분화
-  // 카운터 — rowsWithoutOrderNumber(그룹화 단계 탈락)/alreadyImported*(이미
-  // 존재해 건너뜀)/failedRowCount(고객 식별 불가·처리 예외)를 각각 추적한다.
-  let rowsWithoutOrderNumber = 0;
+  // 카운터 — alreadyImported*(이미 존재해 건너뜀)/failedRowCount(고객 식별
+  // 불가·처리 예외)를 각각 추적한다.
   let alreadyImportedRows = 0;
   let alreadyImportedOrders = 0;
   let failedRowCount = 0;
 
+  // 베타 오픈 준비 — 주문 데이터 표준화: "주문번호" 컬럼은 스마트스토어 같은
+  // 채널에서만 존재하고, 일반 엑셀(성명/전화/품목/수량/주소 등 한 줄=한 주문
+  // 형태)에는 아예 없는 경우가 많다. 예전엔 이 경우 행 전체를 실패 처리했는데,
+  // 그러면 "일반 엑셀"은 사실상 업로드가 불가능했다 — 주문번호가 없으면 그
+  // 행을 다른 행과 묶을 근거도 없으므로, 안전하게 그 행 하나만으로 독립된
+  // 주문 1건을 만든다(스마트스토어처럼 여러 줄이 한 주문번호를 공유하는
+  // 케이스는 order_number가 있을 때만 발생). orders.order_number는 NULL
+  // 다건을 허용하므로(0004 스키마 주석 참고) DB 제약과도 충돌하지 않는다.
+  const NO_ORDER_NUMBER_PREFIX = "__no_order_number_";
   // 그룹마다 "몇 번째 원본 행부터 시작하는지"를 같이 들고 있어야 오류 메시지의
   // 행 번호(row:0 버그)를 실제 엑셀 행으로 채울 수 있다.
   const groups = new Map<string, { row: Record<string, unknown>; index: number }[]>();
   parsed.rows.forEach((row, index) => {
     const orderNumber = cellToString(getMapped(row, mapping, "order_number"));
-    if (!orderNumber) {
-      rowsWithoutOrderNumber += 1;
-      errors.push({ row: index + 2, code: "missing_order_number", reason: "주문번호가 비어 있습니다.", raw: row });
-      return;
-    }
-    const list = groups.get(orderNumber) ?? [];
+    const groupKey = orderNumber || `${NO_ORDER_NUMBER_PREFIX}${index}`;
+    const list = groups.get(groupKey) ?? [];
     list.push({ row, index });
-    groups.set(orderNumber, list);
+    groups.set(groupKey, list);
   });
 
   // 배송관리 UX 회귀 복구 + 엑셀 안정화 (정정판) PART 2/3: 실제 production에서
@@ -306,9 +310,10 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     // ---------- Phase 1: batch-fetch everything the per-row logic used to query individually ----------
     let ownerCustomers: Customer[];
     let globallyExistingOrderNumbers: Set<string>;
+    const realGroupKeys = Array.from(groups.keys()).filter((k) => !k.startsWith(NO_ORDER_NUMBER_PREFIX));
     [existingOrderNumbers, globallyExistingOrderNumbers, ownerCustomers] = await Promise.all([
-      ordersRepository.findExistingOrderNumbers(Array.from(groups.keys()), tenant.id),
-      ordersRepository.findGloballyExistingOrderNumbers(Array.from(groups.keys())),
+      ordersRepository.findExistingOrderNumbers(realGroupKeys, tenant.id),
+      ordersRepository.findGloballyExistingOrderNumbers(realGroupKeys),
       customersRepository.findAllByOwner(ownerUsername),
     ]);
     // 베타 런칭 전 핵심 시나리오 최종 정리 PART 9-11: orders.order_number는
@@ -337,11 +342,15 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     const pendingOrderGeocode: { insert: OrderInsert; addressKey: string }[] = [];
     const pendingCustomerGeocode: { insert: CustomerInsert; addressKey: string }[] = [];
 
-  for (const [orderNumber, entries] of groups) {
+  for (const [groupKey, entries] of groups) {
     const rows = entries.map((e) => e.row);
     const firstIndex = entries[0].index;
+    // 주문번호가 없는 행(합성 키)은 다른 테넌트/기존 주문과 대조할 실제
+    // 값이 없으므로 항상 신규 주문으로 취급한다 — order_number는 null로 저장.
+    const hasRealOrderNumber = !groupKey.startsWith(NO_ORDER_NUMBER_PREFIX);
+    const orderNumber = hasRealOrderNumber ? groupKey : null;
     try {
-      if (existingOrderNumbers.has(orderNumber)) {
+      if (hasRealOrderNumber && existingOrderNumbers.has(groupKey)) {
         successRows += rows.length;
         alreadyImportedRows += rows.length;
         alreadyImportedOrders += 1;
@@ -353,7 +362,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       // 통과했다) 그렇게 안내하면 안 된다. INSERT를 시도하지 않고 이 자리에서
       // 바로 실패 처리해, DB 저장 단계에서 전체가 취소되는 대신 이 주문만
       // 건너뛰고 나머지는 정상 등록되게 한다.
-      if (crossTenantConflicts.has(orderNumber)) {
+      if (hasRealOrderNumber && crossTenantConflicts.has(groupKey)) {
         errors.push({
           row: firstIndex + 2,
           code: "order_number_conflict",
@@ -391,7 +400,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
         errors.push({
           row: firstIndex + 2,
           code: "missing_contact_info",
-          reason: `[${orderNumber}] 전화번호와 주소가 모두 비어 있어 고객을 식별할 수 없습니다.`,
+          reason: `[${orderNumber ?? "주문번호 없음"}] 전화번호와 주소가 모두 비어 있어 고객을 식별할 수 없습니다.`,
           raw: first,
         });
         failedRowCount += rows.length;
@@ -605,7 +614,7 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       errors.push({
         row: firstIndex + 2,
         code: "processing_error",
-        reason: `[${orderNumber}] 처리 실패: ${errorMessageOf(e)}`,
+        reason: `[${orderNumber ?? "주문번호 없음"}] 처리 실패: ${errorMessageOf(e)}`,
         raw: rows[0],
       });
       failedRowCount += rows.length;
@@ -719,10 +728,11 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     throw e;
   }
 
-  // P5: 더 이상 "총 행수 - 성공 행수"로 역산하지 않는다 — 그룹화 단계 탈락분과
-  // 처리 실패분을 각각 직접 센 값의 합이므로, totalRawRows = rowsWithoutOrderNumber
-  // + alreadyImportedRows + (신규 생성된 행 수) + failedRowCount가 항상 성립한다.
-  const failedRows = rowsWithoutOrderNumber + failedRowCount;
+  // P5: 더 이상 "총 행수 - 성공 행수"로 역산하지 않는다 — 처리 실패분을 직접
+  // 센 값이므로, totalRawRows = alreadyImportedRows + (신규 생성된 행 수) +
+  // failedRowCount가 항상 성립한다(주문번호 없는 행은 더 이상 실패가 아니라
+  // 개별 주문으로 성공 처리된다 — 베타 오픈 준비: 주문 데이터 표준화).
+  const failedRows = failedRowCount;
 
   await importsRepository.update(importRecord.id, {
     status: "completed",
