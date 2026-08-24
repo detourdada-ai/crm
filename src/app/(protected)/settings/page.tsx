@@ -7,7 +7,9 @@ import { listAccounts } from "@/lib/auth/credentials";
 import { getVipCriteria } from "@/lib/services/vip.service";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { MyProfileForm } from "@/components/settings/my-profile-form";
-import { AccountUsernameDialog } from "@/components/settings/account-username-dialog";
+import { OwnerAccountEditDialog } from "@/components/settings/owner-account-edit-dialog";
+import { OwnerAccountStatusToggle } from "@/components/settings/owner-account-status-toggle";
+import { OwnerAccountDeleteButton } from "@/components/settings/owner-account-delete-button";
 import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
 import { DriverManagementCard } from "@/components/settings/driver-management-card";
 import { AccountRoleFilter } from "@/components/settings/account-role-filter";
@@ -172,8 +174,11 @@ export default async function SettingsPage({
   );
   const sellerAccounts = accounts.filter((a) => a.role === "user");
   const pendingApprovalCount = sellerAccounts.filter((a) => accessStatusByUsername.get(a.username) === "NONE").length;
-  const isValidRole = (r: string | undefined): r is Role => r === "admin" || r === "user" || r === "driver";
-  const filteredAccounts = isValidRole(roleFilter) ? accounts.filter((a) => a.role === roleFilter) : accounts;
+  const isValidRole = (r: string | undefined): r is Role => r === "admin" || r === "user";
+  // STEP1 재정리: 배송기사는 기사관리 전용 — 전체 계정 목록에는 항상 제외한다
+  // (roleFilter로도 다시 나오게 할 수 없다. AccountRoleFilter 옵션에서도 이미 제거함).
+  const nonDriverAccounts = accounts.filter((a) => a.role !== "driver");
+  const filteredAccounts = isValidRole(roleFilter) ? nonDriverAccounts.filter((a) => a.role === roleFilter) : nonDriverAccounts;
 
   return (
     <div className="space-y-6">
@@ -229,59 +234,58 @@ export default async function SettingsPage({
                     <TableHead>Google 이메일</TableHead>
                     <TableHead>상태</TableHead>
                     <TableHead>이용 권한</TableHead>
+                    <TableHead>관리</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAccounts.map((account) => (
-                    <TableRow key={account.username}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-1">
-                          {account.username}
-                          {account.username !== session.username ? (
-                            <AccountUsernameDialog username={account.username} />
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={account.role === "admin" ? "default" : "secondary"}>
-                          {ROLE_LABELS[account.role]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {account.role === "admin"
-                          ? "전체"
-                          : account.role === "driver"
-                            ? "본인 배송 목록만"
-                            : "본인이 등록한 고객/주문만"}
-                      </TableCell>
-                      <TableCell>
-                        {account.role === "driver" ? (
-                          <span className="text-sm text-muted-foreground">대상 아님</span>
-                        ) : (
+                  {filteredAccounts.map((account) => {
+                    const tenant = tenantByUsername.get(account.username) ?? null;
+                    const isSelf = account.username === session.username;
+                    return (
+                      <TableRow key={account.username}>
+                        <TableCell className="font-medium">{account.username}</TableCell>
+                        <TableCell>
+                          <Badge variant={account.role === "admin" ? "default" : "secondary"}>
+                            {ROLE_LABELS[account.role]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {account.role === "admin" ? "전체" : "본인이 등록한 고객/주문만"}
+                        </TableCell>
+                        <TableCell>
                           <GoogleEmailCell username={account.username} initialGoogleEmail={account.googleEmail} />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {account.role !== "driver" ? (
+                        </TableCell>
+                        <TableCell>
                           <Badge variant={account.googleEmail ? "default" : "outline"}>
                             {account.googleEmail ? "연동됨" : "미연동"}
                           </Badge>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
-                        {account.role === "driver" ? (
-                          <span className="text-sm text-muted-foreground">대상 아님</span>
-                        ) : (
+                        </TableCell>
+                        <TableCell>
                           <div className="flex items-center gap-2">
                             <Badge variant={accessStatusByUsername.get(account.username) === "ACTIVE_BETA" ? "default" : "outline"}>
                               {ACCESS_LABELS[accessStatusByUsername.get(account.username) ?? "NONE"]}
                             </Badge>
                             <IssueBetaKeyButton username={account.username} />
                           </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell>
+                          {account.role === "user" ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <OwnerAccountEditDialog
+                                username={account.username}
+                                contactName={tenant?.contact_name ?? null}
+                                contactPhone={tenant?.contact_phone ?? null}
+                              />
+                              <OwnerAccountStatusToggle username={account.username} status={tenant?.status ?? "active"} />
+                              <OwnerAccountDeleteButton username={account.username} />
+                            </div>
+                          ) : isSelf ? (
+                            <span className="text-sm text-muted-foreground">본인 계정</span>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>

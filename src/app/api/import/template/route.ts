@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/current-session";
-import { buildExcelBuffer, excelDownloadHeaders } from "@/lib/services/excel-export.service";
+import { buildExcelWorkbookBuffer, excelDownloadHeaders } from "@/lib/services/excel-export.service";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 
 /**
@@ -9,28 +9,54 @@ import { kstTodayIso } from "@/lib/utils/kst-date";
  * 라벨을 헤더로 써서, 이 템플릿을 그대로 업로드하면 컬럼 매핑 확인 없이 바로
  * 등록되도록 한다. 예시 행 1개를 남겨 형식을 보여주고, 업로드 시 헤더 문자열과
  * 겹치지 않도록 안내 문구를 별도 텍스트로 두지 않고 그대로 지워서 쓰게 한다.
+ *
+ * STEP1 재정리(CPO, 2026-08): 이 템플릿은 스마트스토어 전용이 아니라 "주문한장
+ * 표준 주문등록 양식" — 스마트스토어를 쓰지 않는 사장님이 기존 주문 데이터를
+ * 이 양식에 옮겨 담아 등록하기 위한 것이다. 그 취지와 필수/선택 여부를
+ * 파일을 열자마자 알 수 있도록 "작성 가이드" 시트를 첫 시트로 추가한다.
+ * 가이드의 필수/선택 구분은 반드시 실제 import.service.ts 검증 로직과
+ * 일치시킨다(types/excel.ts MAPPABLE_FIELDS의 required 완화와 함께 정리됨) —
+ * 일반 엑셀의 "한 행 = 한 상품(그룹핑 정책)" 설명은 아직 정책 미확정이라
+ * 이 가이드에 포함하지 않는다.
  */
 export async function GET() {
   await requireSession();
 
-  const headerRow = {
-    "주문일시(결제일)": "2026-08-25",
-    수취인명: "홍길동",
-    "수취인 연락처": "010-1234-5678",
-    "배송지 주소": "서울시 강남구 테헤란로 152",
-    배송메모: "부재 시 문 앞에 놓아주세요",
-    // CPO 정책(2026-08): 배송일이 없으면 업로드 후 "배송일 미지정"으로 오늘
-    // 화면에 안 보이는 문제가 있어, 표준 템플릿에 기본 컬럼으로 포함한다.
-    // 비워서 올려도 업로드 자체는 되고(선택 필드), 업로드 결과 화면에서
-    // 일괄 지정할 수 있다.
-    배송일: kstTodayIso(),
-    상품명: "제육볶음",
-    수량: 2,
-    단가: 8000,
-    금액: 16000,
-  };
+  const guideRows: (string | number)[][] = [
+    ["주문한장 표준 주문등록 양식"],
+    [
+      "스마트스토어를 사용하지 않아도, 기존에 관리하던 주문 데이터를 이 양식에 맞춰 입력하면 주문을 등록할 수 있습니다.",
+    ],
+    [""],
+    ["■ 반드시 입력해야 하는 항목"],
+    ["연락처 또는 주소 중 최소 하나는 반드시 입력해주세요. (둘 다 비어있으면 해당 행은 등록되지 않습니다)"],
+    [""],
+    ["■ 비워도 등록되지만, 채워주시면 더 정확합니다"],
+    ["고객명(수취인명) — 비워두면 \"이름 미확인\"으로 등록됩니다."],
+    ["상품명 — 비워두면 \"상품\"으로 등록됩니다."],
+    ["수량 — 비워두면 1로 등록됩니다."],
+    [""],
+    ["■ 선택 입력 (비워도 정상 등록됩니다)"],
+    ["배송일, 주문번호, 주문일시, 금액, 배송메시지"],
+    [""],
+    ["■ 입력 방법"],
+    ["수량은 숫자로 입력해주세요."],
+    ["배송일은 YYYY-MM-DD 형식을 권장합니다. (예: 2026-08-25)"],
+    ["배송이 필요하지 않은 주문은 배송일을 비워두셔도 됩니다."],
+    ["주문번호가 없는 경우 비워두셔도 됩니다."],
+    [""],
+    ["작성이 끝나면 \"주문템플릿\" 시트에 내용을 채운 뒤 그대로 업로드해주세요."],
+  ];
 
-  const buffer = buildExcelBuffer([headerRow], "주문템플릿");
+  const templateRows: (string | number)[][] = [
+    ["주문일시(결제일)", "수취인명", "수취인 연락처", "배송지 주소", "배송메모", "배송일", "상품명", "수량", "단가", "금액"],
+    ["2026-08-25", "홍길동", "010-1234-5678", "서울시 강남구 테헤란로 152", "부재 시 문 앞에 놓아주세요", kstTodayIso(), "제육볶음", 2, 8000, 16000],
+  ];
+
+  const buffer = buildExcelWorkbookBuffer([
+    { name: "작성가이드", rows: guideRows },
+    { name: "주문템플릿", rows: templateRows },
+  ]);
   return new NextResponse(new Uint8Array(buffer), {
     headers: excelDownloadHeaders(`주문한장_주문템플릿_${kstTodayIso()}.xlsx`),
   });

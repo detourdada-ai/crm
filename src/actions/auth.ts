@@ -9,6 +9,7 @@ import { ensureSupabaseAuthLinked } from "@/lib/auth/supabase-auth-migration";
 import { accountsRepository } from "@/lib/repositories/accounts.repository";
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
+import { countTenantUsage, deleteTenantPermanently } from "@/lib/services/tenant-reset.service";
 import { toActionError } from "@/lib/utils/action-error";
 
 export interface LoginActionState {
@@ -119,56 +120,6 @@ export async function setGoogleEmailAction(targetUsername: string, googleEmail: 
   return setGoogleEmailForAccount(targetUsername, googleEmail);
 }
 
-export interface RenameAccountUsernameActionState {
-  ok: boolean;
-  error: string | null;
-}
-
-/**
- * ACC: 사장님(user) 계정의 아이디 변경 — Admin CS 전용. 일반 사장님 화면에는
- * 노출하지 않는다(권한은 서버에서도 강제). 본인(admin) 계정은 세션이 아이디로
- * 서명돼 있어 스스로 바꾸면 자기 세션이 즉시 무효화되므로 대상에서 제외한다.
- * 실제 rename은 supabase/migrations/0041의 rename_account_username()이
- * owner_username 9개 테이블 + memberships/tenant_access_keys FK까지 한
- * 트랜잭션으로 처리한다(accountsRepository.renameUsername 참고).
- */
-export async function renameAccountUsernameAction(
-  _prevState: RenameAccountUsernameActionState,
-  formData: FormData
-): Promise<RenameAccountUsernameActionState> {
-  const session = await requireSession();
-  if (session.role !== "admin") {
-    return { ok: false, error: "관리자만 아이디를 변경할 수 있습니다." };
-  }
-
-  const targetUsername = String(formData.get("targetUsername") || "").trim();
-  const newUsername = String(formData.get("newUsername") || "").trim();
-
-  if (!targetUsername || !newUsername) {
-    return { ok: false, error: "아이디를 입력해주세요." };
-  }
-  if (targetUsername === session.username) {
-    return { ok: false, error: "본인 계정의 아이디는 이 화면에서 변경할 수 없습니다." };
-  }
-  if (targetUsername === newUsername) {
-    return { ok: false, error: "기존 아이디와 동일합니다." };
-  }
-
-  const existing = await accountsRepository.findByUsername(newUsername);
-  if (existing) {
-    return { ok: false, error: "이미 사용 중인 아이디입니다." };
-  }
-
-  try {
-    await accountsRepository.renameUsername(targetUsername, newUsername);
-  } catch (e) {
-    return { ok: false, error: toActionError(e, "아이디 변경 중 오류가 발생했습니다.") };
-  }
-
-  revalidatePath("/settings");
-  return { ok: true, error: null };
-}
-
 export interface UpdateMyProfileActionState {
   ok: boolean;
   error: string | null;
@@ -176,7 +127,8 @@ export interface UpdateMyProfileActionState {
 
 /**
  * ACC: 일반 사장님이 스스로 수정하는 개인 프로필(이름/연락처). tenants.name
- * (업체명)이나 로그인 아이디는 건드리지 않는다 — 아이디 변경은 Admin CS 전용.
+ * (업체명)이나 로그인 아이디는 건드리지 않는다. STEP1 재정리(2026-08): 로그인
+ * 아이디는 이제 어떤 화면에서도(Admin 포함) 수정할 수 없는 정책으로 확정됐다.
  */
 export async function updateMyProfileAction(
   _prevState: UpdateMyProfileActionState,
@@ -199,6 +151,93 @@ export async function updateMyProfileAction(
     await tenantsRepository.updateContactProfile(tenant.id, contactName, contactPhone);
   } catch (e) {
     return { ok: false, error: toActionError(e, "프로필 수정 중 오류가 발생했습니다.") };
+  }
+
+  revalidatePath("/settings");
+  return { ok: true, error: null };
+}
+
+export interface UpdateOwnerProfileActionState {
+  ok: boolean;
+  error: string | null;
+}
+
+/**
+ * STEP1 재정리: Admin이 전체 계정 목록에서 사장님 계정의 프로필(이름/연락처)을
+ * 대신 수정한다 — updateMyProfileAction과 동일한 tenants.contact_name/phone을
+ * 쓰지만, 대상 계정을 세션이 아니라 formData로 받는다는 점만 다르다. 로그인
+ * 아이디는 여기서도 수정 대상이 아니다(수정 불가 정책).
+ */
+export async function updateOwnerProfileAction(
+  _prevState: UpdateOwnerProfileActionState,
+  formData: FormData
+): Promise<UpdateOwnerProfileActionState> {
+  const session = await requireSession();
+  if (session.role !== "admin") {
+    return { ok: false, error: "관리자만 사용할 수 있습니다." };
+  }
+
+  const targetUsername = String(formData.get("targetUsername") || "").trim();
+  const contactName = String(formData.get("contactName") || "").trim() || null;
+  const contactPhone = String(formData.get("contactPhone") || "").trim() || null;
+
+  if (!targetUsername) {
+    return { ok: false, error: "대상 계정을 확인할 수 없습니다." };
+  }
+
+  const tenant = await tenantsRepository.findByUsername(targetUsername);
+  if (!tenant) {
+    return { ok: false, error: "사업장 정보를 찾을 수 없습니다." };
+  }
+
+  try {
+    await tenantsRepository.updateContactProfile(tenant.id, contactName, contactPhone);
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "프로필 수정 중 오류가 발생했습니다.") };
+  }
+
+  revalidatePath("/settings");
+  return { ok: true, error: null };
+}
+
+export interface DeleteOwnerAccountActionState {
+  ok: boolean;
+  error: string | null;
+}
+
+/**
+ * STEP1 재정리: 사장님 계정 영구 삭제 — 이용 중지(비활성화)와는 별개의 기능
+ * (CPO 지시: "삭제/비활성 별도 운영"). 기사 삭제(deleteDriverAction)와 동일한
+ * 안전장치: 실제 사용 이력(고객/주문)이 하나라도 있으면 거부하고 비활성화를
+ * 안내한다 — 데이터가 없는 계정(가입만 하고 안 쓴 테스트/미사용 계정)만
+ * 완전히 삭제된다.
+ */
+export async function deleteOwnerAccountAction(targetUsername: string): Promise<DeleteOwnerAccountActionState> {
+  const session = await requireSession();
+  if (session.role !== "admin") {
+    return { ok: false, error: "관리자만 삭제할 수 있습니다." };
+  }
+  if (targetUsername === session.username) {
+    return { ok: false, error: "본인 계정은 삭제할 수 없습니다." };
+  }
+
+  try {
+    const tenant = await tenantsRepository.findByUsername(targetUsername);
+    if (!tenant) {
+      return { ok: false, error: "사업장 정보를 찾을 수 없습니다." };
+    }
+
+    const usage = await countTenantUsage(tenant.id);
+    if (usage.customers > 0 || usage.orders > 0) {
+      return {
+        ok: false,
+        error: `고객 ${usage.customers}건, 주문 ${usage.orders}건이 있어 삭제할 수 없습니다. 비활성화를 사용해주세요.`,
+      };
+    }
+
+    await deleteTenantPermanently(tenant.id, targetUsername);
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "삭제 중 오류가 발생했습니다.") };
   }
 
   revalidatePath("/settings");

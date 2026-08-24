@@ -42,9 +42,17 @@ export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boo
   // parseOrderDate(undefined)는 이미 안전하게 오늘 날짜로 폴백하므로(백엔드
   // 검증됨) UI 필수 표시만 과도했다.
   { key: "order_date", label: "주문일시(결제일)", required: false, category: "주문" },
-  { key: "recipient_name", label: "수취인명", required: true, category: "고객" },
-  { key: "phone", label: "수취인 연락처", required: true, category: "고객" },
-  { key: "address", label: "배송지 주소", required: true, category: "배송" },
+  // CPO 정책(2026-08, STEP1 재정리): 이 3개 필드는 UI에서만 required였고
+  // 실제 backend(import.service.ts)는 절대 이걸로 행을 막지 않는다 —
+  // recipient_name이 비면 구매자명→구매자ID→"이름 미확인"으로 폴백한다.
+  // 연락처/주소는 "둘 다" 없을 때만(missing_contact_info) 그 행이 실패하고,
+  // 하나라도 있으면 통과한다 — 그래서 개별 필드로는 required를 걸 수 없다
+  // (실제 union 제약은 ColumnMappingForm이 아니라 import.service.ts의 행별
+  // 검증에서만 표현 가능하고, 이미 그렇게 동작한다). 표준 템플릿 가이드가
+  // 실제 검증과 어긋나지 않도록 UI 표시만 실제 동작에 맞춰 완화한다.
+  { key: "recipient_name", label: "수취인명", required: false, category: "고객" },
+  { key: "phone", label: "수취인 연락처", required: false, category: "고객" },
+  { key: "address", label: "배송지 주소", required: false, category: "배송" },
   { key: "zipcode", label: "우편번호", required: false, category: "배송" },
   { key: "delivery_memo", label: "배송메모", required: false, category: "배송" },
   // CPO 정책(2026-08): 일반 엑셀에는 배송일 컬럼이 아예 없는 경우가 흔해
@@ -63,9 +71,11 @@ export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boo
   { key: "shipped_at", label: "배송완료일", required: false, category: "배송" },
   { key: "product_order_number", label: "상품주문번호", required: false, category: "상품" },
   { key: "product_code", label: "상품번호/코드", required: false, category: "상품" },
-  { key: "product_name", label: "상품명", required: true, category: "상품" },
+  // product_name/quantity도 마찬가지 — 비어 있으면 각각 "상품"/1로
+  // 폴백한다(import.service.ts). UI 필수 표시가 backend보다 과도했다.
+  { key: "product_name", label: "상품명", required: false, category: "상품" },
   { key: "option_name", label: "옵션명", required: false, category: "상품" },
-  { key: "quantity", label: "수량", required: true, category: "상품" },
+  { key: "quantity", label: "수량", required: false, category: "상품" },
   { key: "unit_price", label: "단가", required: false, category: "상품" },
   // 금액이 없으면 0으로 처리된다(import.service.ts parseNumber 기본값) — 판매금액을
   // 관리하지 않는 사업장(반찬/도시락 등)의 일반 엑셀에는 없는 경우가 많다.

@@ -1,6 +1,62 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
+export interface TenantUsageCount {
+  customers: number;
+  orders: number;
+}
+
+/**
+ * STEP1 재정리: "계정 삭제" 버튼을 실제로 눌러도 되는지 판단하기 위한
+ * 읽기전용 체크 — 기사 삭제(deleteDriverAction)가 "배정 이력 있으면
+ * 비활성화를 쓰라"고 막는 것과 동일한 원칙을, 사장님 계정에도 그대로
+ * 적용한다(주문/고객이 하나라도 있으면 영구 삭제를 막고 비활성화로
+ * 유도한다).
+ */
+export async function countTenantUsage(tenantId: string): Promise<TenantUsageCount> {
+  const db = getSupabaseAdmin();
+  const [{ count: customers, error: custErr }, { count: orders, error: orderErr }] = await Promise.all([
+    db.from("customers").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
+    db.from("orders").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
+  ]);
+  if (custErr) throw custErr;
+  if (orderErr) throw orderErr;
+  return { customers: customers ?? 0, orders: orders ?? 0 };
+}
+
+/**
+ * STEP1 재정리: 사장님 계정 영구 삭제 — 이용 중지(tenants.status='suspended')와는
+ * 별개의 기능이다(CPO 지시: "삭제/비활성 별도 운영"). resetTenantTestData와
+ * 달리 계정/테넌트/멤버십까지 전부 지운다. 호출부(action layer)가 이미
+ * countTenantUsage로 "주문/고객 0건"을 확인했다는 전제하에만 호출한다 —
+ * 이 함수 자체는 그 체크를 반복하지 않는다(단일 책임: 삭제 실행).
+ *
+ * "use server" 파일에 두지 않는 이유는 resetTenantTestData와 동일 —
+ * service-role 기반 영구 삭제라 호출부의 admin 권한 체크에 전적으로
+ * 의존한다.
+ */
+export async function deleteTenantPermanently(tenantId: string, username: string): Promise<void> {
+  // 잔존 products/drivers/imports 등(주문/고객은 없지만 설정만 해둔 경우)까지
+  // 안전하게 정리 — 이미 주문/고객이 0건임을 호출부가 확인했으므로 안전하다.
+  await resetTenantTestData(tenantId);
+
+  const db = getSupabaseAdmin();
+  const { data: memberships, error: memErr } = await db.from("memberships").select("username").eq("tenant_id", tenantId);
+  if (memErr) throw memErr;
+  const usernames = Array.from(new Set([...(memberships ?? []).map((m) => m.username), username]));
+
+  const { error: memDeleteErr } = await db.from("memberships").delete().eq("tenant_id", tenantId);
+  if (memDeleteErr) throw memDeleteErr;
+
+  if (usernames.length > 0) {
+    const { error: accountErr } = await db.from("app_accounts").delete().in("username", usernames);
+    if (accountErr) throw accountErr;
+  }
+
+  const { error: tenantErr } = await db.from("tenants").delete().eq("id", tenantId);
+  if (tenantErr) throw tenantErr;
+}
+
 export interface TenantResetResult {
   deletedOrders: number;
   deletedCustomers: number;
