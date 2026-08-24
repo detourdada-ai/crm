@@ -260,6 +260,9 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   let alreadyImportedRows = 0;
   let alreadyImportedOrders = 0;
   let failedRowCount = 0;
+  // CPO 정책(2026-08): 업로드 결과 화면에 "배송일 미지정 N건 → 일괄 지정"을
+  // 보여주기 위한 카운터 — 주문(그룹) 단위로 센다(행 단위 아님).
+  let missingDeliveryDateOrderCount = 0;
 
   // 베타 오픈 준비 — 주문 데이터 표준화: "주문번호" 컬럼은 스마트스토어 같은
   // 채널에서만 존재하고, 일반 엑셀(성명/전화/품목/수량/주소 등 한 줄=한 주문
@@ -280,6 +283,12 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     list.push({ row, index });
     groups.set(groupKey, list);
   });
+  // CPO 정책(2026-08): "주문번호 없는 행은 각각 별도 주문으로 등록됩니다"를
+  // 업로드 결과 화면에 명시하기 위한 카운트 — 자동 그룹핑 로직 자체는
+  // 바꾸지 않는다(주문번호 있으면 그대로 묶이고, 없으면 그대로 행 단위).
+  const rowsWithoutOrderNumber = Array.from(groups.entries())
+    .filter(([key]) => key.startsWith(NO_ORDER_NUMBER_PREFIX))
+    .reduce((sum, [, entries]) => sum + entries.length, 0);
 
   // 배송관리 UX 회귀 복구 + 엑셀 안정화 (정정판) PART 2/3: 실제 production에서
   // "고객 161명은 생성됐는데 주문은 0건, import는 processing에 영구 정지"된
@@ -387,6 +396,12 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       const buyerId = cellToString(getMapped(first, mapping, "buyer_id")) || null;
       const shippedAt = parseOptionalDate(getMapped(first, mapping, "shipped_at"));
       const bagNo = cellToString(getMapped(first, mapping, "bag_no")) || null;
+      // CPO 정책(2026-08): 일반 엑셀에 배송일 컬럼이 매핑돼 있으면 그 값을
+      // 이 주문의 배송일로 직접 쓴다 — 옵션정보에 날짜가 박힌 스마트스토어
+      // 케이스(itemDeliveryDates, 아래)와는 완전히 별개 경로이고, 그쪽이
+      // 못 찾았을 때만 폴백으로 쓴다(둘 다 없으면 기존과 동일하게 "배송일
+      // 미지정").
+      const explicitDeliveryDate = parseOptionalDate(getMapped(first, mapping, "delivery_date"));
 
       // Some Smartstore export permission levels mask both 수취인명 and
       // 구매자명 for privacy, leaving only phone/address/buyer_id. Fall back
@@ -528,7 +543,8 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       // orders.delivery_date는 과도기 호환 필드로 지금까지와 동일하게 "이
       // 주문에서 처음 발견된 발송일" 하나만 담는다 — 아래 배송건 분리와는
       // 별개다(orders 컬럼은 이번 스프린트에서 삭제하지 않는다).
-      const deliveryDate = itemDeliveryDates.find((d) => d !== null) ?? null;
+      const deliveryDate = itemDeliveryDates.find((d) => d !== null) ?? explicitDeliveryDate ?? null;
+      if (!deliveryDate) missingDeliveryDateOrderCount += 1;
       const deliveryArea = items
         .map((item) => parseDeliveryAreaFromOption(item.option_name))
         .find((a) => a !== null) ?? null;
@@ -760,6 +776,8 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       failedRows,
       geocodeSuccess,
       geocodeFailed,
+      rowsWithoutOrderNumber,
+      missingDeliveryDateOrders: missingDeliveryDateOrderCount,
     },
     errors,
   };

@@ -194,6 +194,25 @@ export const orderShipmentsRepository = {
     if (error) throw error;
   },
 
+  /**
+   * UX11-STEP1 P0-1: 여러 주문의 "배송일 미지정" 배송건에 한 번에 배송일을
+   * 지정한다(updateDeliveryDateForOrder의 배치 버전) — 이미 날짜가 있는
+   * 배송건은 `.is("delivery_date", null)`로 걸러 절대 덮어쓰지 않는다. 갓
+   * 업로드된 주문에는 route_order가 원래 없으므로(신규 배송건) 별도 리셋이
+   * 필요 없다. 반환값은 실제로 갱신된 배송건 수(업로드 결과 화면에 표시).
+   */
+  async assignMissingDeliveryDateForOrders(orderIds: string[], deliveryDate: string): Promise<number> {
+    if (orderIds.length === 0) return 0;
+    const { data, error } = await getSupabaseAdmin()
+      .from("order_shipments")
+      .update({ delivery_date: deliveryDate })
+      .in("order_id", orderIds)
+      .is("delivery_date", null)
+      .select("id");
+    if (error) throw error;
+    return data?.length ?? 0;
+  },
+
   /** 배송그룹 재계산 시 "재계산 직전 소속"을 알아야 group_no/driver_id를 최대한 유지할 수 있다 — 그 소속 조회. */
   async findByGroupIds(groupIds: string[]): Promise<OrderShipment[]> {
     if (groupIds.length === 0) return [];

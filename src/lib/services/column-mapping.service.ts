@@ -13,7 +13,7 @@ import { MAPPABLE_FIELDS, type ColumnMapping, type ColumnMappingResult, type Map
  * "수취인명" (delivery recipient) vs "구매자명" (buyer) — a gift order can
  * have two different people here.
  */
-const FIELD_ALIASES: Record<MappableField, string[]> = {
+export const FIELD_ALIASES: Record<MappableField, string[]> = {
   order_number: ["주문번호", "주문번호id", "주문id", "orderno", "orderid", "ordernumber"],
   order_date: ["주문일시", "주문일자", "주문날짜", "주문일", "결제일시", "결제일", "orderdate", "date"],
   recipient_name: [
@@ -72,13 +72,20 @@ const FIELD_ALIASES: Record<MappableField, string[]> = {
     "deliverymemo",
     "note",
   ],
+  // CPO 정책(2026-08): "배송일"은 발송 예정일(future intent)을 뜻하고,
+  // shipped_at("배송완료일")은 이미 끝난 배송의 완료 시각을 뜻한다 — 의미가
+  // 달라서 "배송일"/"deliverydate" 별칭은 여기로만 귀속시킨다(shipped_at
+  // 쪽에서는 제거, 아래 참고).
+  delivery_date: ["배송일", "배송예정일", "발송예정일", "희망배송일", "배송희망일", "발송일", "deliverydate", "deliveryscheduled"],
   order_status: ["주문상태", "orderstatus", "status"],
   courier: ["택배사", "courier", "carrier"],
   tracking_number: ["송장번호", "운송장번호", "trackingnumber", "invoicenumber"],
   sales_channel: ["판매채널", "channel", "saleschannel"],
   buyer_name: ["구매자명", "구매자", "buyername", "buyer"],
   buyer_id: ["구매자id", "구매자아이디", "buyerid"],
-  shipped_at: ["배송완료일", "배송일", "shippedat", "deliverydate"],
+  // "배송일"/"deliverydate"는 delivery_date 필드가 가져갔다(위 참고) —
+  // shipped_at은 "배송완료일" 계열 표현만 남긴다.
+  shipped_at: ["배송완료일", "shippedat"],
   product_order_number: ["상품주문번호", "productorderno", "productorderid"],
   product_code: ["상품번호", "판매자상품코드", "productcode", "productno", "sku"],
   product_name: ["상품명", "품목명", "제품명", "productname", "itemname"],
@@ -102,7 +109,7 @@ const FIELD_ALIASES: Record<MappableField, string[]> = {
 };
 
 /** Strips whitespace, parenthetical notes, and punctuation; lowercases latin chars. */
-function normalizeHeader(header: string): string {
+export function normalizeHeader(header: string): string {
   return header
     .replace(/[([{].*?[)\]}]/g, "")
     .toLowerCase()

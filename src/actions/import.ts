@@ -6,6 +6,10 @@ import { autoMapColumns } from "@/lib/services/column-mapping.service";
 import { getSavedColumnMapping, saveColumnMapping } from "@/lib/services/import-mapping-settings.service";
 import { runImport, deleteImport, deleteAllImports } from "@/lib/services/import.service";
 import { importsRepository } from "@/lib/repositories/imports.repository";
+import { ordersRepository } from "@/lib/repositories/orders.repository";
+import { orderShipmentsRepository } from "@/lib/repositories/order-shipments.repository";
+import { tenantsRepository } from "@/lib/repositories/tenants.repository";
+import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { ColumnMapping, MappableField, ParsedSheet } from "@/types/excel";
@@ -70,6 +74,53 @@ export async function confirmImportAction(
     return { ok: true, importId, summary, errors };
   } catch (e) {
     return { ok: false, error: toActionError(e, "가져오기 중 오류가 발생했습니다.") };
+  }
+}
+
+export interface BulkAssignDeliveryDateResult {
+  ok: boolean;
+  updated: number;
+  error?: string;
+}
+
+/**
+ * UX11-STEP1 P0-1: 업로드 결과 화면에서 "배송일 미지정 N건"을 한 번에 지정한다.
+ * deleteImportAction과 동일한 소유권 확인 패턴(import 레코드의 owner_username
+ * 대조, admin은 예외) — importId 하나로 범위를 좁힌 뒤, 그중 아직도 delivery_date가
+ * 비어있는 주문만(다른 경로로 이미 지정됐을 수 있으므로) 실제로 갱신한다.
+ */
+export async function bulkAssignDeliveryDateAction(
+  importId: string,
+  deliveryDate: string
+): Promise<BulkAssignDeliveryDateResult> {
+  const session = await requireSession();
+  const record = await importsRepository.findById(importId);
+  if (!record) return { ok: false, updated: 0, error: "업로드 기록을 찾을 수 없습니다." };
+  if (session.role !== "admin" && record.owner_username !== session.username) {
+    return { ok: false, updated: 0, error: "이 업로드 기록에 대한 권한이 없습니다." };
+  }
+  if (!deliveryDate) return { ok: false, updated: 0, error: "배송일을 선택해주세요." };
+
+  try {
+    const orders = await ordersRepository.findByImportId(importId);
+    const missingIds = orders.filter((o) => !o.delivery_date).map((o) => o.id);
+    if (missingIds.length === 0) return { ok: true, updated: 0 };
+
+    const isoDeliveryDate = new Date(deliveryDate).toISOString();
+    await ordersRepository.assignMissingDeliveryDate(missingIds, isoDeliveryDate, record.owner_username);
+    const updated = await orderShipmentsRepository.assignMissingDeliveryDateForOrders(missingIds, isoDeliveryDate);
+
+    const tenant = await tenantsRepository.findByUsername(record.owner_username);
+    if (tenant) {
+      await triggerDeliveryGroupRegeneration(tenant.id, deliveryDate, record.owner_username);
+    }
+
+    revalidatePath("/orders");
+    revalidatePath("/delivery");
+    revalidatePath("/import");
+    return { ok: true, updated };
+  } catch (e) {
+    return { ok: false, updated: 0, error: toActionError(e, "배송일 일괄 지정 중 오류가 발생했습니다.") };
   }
 }
 

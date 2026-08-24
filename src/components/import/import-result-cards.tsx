@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { CheckCircle2, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { bulkAssignDeliveryDateAction } from "@/actions/import";
+import { kstTodayIso } from "@/lib/utils/kst-date";
 import type { ImportSummary, ImportRowError } from "@/types/domain";
 
 /**
@@ -16,9 +21,40 @@ import type { ImportSummary, ImportRowError } from "@/types/domain";
  * 5개면 5건으로 센다. "원본 행 vs 생성된 주문" 같은 내부 처리 단위 설명이나
  * 좌표/geocoding 같은 기술적 세부사항은 사장님이 볼 필요가 없으므로 이 화면에
  * 노출하지 않는다.
+ *
+ * UX11-STEP1 P0-1/P0-2(CPO 정책, 2026-08): 일반 엑셀은 배송일 컬럼이 없는
+ * 경우가 흔한데, 그 상태로 두면 주문은 등록됐지만 기본 화면(오늘)에는 안
+ * 보이는 "숨은 주문"이 된다 — 그래서 업로드 직후 이 화면에서 바로 일괄
+ * 지정할 수 있게 한다. 주문번호 없는 행이 개별 주문으로 처리된 것도(자동
+ * 그룹핑 정책은 그대로 유지, 문구만 추가) 여기서 명시한다.
  */
-export function ImportResultCards({ summary, errors }: { summary: ImportSummary; errors: ImportRowError[] }) {
+export function ImportResultCards({
+  importId,
+  summary,
+  errors,
+}: {
+  importId: string;
+  summary: ImportSummary;
+  errors: ImportRowError[];
+}) {
+  const router = useRouter();
   const [showErrors, setShowErrors] = useState(false);
+  const [missingCount, setMissingCount] = useState(summary.missingDeliveryDateOrders);
+  const [pickedDate, setPickedDate] = useState(kstTodayIso());
+  const [isAssigning, startAssigning] = useTransition();
+
+  function handleBulkAssign() {
+    startAssigning(async () => {
+      const result = await bulkAssignDeliveryDateAction(importId, pickedDate);
+      if (!result.ok) {
+        toast.error(result.error ?? "배송일 지정 중 오류가 발생했습니다.");
+        return;
+      }
+      toast.success(`배송일 미지정 ${result.updated.toLocaleString()}건이 ${pickedDate} 배송으로 등록되었습니다.`);
+      setMissingCount(0);
+      router.refresh();
+    });
+  }
 
   return (
     <Card>
@@ -62,6 +98,32 @@ export function ImportResultCards({ summary, errors }: { summary: ImportSummary;
           <p className="text-xs text-muted-foreground">
             이미 등록된 주문 {summary.alreadyImportedOrders.toLocaleString()}건은 건너뛰었습니다(재업로드 시 정상).
           </p>
+        ) : null}
+        {summary.rowsWithoutOrderNumber > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            주문번호가 없는 {summary.rowsWithoutOrderNumber.toLocaleString()}개 행은 각각 별도 주문으로 등록되었습니다.
+          </p>
+        ) : null}
+
+        {missingCount > 0 ? (
+          <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3">
+            <p className="text-sm text-text-strong">
+              배송일 미지정 <span className="font-semibold">{missingCount.toLocaleString()}건</span> — 이 상태로 두면
+              주문관리 기본 화면(오늘)에 보이지 않습니다.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type="date"
+                value={pickedDate}
+                onChange={(e) => setPickedDate(e.target.value)}
+                className="w-40"
+                disabled={isAssigning}
+              />
+              <Button size="sm" onClick={handleBulkAssign} disabled={isAssigning || !pickedDate}>
+                {isAssigning ? "지정 중..." : "일괄 지정"}
+              </Button>
+            </div>
+          </div>
         ) : null}
 
         <div className="flex flex-wrap gap-2 pt-2">

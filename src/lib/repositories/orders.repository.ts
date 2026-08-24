@@ -891,6 +891,34 @@ export const ordersRepository = {
     if (error) throw error;
   },
 
+  /**
+   * UX11-STEP1 P0-1: 업로드 직후 "배송일 미지정" 주문들에 한 번에 배송일을
+   * 지정한다 — 이미 배송일이 있는 주문은 절대 덮어쓰지 않도록 `.is("delivery_date", null)`로
+   * 한 번 더 좁힌다(호출부가 넘긴 orderIds가 실제로 미지정 상태인지와
+   * 무관하게 안전). markManyBagsReturned와 동일한 이중검증 패턴 — ownerUsername이
+   * 있으면 UPDATE 전에 모든 id의 소유권을 재확인한다.
+   */
+  async assignMissingDeliveryDate(orderIds: string[], deliveryDate: string, ownerUsername?: string): Promise<void> {
+    if (orderIds.length === 0) return;
+    if (ownerUsername) {
+      const { data: owned, error: checkError } = await getSupabaseAdmin()
+        .from("orders")
+        .select("id")
+        .in("id", orderIds)
+        .eq("owner_username", ownerUsername);
+      if (checkError) throw checkError;
+      if ((owned?.length ?? 0) !== orderIds.length) {
+        throw new Error("배송일 지정 권한이 없는 주문이 포함되어 있습니다.");
+      }
+    }
+    const { error } = await getSupabaseAdmin()
+      .from("orders")
+      .update({ delivery_date: deliveryDate })
+      .in("id", orderIds)
+      .is("delivery_date", null);
+    if (error) throw error;
+  },
+
   async createMany(orders: OrderInsert[]): Promise<Order[]> {
     if (orders.length === 0) return [];
     const { data, error } = await getSupabaseAdmin().from("orders").insert(orders).select("*");

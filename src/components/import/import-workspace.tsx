@@ -23,7 +23,7 @@ type Stage =
       unmapped: MappableField[];
       unrecognizedHeaders: string[];
     }
-  | { step: "done"; summary: ImportSummary; errors: ImportRowError[] };
+  | { step: "done"; importId: string; summary: ImportSummary; errors: ImportRowError[] };
 
 export function ImportWorkspace() {
   const router = useRouter();
@@ -82,7 +82,7 @@ export function ImportWorkspace() {
         return;
       }
       toast.success("엑셀 업로드가 완료되었습니다.");
-      setStage({ step: "done", summary: result.summary, errors: result.errors });
+      setStage({ step: "done", importId: result.importId, summary: result.summary, errors: result.errors });
       router.refresh();
     });
   }
@@ -97,7 +97,7 @@ export function ImportWorkspace() {
       ) : null}
       {stage.step === "done" ? (
         <div className="space-y-4">
-          <ImportResultCards summary={stage.summary} errors={stage.errors} />
+          <ImportResultCards importId={stage.importId} summary={stage.summary} errors={stage.errors} />
           <Button variant="outline" onClick={() => setStage({ step: "idle" })}>
             다른 파일 업로드
           </Button>

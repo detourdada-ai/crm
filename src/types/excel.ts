@@ -11,6 +11,7 @@ export type MappableField =
   | "address"
   | "zipcode"
   | "delivery_memo"
+  | "delivery_date"
   | "order_status"
   | "courier"
   | "tracking_number"
@@ -46,6 +47,13 @@ export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boo
   { key: "address", label: "배송지 주소", required: true, category: "배송" },
   { key: "zipcode", label: "우편번호", required: false, category: "배송" },
   { key: "delivery_memo", label: "배송메모", required: false, category: "배송" },
+  // CPO 정책(2026-08): 일반 엑셀에는 배송일 컬럼이 아예 없는 경우가 흔해
+  // "배송일 미지정" 상태로 조용히 오늘 화면에서 빠지는 게 베타 전 반드시
+  // 고쳐야 할 문제로 지적됨 — 표준 템플릿에 배송일을 기본 컬럼으로 포함하고,
+  // 이 필드를 매핑해 직접 값을 채울 수 있게 한다(옵션정보 안에 날짜가 박힌
+  // 스마트스토어 케이스와는 별개 경로 — import.service.ts에서 옵션 파싱이
+  // 실패했을 때만 이 값으로 폴백한다).
+  { key: "delivery_date", label: "배송일(발송 희망일)", required: false, category: "배송" },
   { key: "order_status", label: "주문상태", required: false, category: "주문" },
   { key: "courier", label: "택배사", required: false, category: "배송" },
   { key: "tracking_number", label: "송장번호", required: false, category: "배송" },

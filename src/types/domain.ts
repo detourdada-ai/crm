@@ -357,6 +357,10 @@ export interface ImportSummary {
   /** P10-1.5: 생성된 주문 중 배송지 좌표가 확보된/실패한 건수 (기사후보 추천·배송그룹 클러스터링의 입력 데이터). */
   geocodeSuccess: number;
   geocodeFailed: number;
+  /** CPO 정책(2026-08): 주문번호 컬럼이 없어(또는 비어 있어) 행 단위로 개별 주문 처리된 상품주문 행 수. */
+  rowsWithoutOrderNumber: number;
+  /** CPO 정책(2026-08): 배송일을 어디서도 찾지 못해(옵션정보/배송일 컬럼 둘 다 없음) "배송일 미지정"으로 생성된 주문 수 — 업로드 결과 화면의 일괄 지정 대상. */
+  missingDeliveryDateOrders: number;
 }
 
 export interface ImportRecord {

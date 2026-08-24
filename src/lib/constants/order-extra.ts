@@ -1,3 +1,5 @@
+import { FIELD_ALIASES, normalizeHeader } from "@/lib/services/column-mapping.service";
+
 /**
  * Every original excel column is preserved per line item in `order_items.extra`
  * (see import.service.ts) so nothing from the source file is ever lost. The
@@ -50,7 +52,18 @@ export const HIDDEN_INTERNAL_KEYS = [
   "배송비 묶음번호",
 ];
 
+// UX11-STEP1 P0-3: ALREADY_DISPLAYED_KEYS는 스마트스토어 고정 헤더 문자열
+// 블랙리스트라, 일반 엑셀이 같은 의미를 다른 표기로 쓰면("성명"/"고객명"이
+// "수취인명"과 같은 의미) 걸러지지 않고 "표시 컬럼" 후보에 중복 노출됐다.
+// column-mapping.service.ts의 FIELD_ALIASES(자동 매핑에 실제로 쓰는 별칭
+// 사전)를 재사용해, 이미 표준 필드로 흡수된 의미의 헤더는 정규화 비교로
+// 걸러낸다 — extra 자체의 값은 그대로 두고(원본 삭제 없음) "표시 컬럼"
+// 후보에서만 제외한다.
+const KNOWN_ALIAS_SET = new Set(Object.values(FIELD_ALIASES).flat().map((alias) => normalizeHeader(alias)));
+
 export function extraDisplayEntries(extra: Record<string, unknown>): [string, unknown][] {
   const hide = new Set([...ALREADY_DISPLAYED_KEYS, ...HIDDEN_INTERNAL_KEYS]);
-  return Object.entries(extra).filter(([key, value]) => !hide.has(key) && value != null && value !== "");
+  return Object.entries(extra).filter(
+    ([key, value]) => !hide.has(key) && !KNOWN_ALIAS_SET.has(normalizeHeader(key)) && value != null && value !== ""
+  );
 }
