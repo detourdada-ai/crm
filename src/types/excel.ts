@@ -35,7 +35,12 @@ export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boo
   // 값이라 일반 엑셀(전화/문자 주문 등)에는 없는 경우가 많다. 비어 있으면
   // import.service.ts가 그 행을 독립된 주문 1건으로 처리한다.
   { key: "order_number", label: "주문번호", required: false, category: "주문" },
-  { key: "order_date", label: "주문일시(결제일)", required: true, category: "주문" },
+  // STD-10 최종검증에서 발견: 일반 엑셀(전화/문자 주문 등)은 "주문일시" 컬럼
+  // 자체가 없는 경우가 흔한데, 이게 필수로 막혀 있으면 ColumnMappingForm의
+  // 확정 버튼이 비활성화되어 업로드 자체가 불가능했다. import.service.ts의
+  // parseOrderDate(undefined)는 이미 안전하게 오늘 날짜로 폴백하므로(백엔드
+  // 검증됨) UI 필수 표시만 과도했다.
+  { key: "order_date", label: "주문일시(결제일)", required: false, category: "주문" },
   { key: "recipient_name", label: "수취인명", required: true, category: "고객" },
   { key: "phone", label: "수취인 연락처", required: true, category: "고객" },
   { key: "address", label: "배송지 주소", required: true, category: "배송" },
