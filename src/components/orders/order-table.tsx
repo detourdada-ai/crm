@@ -34,14 +34,21 @@ export function OrderTable({
   bagManagementEnabled?: boolean;
   /** 컬럼이 보일 때, 인라인으로 값을 수정할 수 있게 할지(false면 읽기 전용 배지만). */
   editableBag?: boolean;
-  /** STD-8: 계정이 선택한 노출 컬럼 id 목록. undefined/null이면(저장된 적 없음) 전부 노출(기존 동작 그대로). */
-  visibleColumns?: string[] | null;
+  /**
+   * STD-8/UX11: 계정이 선택한 노출 컬럼 id 목록 — 항상 구체적인 배열이다
+   * (기본값은 호출부에서 ORDER_TABLE_TOGGLEABLE_COLUMN_IDS로 이미 채워서
+   * 넘긴다). "extra:헤더명" 형태의 id는 엑셀 원본 컬럼(order_items.extra)을
+   * 가리킨다 — 시스템 고정 컬럼이 아니므로 저장된 적 없으면 기본적으로
+   * 노출되지 않는다(핵심 9개만 기본 노출한다는 원칙).
+   */
+  visibleColumns: string[];
 }) {
   if (orders.length === 0) {
     return <p className="py-12 text-center text-sm text-muted-foreground">주문 내역이 없습니다.</p>;
   }
 
-  const isVisible = (columnId: string) => !visibleColumns || visibleColumns.includes(columnId);
+  const isVisible = (columnId: string) => visibleColumns.includes(columnId);
+  const extraColumns = visibleColumns.filter((id) => id.startsWith("extra:")).map((id) => id.slice("extra:".length));
 
   return (
     <div className="overflow-x-auto">
@@ -83,6 +90,11 @@ export function OrderTable({
             ) : null}
             {showCustomerLink && isVisible("customerLink") ? <TableHead className="hidden lg:table-cell">고객</TableHead> : null}
             {showOwner && isVisible("owner") ? <TableHead className="hidden lg:table-cell">담당자</TableHead> : null}
+            {extraColumns.map((col) => (
+              <TableHead key={col} className="hidden xl:table-cell">
+                {col}
+              </TableHead>
+            ))}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -174,6 +186,11 @@ export function OrderTable({
                 {showOwner && isVisible("owner") ? (
                   <TableCell className="hidden lg:table-cell text-muted-foreground">{order.owner_username}</TableCell>
                 ) : null}
+                {extraColumns.map((col) => (
+                  <TableCell key={col} className="hidden xl:table-cell max-w-40 truncate text-muted-foreground">
+                    {summary?.extra?.[col] != null ? String(summary.extra[col]) : "-"}
+                  </TableCell>
+                ))}
               </TableRow>
             );
           })}

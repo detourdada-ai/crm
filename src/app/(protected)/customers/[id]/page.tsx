@@ -14,6 +14,7 @@ import { BackButton } from "@/components/common/back-button";
 import { CUSTOMER_STATUS_LABELS } from "@/lib/constants/customer-status";
 import { requireSession } from "@/lib/auth/current-session";
 import { getTenantFeaturesForSession } from "@/lib/tenant/features";
+import { ORDER_TABLE_TOGGLEABLE_COLUMN_IDS } from "@/lib/constants/order-table-columns";
 import type { CustomerStatus } from "@/types/domain";
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -72,7 +73,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <CardTitle>주문목록</CardTitle>
         </CardHeader>
         <CardContent>
-          <OrderTable orders={orders} bagManagementEnabled={features.bagManagement} />
+          <OrderTable orders={orders} bagManagementEnabled={features.bagManagement} visibleColumns={ORDER_TABLE_TOGGLEABLE_COLUMN_IDS} />
         </CardContent>
       </Card>
 

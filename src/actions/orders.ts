@@ -13,6 +13,7 @@ import { geocodeAddress } from "@/lib/services/geocoding.service";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { aggregateProductSummary, type ProductSummaryEntry } from "@/lib/utils/product-summary";
+import { extraDisplayEntries } from "@/lib/constants/order-extra";
 import { toActionError } from "@/lib/utils/action-error";
 import { isUuid } from "@/lib/utils/id";
 import { kstDayDateStrOf } from "@/lib/utils/kst-date";
@@ -30,6 +31,8 @@ export interface OrderItemSummary {
   totalQuantity: number;
   /** S1-3: 이 요약이 어느 범위(주문 전체 vs 배송건 하나)의 합인지에 따라 값이 다르다 — 배송일 필터가 걸린 목록에서는 order.total_amount(주문 전체 합)를 쓰면 안 되고 반드시 이 값을 써야 한다. */
   totalAmount: number;
+  /** UX11: "표시 컬럼"에서 선택한 엑셀 원본 컬럼 값 — 첫 번째 상품주문 행 기준(여러 상품이면 그중 하나만 대표로 보여준다, 이미 상품명 자체도 같은 규칙). */
+  extra: Record<string, unknown>;
 }
 
 export interface SearchOrdersParams {
@@ -77,7 +80,8 @@ function summarize(items: OrderItem[]): OrderItemSummary {
   const totalAmount = items.reduce((sum, i) => sum + i.amount, 0);
   const productSummary =
     items.length === 0 ? "-" : items.length === 1 ? items[0].product_name : `${items[0].product_name} 외 ${items.length - 1}건`;
-  return { productSummary, totalQuantity, totalAmount };
+  const extra = items.length > 0 && items[0].extra ? Object.fromEntries(extraDisplayEntries(items[0].extra)) : {};
+  return { productSummary, totalQuantity, totalAmount, extra };
 }
 
 /**

@@ -17,9 +17,11 @@ import {
 import { DELIVERY_STATUS_OPTIONS } from "@/lib/constants/delivery-status";
 import { ORDER_SOURCE_OPTIONS } from "@/lib/constants/order-source";
 import { kstTodayIso } from "@/lib/utils/kst-date";
+import type { ProductSummaryEntry } from "@/lib/utils/product-summary";
 
 const STATUS_ALL = "all";
 const SOURCE_ALL = "all";
+const PRODUCT_ALL = "all";
 const SORT_OPTIONS = [
   { value: "delivery_date:desc", label: "배송일 최신순" },
   { value: "delivery_date:asc", label: "배송일 오래된순" },
@@ -44,6 +46,7 @@ export function OrderFilterBar({
   deliveryDateFrom,
   deliveryDateTo,
   bagManagementEnabled = false,
+  productOptions = [],
 }: {
   orderDateFilter: QuickDateFilterValue;
   orderDateFrom: string;
@@ -53,6 +56,8 @@ export function OrderFilterBar({
   deliveryDateTo: string;
   /** Phase 10: 가방 관리 미사용 사업장에서는 "가방 미회수" 필터도 숨긴다. */
   bagManagementEnabled?: boolean;
+  /** 주문관리 UX 정리: 상품 집계를 별도 박스가 아니라 이 필터 select로 흡수한다 — 현재 검색결과(페이지네이션 전 전체) 기준 상품 목록. */
+  productOptions?: ProductSummaryEntry[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -67,6 +72,7 @@ export function OrderFilterBar({
   const [deliveryTo, setDeliveryTo] = useState(deliveryDateTo);
   const [status, setStatus] = useState(searchParams.get("deliveryStatus") ?? STATUS_ALL);
   const [source, setSource] = useState(searchParams.get("orderSource") ?? SOURCE_ALL);
+  const [product, setProduct] = useState(searchParams.get("product") ?? PRODUCT_ALL);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [bagNotReturned, setBagNotReturned] = useState(searchParams.get("bagReturned") === "false");
 
@@ -97,6 +103,7 @@ export function OrderFilterBar({
     }
     if (status !== STATUS_ALL) params.set("deliveryStatus", status);
     if (source !== SOURCE_ALL) params.set("orderSource", source);
+    if (product !== PRODUCT_ALL) params.set("product", product);
     if (query.trim()) params.set("q", query.trim());
     if (bagNotReturned) params.set("bagReturned", "false");
     if (searchParams.get("sort")) params.set("sort", searchParams.get("sort")!);
@@ -119,6 +126,7 @@ export function OrderFilterBar({
     setDeliveryTo(today);
     setStatus(STATUS_ALL);
     setSource(SOURCE_ALL);
+    setProduct(PRODUCT_ALL);
     setQuery("");
     setBagNotReturned(false);
     startTransition(() => router.push(pathname));
@@ -178,6 +186,29 @@ export function OrderFilterBar({
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">상품명</Label>
+          <div className="flex items-center gap-2">
+            <Select value={product} onValueChange={setProduct}>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={PRODUCT_ALL}>전체</SelectItem>
+                {productOptions.map((p) => (
+                  <SelectItem key={p.productName} value={p.productName} className="max-w-64">
+                    <span className="truncate">{p.productName}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {product !== PRODUCT_ALL ? (
+              <span className="text-xs whitespace-nowrap text-muted-foreground">
+                {productOptions.find((p) => p.productName === product)?.totalQuantity ?? 0}개
+              </span>
+            ) : null}
+          </div>
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">검색</Label>

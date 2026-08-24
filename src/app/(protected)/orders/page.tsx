@@ -5,7 +5,6 @@ import { Download } from "lucide-react";
 import { OrderTable } from "@/components/orders/order-table";
 import { OrderFilterBar } from "@/components/orders/order-filter-bar";
 import { OrderStatusChips, type OrderStatusChipCount } from "@/components/orders/order-status-chips";
-import { ProductSummaryBar } from "@/components/common/product-summary-bar";
 import { ManualOrderButton } from "@/components/orders/manual-order-button";
 import { OrderColumnSelector } from "@/components/orders/order-column-selector";
 import { PaginationControls } from "@/components/common/pagination-controls";
@@ -13,7 +12,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { ClipboardList } from "lucide-react";
 import { searchOrdersAction } from "@/actions/orders";
-import { getColumnViewAction } from "@/actions/column-view";
+import { getColumnViewAction, getAvailableExtraColumnsAction } from "@/actions/column-view";
 import { ORDER_TABLE_TOGGLEABLE_COLUMN_IDS } from "@/lib/constants/order-table-columns";
 import { requireSession } from "@/lib/auth/current-session";
 import { getTenantFeaturesForSession } from "@/lib/tenant/features";
@@ -91,10 +90,17 @@ export default async function OrdersPage({
   const commonDateFilter = { orderDateFrom, orderDateTo, deliveryDateFrom, deliveryDateTo };
 
   const session = await requireSession();
-  const [features, savedColumnView, { orders, total, itemSummaries, driverNames, productSummary }, { total: allTimeTotal }, ...statusCounts] =
-    await Promise.all([
+  const [
+    features,
+    savedColumnView,
+    availableExtraColumns,
+    { orders, total, itemSummaries, driverNames, productSummary },
+    { total: allTimeTotal },
+    ...statusCounts
+  ] = await Promise.all([
     getTenantFeaturesForSession(session),
     getColumnViewAction("orders"),
+    getAvailableExtraColumnsAction(),
     searchOrdersAction({
       page,
       pageSize: PAGE_SIZE,
@@ -139,26 +145,6 @@ export default async function OrdersPage({
     return qs ? `/orders?${qs}` : "/orders";
   }
 
-  // STD-6: 상품 집계 칩 클릭 — 같은 상품을 다시 누르면 필터가 풀린다.
-  function buildProductHref(productName: string | null) {
-    const search = new URLSearchParams();
-    if (params.orderDateFilter) search.set("orderDateFilter", params.orderDateFilter);
-    if (params.orderDateFrom) search.set("orderDateFrom", params.orderDateFrom);
-    if (params.orderDateTo) search.set("orderDateTo", params.orderDateTo);
-    if (params.deliveryDateFilter) search.set("deliveryDateFilter", params.deliveryDateFilter);
-    if (params.deliveryDateFrom) search.set("deliveryDateFrom", params.deliveryDateFrom);
-    if (params.deliveryDateTo) search.set("deliveryDateTo", params.deliveryDateTo);
-    if (params.bagReturned) search.set("bagReturned", params.bagReturned);
-    if (params.orderSource) search.set("orderSource", params.orderSource);
-    if (params.q) search.set("q", params.q);
-    if (params.sort) search.set("sort", params.sort);
-    if (params.dir) search.set("dir", params.dir);
-    if (params.deliveryStatus) search.set("deliveryStatus", params.deliveryStatus);
-    if (productName) search.set("product", productName);
-    const qs = search.toString();
-    return qs ? `/orders?${qs}` : "/orders";
-  }
-
   // S2-C STEP5: 지금 화면에 적용된 필터 그대로 Excel API를 호출하기 위한
   // 쿼리스트링 — buildStatusHref와 같은 값들이지만 deliveryStatus는
   // status칩이 아니라 현재 activeStatus를 그대로 넘긴다.
@@ -181,6 +167,8 @@ export default async function OrdersPage({
     return qs ? `/api/orders/export?${qs}` : "/api/orders/export";
   }
 
+  const resolvedVisibleColumns = savedColumnView ?? ORDER_TABLE_TOGGLEABLE_COLUMN_IDS;
+
   const deliveryRangeLabel =
     deliveryDateFilter === "all"
       ? "전체 기간"
@@ -195,27 +183,19 @@ export default async function OrdersPage({
         description={`${deliveryRangeLabel} 발송할 상품주문(배송일 기준)을 확인하고 처리하세요. 주문일 필터는 기본적으로 전체입니다.`}
         action={
           <div className="flex items-center gap-2">
+            <OrderColumnSelector viewId="orders" visibleColumns={resolvedVisibleColumns} extraColumns={availableExtraColumns} />
             <Button asChild variant="outline" size="sm" className="gap-1.5">
               <a href={buildExportHref()}>
                 <Download className="size-4" />
                 Excel 다운로드
               </a>
             </Button>
-            <OrderColumnSelector viewId="orders" visibleColumns={savedColumnView ?? ORDER_TABLE_TOGGLEABLE_COLUMN_IDS} />
             <ManualOrderButton />
           </div>
         }
       />
 
       <OrderStatusChips counts={chipCounts} active={activeStatus} buildHref={buildStatusHref} />
-
-      <ProductSummaryBar
-        entries={productSummary}
-        totalCount={total}
-        totalLabel="현재 목록"
-        activeProduct={params.product}
-        buildHref={buildProductHref}
-      />
 
       <OrderFilterBar
         orderDateFilter={orderDateFilter}
@@ -225,6 +205,7 @@ export default async function OrdersPage({
         deliveryDateFrom={deliveryDateFrom ?? today}
         deliveryDateTo={deliveryDateTo ?? today}
         bagManagementEnabled={features.bagManagement}
+        productOptions={productSummary}
       />
 
       {total === 0 ? (
@@ -258,7 +239,7 @@ export default async function OrdersPage({
               showOwner={session.role === "admin"}
               bagManagementEnabled={features.bagManagement}
               editableBag={features.bagManagement}
-              visibleColumns={savedColumnView}
+              visibleColumns={resolvedVisibleColumns}
             />
             <PaginationControls page={page} pageSize={PAGE_SIZE} total={total} />
           </CardContent>

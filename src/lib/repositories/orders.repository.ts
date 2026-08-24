@@ -256,6 +256,18 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
+  /** UX11: "표시 컬럼"에 노출할 엑셀 원본 컬럼 후보를 만들기 위해, 이 계정의 최근 주문 id만 가볍게 가져온다(order_items.extra 스캔용 — 전체 이력을 다 훑을 필요는 없다). */
+  async findRecentOrderIdsForExtraScan(ownerUsername: string, limit = 300): Promise<string[]> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("orders")
+      .select("id")
+      .eq("owner_username", ownerUsername)
+      .order("order_date", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return (data ?? []).map((r) => r.id as string);
+  },
+
   async listRecent(page = 1, pageSize = 20, ownerUsername?: string) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
@@ -427,13 +439,18 @@ export const ordersRepository = {
     const phoneVariant = term && digits.length >= 8 ? formatPhoneNumber(digits) : null;
 
     let rows: OrderShipmentRow[] = [];
+    // UX11: 상품명 select의 옵션 목록(=productSummary 계산에 쓰이는
+    // allShipmentIds)은 productName 자신을 제외한 나머지 필터로만 좁혀야
+    // 한다 — 안 그러면 "김치"를 선택한 순간 옵션이 "김치" 하나로 붕괴돼
+    // 다른 상품으로 바로 전환할 수 없다(search()/findAllMatchingOrderIds의
+    // productName-제외 패턴과 동일하게 맞춘다).
+    const allShipmentIdsExcludingProduct: string[] = [];
     for (const s of shipments) {
       const order = orderById.get(s.order_id);
       if (!order) continue; // 방어적: 삭제된 주문의 배송건이 FK cascade 반영 전에 조회된 경우
       if (deliveryStatus && order.delivery_status !== deliveryStatus) continue;
       if (bagReturned !== undefined && order.bag_returned !== bagReturned) continue;
       if (orderSource && order.order_source !== orderSource) continue;
-      if (productOrderIdSet && !productOrderIdSet.has(order.id)) continue;
       if (orderDateFrom && order.order_date < kstDayStartIso(orderDateFrom)) continue;
       if (orderDateTo && order.order_date > kstDayEndIso(orderDateTo)) continue;
       if (term) {
@@ -445,6 +462,8 @@ export const ordersRepository = {
           order.internal_order_number?.toLowerCase().includes(term.toLowerCase());
         if (!matches) continue;
       }
+      allShipmentIdsExcludingProduct.push(s.id);
+      if (productOrderIdSet && !productOrderIdSet.has(order.id)) continue;
       rows.push({ ...order, shipmentId: s.id, rowKey: s.id, delivery_date: s.delivery_date });
     }
 
@@ -463,10 +482,9 @@ export const ordersRepository = {
       return b.order_date < a.order_date ? -1 : 1;
     });
     const total = rows.length;
-    const allShipmentIds = rows.map((r) => r.shipmentId);
     const from = (page - 1) * pageSize;
     rows = rows.slice(from, from + pageSize);
-    return { rows, total, allShipmentIds };
+    return { rows, total, allShipmentIds: allShipmentIdsExcludingProduct };
   },
 
   async findByImportId(importId: string): Promise<Order[]> {
