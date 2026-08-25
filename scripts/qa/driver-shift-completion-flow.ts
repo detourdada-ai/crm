@@ -54,7 +54,10 @@ async function mainText(page: Page): Promise<string> {
   return (await page.locator("main").innerText().catch(() => "")) ?? "";
 }
 
-async function waitForDialogTitle(page: Page, title: string, timeoutMs = 6000): Promise<boolean> {
+// Production 첫 호출은 Vercel serverless cold start로 인해 서버 액션
+// 응답이 로컬보다 훨씬 느릴 수 있다(특히 배포 직후 첫 요청) — 15s면
+// 실제 지연을 충분히 흡수하면서도 진짜 회귀는 그대로 잡아낸다.
+async function waitForDialogTitle(page: Page, title: string, timeoutMs = 15000): Promise<boolean> {
   try {
     await page.getByRole("heading", { name: title }).waitFor({ state: "visible", timeout: timeoutMs });
     return true;
@@ -70,6 +73,23 @@ async function waitForNoDialog(page: Page, timeoutMs = 4000): Promise<boolean> {
   } catch {
     return (await page.locator('[data-slot="dialog-content"]').count()) === 0;
   }
+}
+
+/**
+ * 고정 대기(waitForTimeout) 대신 실제 서버 상태가 기대값에 도달할 때까지
+ * 폴링한다 — Production cold start로 서버 액션 왕복이 얼마나 걸릴지
+ * 예측할 수 없으므로, "일정 시간 기다린 뒤 DB를 한 번 읽는" 방식은
+ * production에서 오탐(false negative)을 낸다(이번 라운드에서 실제로
+ * 겪음). 마지막으로 읽은 값을 그대로 반환해 실패 시 detail로 보여준다.
+ */
+async function waitForCondition<T>(read: () => Promise<T>, isReady: (value: T) => boolean, timeoutMs = 15000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let value = await read();
+  while (!isReady(value) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 400));
+    value = await read();
+  }
+  return value;
 }
 
 async function main() {
@@ -188,9 +208,11 @@ async function main() {
     await page.locator(`[data-testid="delivery-card-${x1}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
     await waitForDialogTitle(page, "운행을 시작하시겠습니까?");
     await page.getByRole("button", { name: "운행 시작 후 배송완료", exact: true }).click();
-    await page.waitForTimeout(1500);
+    const statusAfterConfirm = await waitForCondition(
+      () => getShipmentStatus(x1),
+      (s) => s?.delivery_status === "완료"
+    );
     const shiftAfterConfirm = await getShift(driverAId);
-    const statusAfterConfirm = await getShipmentStatus(x1);
     record(
       "QA-2. 확인 → driver_shift 생성/시작 + 배송완료 처리, 중복 shift 없음",
       !!shiftAfterConfirm?.started_at && statusAfterConfirm?.delivery_status === "완료",
@@ -204,10 +226,12 @@ async function main() {
     const x3 = await createShipment(`${QA_PREFIX}X3`, driverAId);
     await page.reload({ waitUntil: "networkidle" });
     await page.locator(`[data-testid="delivery-card-${x2}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
-    await page.waitForTimeout(1200);
+    const x2Status = await waitForCondition(
+      () => getShipmentStatus(x2),
+      (s) => s?.delivery_status === "완료"
+    );
     const noStartDialog = !(await page.getByRole("heading", { name: "운행을 시작하시겠습니까?" }).isVisible().catch(() => false));
     const noEndDialog = !(await page.getByRole("heading", { name: "모든 배송이 완료되었습니다." }).isVisible().catch(() => false));
-    const x2Status = await getShipmentStatus(x2);
     record(
       "QA-3/4. 운행중 배송완료(2건 중 1건) → 팝업 없이 즉시 완료 + 종료안내 없음(X3 남음)",
       noStartDialog && noEndDialog && x2Status?.delivery_status === "완료",
@@ -239,8 +263,10 @@ async function main() {
     await page.locator(`[data-testid="delivery-card-${x4}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
     await waitForDialogTitle(page, "모든 배송이 완료되었습니다.");
     await page.getByRole("button", { name: "운행 종료", exact: true }).click();
-    await page.waitForTimeout(1200);
-    const shiftAfterEnd = await getShift(driverAId);
+    const shiftAfterEnd = await waitForCondition(
+      () => getShift(driverAId),
+      (s) => !!s?.ended_at
+    );
     const x4Status = await getShipmentStatus(x4);
     record(
       "QA-7. '운행 종료' 선택 → 배송완료 유지 + 운행 종료 + 종료시간 기록",
@@ -268,8 +294,10 @@ async function main() {
       JSON.stringify({ dlg8b, x5StatusMid, shift8Mid })
     );
     await page.getByRole("button", { name: "운행 종료", exact: true }).click();
-    await page.waitForTimeout(1000);
-    const shift8Final = await getShift(driverAId);
+    const shift8Final = await waitForCondition(
+      () => getShift(driverAId),
+      (s) => !!s?.ended_at
+    );
     record("QA-8c. 운행 종료 확인까지 정상 완주", !!shift8Final?.ended_at, JSON.stringify(shift8Final));
 
     // ============================================================
@@ -286,8 +314,10 @@ async function main() {
     if (await page.getByRole("heading", { name: "운행을 시작하시겠습니까?" }).isVisible().catch(() => false)) {
       await page.getByRole("button", { name: "운행 시작 후 배송완료", exact: true }).click();
     }
-    await page.waitForTimeout(1500);
-    const x6Status = await getShipmentStatus(x6);
+    const x6Status = await waitForCondition(
+      () => getShipmentStatus(x6),
+      (s) => s?.delivery_status === "완료"
+    );
     const { count: shiftRowCount } = await admin
       .from("driver_shifts")
       .select("id", { count: "exact", head: true })

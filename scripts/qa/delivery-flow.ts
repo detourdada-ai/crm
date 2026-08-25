@@ -213,9 +213,43 @@ async function run() {
     const cardCompleteBtn = (rowKey: string) =>
       page.locator(`[data-testid="delivery-card-${rowKey}"]`).getByRole("button", { name: "배송완료", exact: true });
 
+    /**
+     * §CPO 운행상태 자동 안내(2026-08 신규): 이 QA의 기사 세션은 오늘 운행을
+     * 시작했는지 여부가 매 실행마다 달라질 수 있다 — 운행 전이면 배송완료
+     * 클릭이 곧바로 처리되지 않고 "운행을 시작하시겠습니까?" 확인 팝업만
+     * 띄운다(아직 아무 것도 안 바뀐 상태). 그 경우 확인해 완료까지 마무리하고,
+     * 그 배송이 오늘의 마지막 미완료 건이었다면 이어서 "운행종료" 안내도
+     * 뜰 수 있는데 이 QA는 운행종료 시나리오를 별도로 검증하지 않으므로
+     * (그건 qa:driver-shift 몫) 열려 있으면 "나중에"로 닫고 넘어간다.
+     */
+    async function clickCompleteAndConfirm(rowKey: string) {
+      await cardCompleteBtn(rowKey).click({ timeout: 5000 });
+      // isVisible()은 즉시 스냅샷만 확인하고 재시도하지 않는다 — 클릭 직후
+      // 서버 왕복이 아직 끝나지 않아 팝업이 아직 렌더되기 전이면 그대로
+      // false를 반환해버려서 팝업을 놓친다. waitFor(visible)로 실제 나타날
+      // 때까지 기다려야 한다(driver-shift-completion-flow.ts의
+      // waitForDialogTitle과 동일 패턴).
+      const needsStart = await page
+        .getByRole("heading", { name: "운행을 시작하시겠습니까?" })
+        .waitFor({ state: "visible", timeout: 8000 })
+        .then(() => true)
+        .catch(() => false);
+      if (needsStart) {
+        await page.getByRole("button", { name: "운행 시작 후 배송완료", exact: true }).click();
+      }
+      const showsEndPrompt = await page
+        .getByRole("heading", { name: "모든 배송이 완료되었습니다." })
+        .waitFor({ state: "visible", timeout: 8000 })
+        .then(() => true)
+        .catch(() => false);
+      if (showsEndPrompt) {
+        await page.getByRole("button", { name: "나중에", exact: true }).click();
+      }
+    }
+
     // ---- 13a: ③번(D, "이후 배송")을 먼저 완료해도 ①번(B)이 여전히 현재 배송 ----
     let beforeText = text;
-    await cardCompleteBtn(idD).click({ timeout: 5000 });
+    await clickCompleteAndConfirm(idD);
     text = await settleAfterMutation(page, beforeText);
     record(
       "13a. ③번(D) 먼저 완료해도 ①번(B)이 여전히 현재 배송(처리 순서 제한 없음)",
@@ -225,7 +259,7 @@ async function run() {
 
     // ---- 13b: ④번(F)도 순서 무관하게 바로 완료 가능 ----
     beforeText = text;
-    await cardCompleteBtn(idF).click({ timeout: 5000 });
+    await clickCompleteAndConfirm(idF);
     text = await settleAfterMutation(page, beforeText);
     record(
       "13b. ④번(F)도 직접 완료 가능(모든 미완료 카드에 완료 버튼 존재)",
@@ -235,7 +269,7 @@ async function run() {
 
     // ---- 13c: 이제 ①번(B) 완료 → ②번(C)이 현재 배송으로 재계산(D/F는 이미 완료) ----
     beforeText = text;
-    await cardCompleteBtn(idB).click({ timeout: 5000 });
+    await clickCompleteAndConfirm(idB);
     text = await settleAfterMutation(page, beforeText);
     record(
       "13c. ①번(B) 완료 후 ②번(C)이 현재 배송으로 재계산",
@@ -284,7 +318,7 @@ async function run() {
     await setSession(context, driver.username, "driver");
     await page.goto(`${BASE_URL}/driver`, { waitUntil: "networkidle" });
     beforeText = await mainText(page);
-    await cardCompleteBtn(idC).click({ timeout: 5000 });
+    await clickCompleteAndConfirm(idC);
     text = await settleAfterMutation(page, beforeText);
     record("16. 남은 배송(C) 완료(남은 0건)", text.includes("남은 0건"), text.slice(0, 200));
 
