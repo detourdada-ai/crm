@@ -4,12 +4,13 @@ import { revalidatePath } from "next/cache";
 import { orderShipmentsRepository, type OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
+import { driverShiftsRepository } from "@/lib/repositories/driver-shifts.repository";
 import { settlementsRepository } from "@/lib/repositories/settlements.repository";
 import { buildShipmentItemSummaries, type OrderItemSummary } from "@/actions/orders";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession, requireDriverSession } from "@/lib/auth/current-session";
-import { kstDayStrOf, kstTodayIso } from "@/lib/utils/kst-date";
-import type { Driver, FulfillmentMethod, OrderItem } from "@/types/domain";
+import { kstDayStrOf, kstDayDateStrOf, kstTodayIso } from "@/lib/utils/kst-date";
+import type { Driver, DriverShift, FulfillmentMethod, OrderItem } from "@/types/domain";
 
 export interface DeliveryBoardResult {
   orders: OrderShipmentBoardRow[];
@@ -336,18 +337,77 @@ export async function listMyDeliveriesAction(date?: string): Promise<OrderShipme
   return orderShipmentsRepository.findByDriverIdAndDeliveryDate(driverId, targetDate);
 }
 
-export async function markDeliveredAction(shipmentId: string): Promise<DeliveryActionState> {
+export interface MarkDeliveredResult extends DeliveryActionState {
+  /**
+   * true면 아직 아무 것도 처리하지 않았다 — 오늘 배송인데 운행이 아직
+   * 시작되지 않아, 클라이언트가 "운행을 시작하시겠습니까?" 확인을 받은 뒤
+   * `confirmStartShift: true`로 재호출해야 한다(§CPO 운행상태 자동안내
+   * 작업지시 PART2/4/8-1).
+   */
+  needsShiftStart?: boolean;
+  /**
+   * 배송완료가 성공했고, 그 시점에 이 기사의 "오늘" 배송 중 미완료(취소
+   * 제외) 건이 하나도 남지 않았으며 운행이 계속 진행 중인 경우에만 true.
+   * 클라이언트는 이 값으로만 "운행 종료 안내" 팝업을 띄운다 — 화면에 보이는
+   * 목록(pagination/필터/route 순서)이 아니라 서버가 그 시점에 다시 조회한
+   * 실제 남은 배송건 전체를 기준으로 판단한다(PART5 필수 요구사항).
+   */
+  isLastDelivery?: boolean;
+  /** confirmStartShift로 이번 호출에서 운행을 새로 시작시켰다면, 그 결과 행을 그대로 돌려줘 클라이언트가 로컬 shift 상태를 서버값으로 동기화할 수 있게 한다. */
+  startedShift?: DriverShift;
+}
+
+/**
+ * §CPO 작업지시(운행상태 자동안내, 2026-08): 배송완료와 운행시작/종료를
+ * 하나의 자연스러운 흐름으로 연결한다. 기존 배송완료 로직(권한 확인→
+ * markDelivered)은 그대로 두고, "오늘" 배송에 한해 앞뒤로 운행 상태 확인을
+ * 끼워 넣는다 — route_order/배송완료 자체의 동작은 절대 바꾸지 않는다(PART6).
+ *
+ * 오늘이 아닌 배송(과거/미래 날짜 조회)은 운행 개념과 무관하므로 이 로직을
+ * 전혀 타지 않고 기존 그대로 즉시 완료 처리한다 — 운행은 항상 실제 "오늘"
+ * 하루 단위이기 때문이다(driverShiftsRepository와 동일한 전제).
+ */
+export async function markDeliveredAction(shipmentId: string, options?: { confirmStartShift?: boolean }): Promise<MarkDeliveredResult> {
   try {
     const { driverId } = await requireDriverSession();
     const [shipment] = await orderShipmentsRepository.findByIds([shipmentId]);
     if (!shipment) return { ok: false, error: "배송건을 찾을 수 없습니다." };
     if (shipment.driver_id !== driverId) return { ok: false, error: "본인에게 배정된 배송건만 처리할 수 있습니다." };
 
+    const today = kstTodayIso();
+    const isToday = !!shipment.delivery_date && kstDayDateStrOf(shipment.delivery_date) === today;
+
+    let shift: DriverShift | null = null;
+    let startedShift: DriverShift | undefined;
+    if (isToday) {
+      shift = await driverShiftsRepository.findByDriverAndDate(driverId, today);
+      const notStarted = !shift?.started_at;
+      if (notStarted && !options?.confirmStartShift) {
+        // 아직 아무 것도 바꾸지 않았다 — 클라이언트가 확인 팝업을 띄운 뒤 재호출한다.
+        return { ok: false, error: null, needsShiftStart: true };
+      }
+      if (notStarted && options?.confirmStartShift) {
+        shift = await driverShiftsRepository.startShift(driverId, today);
+        startedShift = shift;
+      }
+    }
+
     await orderShipmentsRepository.markDelivered(shipmentId, driverId);
     revalidatePath("/driver");
     revalidatePath("/delivery");
     revalidatePath("/orders");
-    return { ok: true, error: null };
+
+    let isLastDelivery = false;
+    if (isToday) {
+      // "마지막 배송"은 화면 상태가 아니라 이 시점에 서버가 다시 조회한
+      // 실제 남은 배송건 전체를 기준으로 판단한다(PART5).
+      const todayShipments = await orderShipmentsRepository.findByDriverIdAndDeliveryDate(driverId, today);
+      const allDone = todayShipments.every((s) => s.delivery_status === "완료" || s.delivery_status === "취소");
+      const stillRunning = !!shift?.started_at && !shift?.ended_at;
+      isLastDelivery = allDone && stillRunning;
+    }
+
+    return { ok: true, error: null, isLastDelivery, startedShift };
   } catch (e) {
     return { ok: false, error: toActionError(e, "처리 중 오류가 발생했습니다.") };
   }

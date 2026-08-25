@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { toast } from "sonner";
 import { CheckCircle2, MapPin, Phone, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { DeliveryMap, type DeliveryMapMarker } from "@/components/delivery/delivery-map";
 import { DriverDateFilter, formatDriverDateLabel } from "@/components/delivery/driver-date-filter";
@@ -56,6 +57,10 @@ export function MyDeliveriesList({
   const [shiftPending, setShiftPending] = useState(false);
   /** "취소"를 눌러 운행종료 안내를 닫았는지 — 다시 새로고침하면 초기화된다. */
   const [endPromptDismissed, setEndPromptDismissed] = useState(false);
+  /** §CPO 운행상태 자동안내: 서버가 "운행 시작 확인이 필요하다"고 응답한 배송건. 아직 아무 것도 처리되지 않은 상태다. */
+  const [shiftStartPromptShipmentId, setShiftStartPromptShipmentId] = useState<string | null>(null);
+  /** 배송완료 직후 서버가 "오늘 마지막 배송이었고 운행 중"이라고 확인해준 경우에만 뜨는 운행종료 안내 모달. */
+  const [showEndShiftDialog, setShowEndShiftDialog] = useState(false);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const isRunning = !!shift?.started_at && !shift?.ended_at;
@@ -81,6 +86,7 @@ export function MyDeliveriesList({
       if (result.ok) {
         setShift((prev) => (prev ? { ...prev, ended_at: new Date().toISOString() } : prev));
         toast.success("운행을 종료했습니다. 오늘 하루 수고하셨습니다.");
+        setShowEndShiftDialog(false);
       } else {
         toast.error(result.error ?? "운행종료 처리 중 오류가 발생했습니다.");
       }
@@ -147,18 +153,47 @@ export function MyDeliveriesList({
       });
   }, [ordered, current, next, sequenceByRowKey, selectOrder]);
 
-  function handleComplete(shipmentId: string) {
+  /**
+   * §CPO 운행상태 자동안내: 배송완료 클릭 시 항상 서버에 먼저 물어본다.
+   * 오늘 배송인데 운행이 아직 시작되지 않았다면 서버가 아무 것도 처리하지
+   * 않고 needsShiftStart만 돌려준다 — 그때만 확인 팝업을 띄우고, 확인을
+   * 받은 뒤 confirmStartShift:true로 다시 호출한다. 운행 중이거나 오늘이
+   * 아닌 배송이면 서버가 곧바로 완료 처리한다("운행 시작했나?"를 기사가
+   * 스스로 고민할 필요가 없다 — PART9).
+   */
+  function handleComplete(shipmentId: string, opts?: { confirmStartShift?: boolean }) {
     setPendingShipmentId(shipmentId);
     startTransition(async () => {
-      const result = await markDeliveredAction(shipmentId);
+      const result = await markDeliveredAction(shipmentId, opts);
+      if (result.needsShiftStart) {
+        setShiftStartPromptShipmentId(shipmentId);
+        setPendingShipmentId(null);
+        return;
+      }
       if (!result.ok) {
         toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
-      } else {
-        setOrders((prev) => prev.map((o) => (o.rowKey === shipmentId ? { ...o, delivery_status: "완료" as const } : o)));
-        toast.success("배송완료로 처리했습니다.");
+        setPendingShipmentId(null);
+        return;
+      }
+      setOrders((prev) => prev.map((o) => (o.rowKey === shipmentId ? { ...o, delivery_status: "완료" as const } : o)));
+      if (result.startedShift) {
+        setShift(result.startedShift);
+      }
+      toast.success("배송완료로 처리했습니다.");
+      // "마지막 배송" 여부는 서버가 그 시점에 다시 조회한 실제 남은 배송건
+      // 전체 기준으로 판단한 값이다 — 화면 상태로 재계산하지 않는다(PART5).
+      if (result.isLastDelivery) {
+        setShowEndShiftDialog(true);
       }
       setPendingShipmentId(null);
     });
+  }
+
+  function confirmStartShiftAndComplete() {
+    const shipmentId = shiftStartPromptShipmentId;
+    if (!shipmentId) return;
+    setShiftStartPromptShipmentId(null);
+    handleComplete(shipmentId, { confirmStartShift: true });
   }
 
   const isToday = selectedDate === kstTodayIso();
@@ -338,6 +373,42 @@ export function MyDeliveriesList({
           </div>
         </details>
       ) : null}
+
+      {/* §CPO 운행상태 자동안내 8-1: 운행 시작 전 배송완료 시도 — 확인해야 다음 단계로 진행한다(취소 시 아무 것도 바뀌지 않음). */}
+      <Dialog open={!!shiftStartPromptShipmentId} onOpenChange={(open) => !open && setShiftStartPromptShipmentId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>운행을 시작하시겠습니까?</DialogTitle>
+            <DialogDescription>운행을 시작한 후 배송완료 처리됩니다.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={isPending} onClick={() => setShiftStartPromptShipmentId(null)}>
+              취소
+            </Button>
+            <Button type="button" disabled={isPending} aria-busy={isPending} onClick={confirmStartShiftAndComplete}>
+              운행 시작 후 배송완료
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* §CPO 운행상태 자동안내 8-2: 서버가 확인해준 "오늘 마지막 배송" 완료 직후에만 뜬다. "나중에"를 선택해도 배송완료 자체는 이미 반영된 상태다. */}
+      <Dialog open={showEndShiftDialog} onOpenChange={setShowEndShiftDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>모든 배송이 완료되었습니다.</DialogTitle>
+            <DialogDescription>운행을 종료하시겠습니까?</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={shiftPending} onClick={() => setShowEndShiftDialog(false)}>
+              나중에
+            </Button>
+            <Button type="button" disabled={shiftPending} aria-busy={shiftPending} onClick={handleEndShift}>
+              운행 종료
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
