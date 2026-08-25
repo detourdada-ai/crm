@@ -68,7 +68,7 @@ export default async function LoginPage({
           <p className="text-center text-sm text-muted-foreground">
             궁금한 점이 있으신가요?{" "}
             <Link href="/#recruit" className="font-medium text-primary hover:underline">
-              사장님 모집에 참여하기
+              베타 신청하기
             </Link>
           </p>
         </CardContent>

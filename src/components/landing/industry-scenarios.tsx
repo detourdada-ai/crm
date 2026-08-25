@@ -4,16 +4,41 @@ import { useState } from "react";
 import { ArrowRight, Salad, UtensilsCrossed, Flower2, Cake, Package, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// 업종별 "이거 우리 가게랑 똑같은데?" 반응을 만드는 게 목적 — 기능 설명이
-// 아니라 각 업종에서 실제로 벌어지는 주문→담당자→처리→완료 흐름을 그대로
-// 보여준다. 배송은 첫 진입점일 뿐, 제품의 본질은 이 공통 운영 구조다.
+// §CPO 랜딩 전면 개편 STEP8: 업종별 "이거 우리 가게랑 똑같은데?" 반응을
+// 만드는 게 목적 — 기능 나열이 아니라 실제 하루에 벌어지는 구체적인 상황을
+// 그대로 보여준다("오늘 주문이 여러 건 들어왔다 → 엑셀로 누적 접수 → ...").
+// 실제 제품이 지원하지 않는 업종별 자동화는 넣지 않는다.
 const INDUSTRIES = [
-  { key: "반찬", icon: Salad, flow: ["주문", "배송준비", "기사 배정", "배송", "완료"] },
-  { key: "도시락", icon: UtensilsCrossed, flow: ["주문", "조리", "포장", "기사 배정", "완료"] },
-  { key: "꽃·화환", icon: Flower2, flow: ["주문", "제작", "담당자 배정", "배송/설치", "완료"] },
-  { key: "케이크·답례품", icon: Cake, flow: ["주문", "제작", "픽업/배송", "담당자 배정", "완료"] },
-  { key: "식품", icon: Package, flow: ["주문", "포장", "담당자 배정", "배송", "완료"] },
-  { key: "기타", icon: MoreHorizontal, flow: ["주문", "준비", "담당자 배정", "처리", "완료"] },
+  {
+    key: "반찬",
+    icon: Salad,
+    flow: ["매일 반복되는 주문", "엑셀로 누적 접수", "이미 접수된 주문 자동 제외", "오늘 배송건만 확인", "기사 배정"],
+  },
+  {
+    key: "도시락",
+    icon: UtensilsCrossed,
+    flow: ["오늘 주문이 여러 건 들어옴", "조리·포장 준비", "배송건 정리", "기사 배정", "완료 확인"],
+  },
+  {
+    key: "꽃·화환",
+    icon: Flower2,
+    flow: ["오늘 주문이 여러 건 들어옴", "고객별 주문 정리", "배송지역별 배정", "기사에게 전달", "완료 확인"],
+  },
+  {
+    key: "케이크·답례품",
+    icon: Cake,
+    flow: ["예약 주문이 쌓임", "제작 일정 확인", "픽업/배송 구분", "담당자 배정", "완료 확인"],
+  },
+  {
+    key: "식품",
+    icon: Package,
+    flow: ["여러 채널로 주문 접수", "포장 목록 정리", "배송건 배정", "기사에게 전달", "완료 확인"],
+  },
+  {
+    key: "기타",
+    icon: MoreHorizontal,
+    flow: ["여러 채널로 주문 접수", "고객·주문 정리", "담당자 배정", "처리", "완료 확인"],
+  },
 ];
 
 export function IndustryScenarios() {

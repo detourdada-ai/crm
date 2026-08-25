@@ -36,7 +36,7 @@ export function SiteFooter() {
               </li>
               <li>
                 <a href="#recruit" className="hover:text-foreground">
-                  사장님 모집
+                  베타 신청
                 </a>
               </li>
               <li>

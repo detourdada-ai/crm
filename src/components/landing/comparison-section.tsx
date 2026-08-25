@@ -1,8 +1,8 @@
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const BEFORE_STEPS = ["주문 확인", "엑셀 정리", "기사별 목록 작성", "카톡 전달", "배송 확인", "완료 체크", "고객 문의 대응"];
-const AFTER_STEPS = ["주문", "담당자 배정", "업무 진행", "완료"];
+const BEFORE_STEPS = ["주문이 여러 곳에서 들어옴", "주문 내용을 따로 정리", "고객·주문 정보가 흩어짐", "배송할 주문을 다시 정리", "기사에게 전달할 정보를 다시 작성"];
+const AFTER_STEPS = ["주문 접수", "고객/주문 정리", "배송 관리", "기사 배송", "배송 완료"];
 
 function StepColumn({ label, tone, steps }: { label: string; tone: "muted" | "primary"; steps: string[] }) {
   return (
@@ -37,13 +37,17 @@ function StepColumn({ label, tone, steps }: { label: string; tone: "muted" | "pr
   );
 }
 
-/** Section 11 — 기능표 대신 실제 업무 절차 자체를 나란히 보여준다. */
+/**
+ * 랜딩 전면 개편(구조안 B): 기존에는 랜딩 후반부 "지금과 비교하면" 섹션이었으나,
+ * 5초 안에 문제→해결을 이해시키는 것이 이번 개편의 핵심이라 Hero 바로 다음으로
+ * 옮겼다 — 기능표 대신 실제 업무 절차 자체를 나란히 보여준다.
+ */
 export function ComparisonSection() {
   return (
     <section className="mx-auto max-w-4xl px-4 py-20 sm:px-6">
       <div className="text-center">
-        <span className="text-xs font-semibold tracking-wide text-primary uppercase">지금과 비교하면</span>
-        <h2 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">한 화면에서 업무가 이어집니다.</h2>
+        <span className="text-xs font-semibold tracking-wide text-primary uppercase">지금 vs 주문:한장</span>
+        <h2 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">흩어진 주문이, 하나의 흐름이 됩니다.</h2>
       </div>
 
       <div className="mt-10 flex flex-col gap-6 sm:flex-row">

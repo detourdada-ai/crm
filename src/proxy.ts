@@ -30,6 +30,12 @@ const ALWAYS_ACCESSIBLE_PATHS = [
   "/twitter-image",
   "/apple-icon",
   "/icon.svg",
+  // §CPO 랜딩 전면 개편 STEP12: 검색엔진 크롤러도 세션 쿠키가 없으므로,
+  // 위 이미지 라우트와 같은 이유로 sitemap.xml/robots.txt를 PUBLIC_PATHS가
+  // 아닌 ALWAYS_ACCESSIBLE_PATHS에 둔다 — 그렇지 않으면 크롤러가 /login으로
+  // 리다이렉트되어 sitemap/robots를 영영 읽지 못한다.
+  "/sitemap.xml",
+  "/robots.txt",
 ];
 
 export function proxy(request: NextRequest) {

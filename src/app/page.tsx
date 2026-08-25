@@ -1,26 +1,25 @@
 import type { Metadata } from "next";
 import { SiteHeader } from "@/components/landing/site-header";
 import { HeroSection } from "@/components/landing/hero-section";
-import { RecruitIntro } from "@/components/landing/recruit-intro";
+import { ComparisonSection } from "@/components/landing/comparison-section";
+import { WhatOrdifyDoes } from "@/components/landing/what-ordify-does";
+import { FeatureShowcase } from "@/components/landing/feature-showcase";
 import { TargetAudience } from "@/components/landing/target-audience";
 import { IndustryScenarios } from "@/components/landing/industry-scenarios";
-import { FlowSection } from "@/components/landing/flow-section";
-import { SmartstorePositioning } from "@/components/landing/smartstore-positioning";
-import { FeatureShowcase } from "@/components/landing/feature-showcase";
-import { ComparisonSection } from "@/components/landing/comparison-section";
 import { FinalCtaSection } from "@/components/landing/final-cta-section";
 import { FaqSection } from "@/components/landing/faq-section";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { getSession } from "@/lib/auth/current-session";
 import { SITE_URL, SITE_NAME, SITE_TITLE, SITE_DESCRIPTION } from "@/lib/constants/site";
 
-// Beta 고객 모집 전환: Landing의 목적이 "가입시키기"에서 "실제 필요한
-// 사업자를 찾고 이야기를 듣는 것"으로 바뀌었다 — 섹션 순서는 Hero(문제
-// 공감) → 모집 인트로 → 대상 명확화 → 업종별 시나리오 → 서비스 설명
-// (주문→담당자→처리→완료) → 스마트스토어 포지셔닝 → 제품 살펴보기 →
-// 기존 방식과 비교 → 모집 CTA(폼) → FAQ 순으로, "5초 안에 내 사업과
-// 관련있는지 판단 → 공감 → 모집 참여"라는 하나의 흐름을 따른다.
-// 실제 고객 인터뷰가 아직 없으므로 허위 후기 섹션은 넣지 않는다.
+// §CPO 랜딩 전면 개편(구조안 B, 2026-08): "기능 나열"이 아니라 "문제 →
+// 해결 → 작동 방식 → 신뢰 → CTA" 흐름으로 재구성 — 섹션 순서는
+// Hero(5초 이해) → Before/After(문제·해결을 최상단 근처로) → 주문한장이
+// 하는 일(주문→고객→배송→기사→완료 개념 흐름) → 실제 제품 화면(기사 앱
+// 신규 포함) → 대상/업종별 시나리오 → Beta CTA(모집 폼) → FAQ 순이다.
+// 이전 구조(모집 인트로를 최상단에 배치, 스마트스토어 전용 포지셔닝
+// 섹션)는 제거하고 각각 Beta CTA 블록/Hero 서브카피로 흡수했다.
+// 실제 고객 후기가 아직 없으므로 허위 후기 섹션은 넣지 않는다.
 //
 // STEP-6: explicitly force-dynamic (never statically cached/prerendered) so
 // a browser or intermediary can never serve a stale snapshot of this page
@@ -79,13 +78,11 @@ export default async function LandingPage() {
       <SiteHeader session={session} />
       <main className="flex-1">
         <HeroSection />
-        <RecruitIntro />
+        <ComparisonSection />
+        <WhatOrdifyDoes />
+        <FeatureShowcase />
         <TargetAudience />
         <IndustryScenarios />
-        <FlowSection />
-        <SmartstorePositioning />
-        <FeatureShowcase />
-        <ComparisonSection />
         <FinalCtaSection />
         <FaqSection />
       </main>

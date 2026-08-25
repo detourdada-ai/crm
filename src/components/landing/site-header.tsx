@@ -43,15 +43,19 @@ export function SiteHeader({ session }: { session: SessionPayload | null }) {
               </Button>
             </>
           ) : (
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/login">로그인</Link>
-            </Button>
+            <>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/login">로그인</Link>
+              </Button>
+              <Button asChild size="sm">
+                <a href="#recruit">베타 신청하기</a>
+              </Button>
+            </>
           )}
         </div>
 
-        {/* Beta 고객 모집 전환: 모바일 우선순위 — 비로그인은 "사장님 모집"
-            참여가 1순위(로그인은 보조), 로그인 상태는 "서비스 가기"가
-            1순위다. */}
+        {/* Beta 고객 모집 전환: 모바일 우선순위 — 비로그인은 "베타 신청"이
+            1순위(로그인은 보조), 로그인 상태는 "서비스 가기"가 1순위다. */}
         <Sheet>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="ml-auto md:hidden">
@@ -94,7 +98,7 @@ export function SiteHeader({ session }: { session: SessionPayload | null }) {
               ) : (
                 <>
                   <Button asChild>
-                    <a href="#recruit">사장님 모집에 참여하기</a>
+                    <a href="#recruit">베타 신청하기</a>
                   </Button>
                   <Button asChild variant="outline">
                     <Link href="/login">로그인</Link>
