@@ -381,11 +381,14 @@ export function MyDeliveriesList({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>운행을 시작하지 않았습니다.</DialogTitle>
-            <DialogDescription>운행을 시작한 후 배송완료 처리할 수 있습니다.</DialogDescription>
+            <DialogDescription>
+              <span className="block">배송완료를 하려면 먼저 운행을 시작해야 합니다.</span>
+              <span className="block">운행을 시작하고 배송완료 처리하시겠습니까?</span>
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={isPending} onClick={() => setShiftStartPromptShipmentId(null)}>
-              취소
+              나중에
             </Button>
             <Button type="button" disabled={isPending} aria-busy={isPending} onClick={confirmStartShiftAndComplete}>
               운행 시작 후 배송완료
@@ -399,14 +402,14 @@ export function MyDeliveriesList({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>마지막 배송이 완료되었습니다.</DialogTitle>
-            <DialogDescription>운행을 종료하시겠습니까?</DialogDescription>
+            <DialogDescription>오늘 배송이 모두 완료되었습니다. 운행을 종료하시겠습니까?</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={shiftPending} onClick={() => setShowEndShiftDialog(false)}>
               나중에
             </Button>
             <Button type="button" disabled={shiftPending} aria-busy={shiftPending} onClick={handleEndShift}>
-              운행 종료
+              운행종료
             </Button>
           </DialogFooter>
         </DialogContent>

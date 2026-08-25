@@ -391,8 +391,8 @@ export async function markDeliveredAction(shipmentId: string, options?: { confir
           shift = await driverShiftsRepository.startShift(driverId, today);
           startedShift = shift;
         } catch {
-          // 운행 시작 자체가 실패하면 배송완료는 절대 진행하지 않는다(§6, 부분 상태변경 금지).
-          return { ok: false, error: "운행 시작 처리에 실패했습니다. 잠시 후 다시 시도해주세요." };
+          // 운행 시작 자체가 실패하면 배송완료는 절대 진행하지 않는다(§7-1, 부분 상태변경 금지).
+          return { ok: false, error: "운행 시작에 실패했습니다. 잠시 후 다시 시도해주세요." };
         }
       }
     }
@@ -400,11 +400,11 @@ export async function markDeliveredAction(shipmentId: string, options?: { confir
     try {
       await orderShipmentsRepository.markDelivered(shipmentId, driverId);
     } catch (e) {
-      // 운행 시작은 이미 정상적으로 기록된 상태이므로 재시도해도 다시 시작시키지 않는다(§7) —
+      // 운행 시작은 이미 정상적으로 기록된 상태이므로 재시도해도 다시 시작시키지 않는다(§7-2) —
       // 다음 호출에서는 shift.started_at이 이미 채워져 있어 이 블록을 타지 않고 배송완료만 재시도된다.
       const error =
         isToday && shift?.started_at
-          ? "운행은 시작되었습니다. 배송완료 처리에 실패했습니다. 다시 시도해주세요."
+          ? "운행은 시작되었지만 배송완료 처리에 실패했습니다. 다시 배송완료를 시도해주세요."
           : toActionError(e, "배송완료 처리 중 오류가 발생했습니다.");
       return { ok: false, error, startedShift };
     }

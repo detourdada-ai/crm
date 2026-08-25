@@ -192,7 +192,7 @@ async function main() {
     const dlg1 = await waitForDialogTitle(page, "운행을 시작하지 않았습니다.");
     record("QA-1b. 운행 전 배송완료 클릭 → 운행시작 확인 팝업 노출", dlg1);
 
-    await page.getByRole("button", { name: "취소", exact: true }).click();
+    await page.getByRole("button", { name: "나중에", exact: true }).click();
     await waitForNoDialog(page);
     const statusAfterCancel = await getShipmentStatus(x1);
     const shiftAfterCancel = await getShift(driverAId);
@@ -247,6 +247,42 @@ async function main() {
     record("QA-2e. Case B 확인 후 정상적으로 운행 재시작 + 배송완료 처리", x1bStatus?.delivery_status === "완료");
 
     // ============================================================
+    // QA-2f/g (§13-D case 3): 화면상 "운행 전"으로 보여도 실제 driver_shift가
+    // 있으면 팝업 없이 바로 배송완료되어야 한다 — 다른 기기에서 이미 운행을
+    // 시작한 뒤 이 화면을 새로고침하지 않은 상황을 mock 없이 재현한다.
+    // ============================================================
+    await resetShiftRow(driverAId);
+    const x1c = await createShipment(`${QA_PREFIX}X1C`, driverAId);
+    await page.reload({ waitUntil: "networkidle" });
+    // "운행 전" 상태의 안내문 자체에 "운행 중에는..."이라는 부분 문자열이 포함돼
+    // 있어(mainText 전체 substring 검사로는 오탐) "운행시작" 버튼 노출 여부로
+    // 정확히 판별한다 — 이 버튼은 shift.started_at이 없을 때만 렌더된다.
+    const startBtn = page.getByRole("button", { name: "운행시작", exact: true });
+    const hasStartButtonBefore = await startBtn.isVisible().catch(() => false);
+    record("QA-2f-pre. 리로드 후 화면에 '운행시작' 버튼 노출(정상 미시작 상태)", hasStartButtonBefore);
+
+    // 다른 기기/세션에서 운행을 시작한 것처럼 실제 shift만 직접 생성한다 — 화면은 새로고침하지 않아 "운행 전"으로 남는다.
+    await admin.from("driver_shifts").insert({ driver_id: driverAId, shift_date: today, started_at: new Date().toISOString() });
+    const hasStartButtonAfter = await startBtn.isVisible().catch(() => false);
+    record("QA-2f. 실제 shift 생성 후에도 화면엔 아직 '운행시작' 버튼(반대 방향 불일치 재현)", hasStartButtonAfter);
+
+    await page.locator(`[data-testid="delivery-card-${x1c}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
+    const noDialogForCase3 = !(await page
+      .getByRole("heading", { name: "운행을 시작하지 않았습니다." })
+      .waitFor({ state: "visible", timeout: 4000 })
+      .then(() => true)
+      .catch(() => false));
+    const x1cStatus = await waitForCondition(
+      () => getShipmentStatus(x1c),
+      (s) => s?.delivery_status === "완료"
+    );
+    record(
+      "QA-2g (§13-D case3). 화면 운행 전이어도 실제 shift 있으면 팝업 없이 바로 배송완료",
+      noDialogForCase3 && x1cStatus?.delivery_status === "완료",
+      JSON.stringify({ noDialogForCase3, x1cStatus })
+    );
+
+    // ============================================================
     // QA-3/QA-4: 운행중 + 일반 배송완료(2건 중 1건) → 팝업 없이 즉시 완료, 종료안내 없음
     // ============================================================
     const x2 = await createShipment(`${QA_PREFIX}X2`, driverAId);
@@ -289,7 +325,7 @@ async function main() {
     await page.reload({ waitUntil: "networkidle" });
     await page.locator(`[data-testid="delivery-card-${x4}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
     await waitForDialogTitle(page, "마지막 배송이 완료되었습니다.");
-    await page.getByRole("button", { name: "운행 종료", exact: true }).click();
+    await page.getByRole("button", { name: "운행종료", exact: true }).click();
     const shiftAfterEnd = await waitForCondition(
       () => getShift(driverAId),
       (s) => !!s?.ended_at
@@ -320,7 +356,7 @@ async function main() {
       dlg8b && x5StatusMid?.delivery_status === "완료" && !!shift8Mid?.started_at && !shift8Mid?.ended_at,
       JSON.stringify({ dlg8b, x5StatusMid, shift8Mid })
     );
-    await page.getByRole("button", { name: "운행 종료", exact: true }).click();
+    await page.getByRole("button", { name: "운행종료", exact: true }).click();
     const shift8Final = await waitForCondition(
       () => getShift(driverAId),
       (s) => !!s?.ended_at
@@ -452,7 +488,7 @@ async function main() {
       const endDlgVisible = await waitForDialogTitle(mpage, "마지막 배송이 완료되었습니다.");
       record(`모바일 ${width}px. 마지막 배송완료 팝업 정상 노출`, endDlgVisible);
       if (endDlgVisible) {
-        await mpage.getByRole("button", { name: "운행 종료", exact: true }).click();
+        await mpage.getByRole("button", { name: "운행종료", exact: true }).click();
       }
       await mctx.close();
     }
