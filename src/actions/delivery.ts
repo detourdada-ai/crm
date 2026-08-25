@@ -340,7 +340,7 @@ export async function listMyDeliveriesAction(date?: string): Promise<OrderShipme
 export interface MarkDeliveredResult extends DeliveryActionState {
   /**
    * true면 아직 아무 것도 처리하지 않았다 — 오늘 배송인데 운행이 아직
-   * 시작되지 않아, 클라이언트가 "운행을 시작하시겠습니까?" 확인을 받은 뒤
+   * 시작되지 않아, 클라이언트가 "운행을 시작하지 않았습니다" 확인을 받은 뒤
    * `confirmStartShift: true`로 재호출해야 한다(§CPO 운행상태 자동안내
    * 작업지시 PART2/4/8-1).
    */
@@ -387,12 +387,27 @@ export async function markDeliveredAction(shipmentId: string, options?: { confir
         return { ok: false, error: null, needsShiftStart: true };
       }
       if (notStarted && options?.confirmStartShift) {
-        shift = await driverShiftsRepository.startShift(driverId, today);
-        startedShift = shift;
+        try {
+          shift = await driverShiftsRepository.startShift(driverId, today);
+          startedShift = shift;
+        } catch {
+          // 운행 시작 자체가 실패하면 배송완료는 절대 진행하지 않는다(§6, 부분 상태변경 금지).
+          return { ok: false, error: "운행 시작 처리에 실패했습니다. 잠시 후 다시 시도해주세요." };
+        }
       }
     }
 
-    await orderShipmentsRepository.markDelivered(shipmentId, driverId);
+    try {
+      await orderShipmentsRepository.markDelivered(shipmentId, driverId);
+    } catch (e) {
+      // 운행 시작은 이미 정상적으로 기록된 상태이므로 재시도해도 다시 시작시키지 않는다(§7) —
+      // 다음 호출에서는 shift.started_at이 이미 채워져 있어 이 블록을 타지 않고 배송완료만 재시도된다.
+      const error =
+        isToday && shift?.started_at
+          ? "운행은 시작되었습니다. 배송완료 처리에 실패했습니다. 다시 시도해주세요."
+          : toActionError(e, "배송완료 처리 중 오류가 발생했습니다.");
+      return { ok: false, error, startedShift };
+    }
     revalidatePath("/driver");
     revalidatePath("/delivery");
     revalidatePath("/orders");

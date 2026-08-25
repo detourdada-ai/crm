@@ -216,7 +216,7 @@ async function run() {
     /**
      * §CPO 운행상태 자동 안내(2026-08 신규): 이 QA의 기사 세션은 오늘 운행을
      * 시작했는지 여부가 매 실행마다 달라질 수 있다 — 운행 전이면 배송완료
-     * 클릭이 곧바로 처리되지 않고 "운행을 시작하시겠습니까?" 확인 팝업만
+     * 클릭이 곧바로 처리되지 않고 "운행을 시작하지 않았습니다." 확인 팝업만
      * 띄운다(아직 아무 것도 안 바뀐 상태). 그 경우 확인해 완료까지 마무리하고,
      * 그 배송이 오늘의 마지막 미완료 건이었다면 이어서 "운행종료" 안내도
      * 뜰 수 있는데 이 QA는 운행종료 시나리오를 별도로 검증하지 않으므로
@@ -230,7 +230,7 @@ async function run() {
       // 때까지 기다려야 한다(driver-shift-completion-flow.ts의
       // waitForDialogTitle과 동일 패턴).
       const needsStart = await page
-        .getByRole("heading", { name: "운행을 시작하시겠습니까?" })
+        .getByRole("heading", { name: "운행을 시작하지 않았습니다." })
         .waitFor({ state: "visible", timeout: 8000 })
         .then(() => true)
         .catch(() => false);
@@ -238,7 +238,7 @@ async function run() {
         await page.getByRole("button", { name: "운행 시작 후 배송완료", exact: true }).click();
       }
       const showsEndPrompt = await page
-        .getByRole("heading", { name: "모든 배송이 완료되었습니다." })
+        .getByRole("heading", { name: "마지막 배송이 완료되었습니다." })
         .waitFor({ state: "visible", timeout: 8000 })
         .then(() => true)
         .catch(() => false);

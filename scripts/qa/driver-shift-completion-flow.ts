@@ -189,7 +189,7 @@ async function main() {
     record("QA-1a. 기사 앱 진입 성공 + X1 노출", text.includes(QA_PREFIX + "X1"));
 
     await page.locator(`[data-testid="delivery-card-${x1}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
-    const dlg1 = await waitForDialogTitle(page, "운행을 시작하시겠습니까?");
+    const dlg1 = await waitForDialogTitle(page, "운행을 시작하지 않았습니다.");
     record("QA-1b. 운행 전 배송완료 클릭 → 운행시작 확인 팝업 노출", dlg1);
 
     await page.getByRole("button", { name: "취소", exact: true }).click();
@@ -206,7 +206,7 @@ async function main() {
     // QA-2: 운행 전 + 배송완료 → 확인 → 운행시작+배송완료 원샷 처리
     // ============================================================
     await page.locator(`[data-testid="delivery-card-${x1}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
-    await waitForDialogTitle(page, "운행을 시작하시겠습니까?");
+    await waitForDialogTitle(page, "운행을 시작하지 않았습니다.");
     await page.getByRole("button", { name: "운행 시작 후 배송완료", exact: true }).click();
     const statusAfterConfirm = await waitForCondition(
       () => getShipmentStatus(x1),
@@ -220,6 +220,33 @@ async function main() {
     );
 
     // ============================================================
+    // QA-2b/c/d (§4 Case B): 화면상 "운행중"으로 보여도 실제 driver_shift
+    // 시작 기록이 없으면 동일한 확인 팝업이 떠야 한다 — 클라이언트 배지가
+    // 아니라 서버가 그 순간 다시 조회한 실제 driver_shifts를 기준으로
+    // 판단하는지 검증한다(mock 없이 진짜 불일치 상태를 만든다).
+    // ============================================================
+    const x1b = await createShipment(`${QA_PREFIX}X1B`, driverAId);
+    await page.reload({ waitUntil: "networkidle" });
+    const runningBadgeBefore = await mainText(page);
+    record("QA-2b-pre. 리로드 후 화면에 '운행 중' 배지 표시(정상 시작 상태)", runningBadgeBefore.includes("운행 중"));
+
+    // 실제 운행 기록만 삭제한다 — 화면(React state)은 새로고침하지 않으므로 여전히 "운행 중"으로 남는다.
+    await resetShiftRow(driverAId);
+    const runningBadgeStale = await mainText(page);
+    record("QA-2c. 실제 기록 삭제 후에도 화면은 아직 '운행 중'(진짜 불일치 상황 재현)", runningBadgeStale.includes("운행 중"));
+
+    await page.locator(`[data-testid="delivery-card-${x1b}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
+    const dlgCaseB = await waitForDialogTitle(page, "운행을 시작하지 않았습니다.");
+    record("QA-2d (§4 Case B). 화면상 운행중이어도 실제 shift 기록 없으면 동일하게 운행시작 안내", dlgCaseB);
+
+    await page.getByRole("button", { name: "운행 시작 후 배송완료", exact: true }).click();
+    const x1bStatus = await waitForCondition(
+      () => getShipmentStatus(x1b),
+      (s) => s?.delivery_status === "완료"
+    );
+    record("QA-2e. Case B 확인 후 정상적으로 운행 재시작 + 배송완료 처리", x1bStatus?.delivery_status === "완료");
+
+    // ============================================================
     // QA-3/QA-4: 운행중 + 일반 배송완료(2건 중 1건) → 팝업 없이 즉시 완료, 종료안내 없음
     // ============================================================
     const x2 = await createShipment(`${QA_PREFIX}X2`, driverAId);
@@ -230,8 +257,8 @@ async function main() {
       () => getShipmentStatus(x2),
       (s) => s?.delivery_status === "완료"
     );
-    const noStartDialog = !(await page.getByRole("heading", { name: "운행을 시작하시겠습니까?" }).isVisible().catch(() => false));
-    const noEndDialog = !(await page.getByRole("heading", { name: "모든 배송이 완료되었습니다." }).isVisible().catch(() => false));
+    const noStartDialog = !(await page.getByRole("heading", { name: "운행을 시작하지 않았습니다." }).isVisible().catch(() => false));
+    const noEndDialog = !(await page.getByRole("heading", { name: "마지막 배송이 완료되었습니다." }).isVisible().catch(() => false));
     record(
       "QA-3/4. 운행중 배송완료(2건 중 1건) → 팝업 없이 즉시 완료 + 종료안내 없음(X3 남음)",
       noStartDialog && noEndDialog && x2Status?.delivery_status === "완료",
@@ -242,7 +269,7 @@ async function main() {
     // QA-5/QA-6: 마지막 배송완료 → 운행종료 안내 → "나중에" → 완료유지+운행중유지
     // ============================================================
     await page.locator(`[data-testid="delivery-card-${x3}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
-    const endDlg = await waitForDialogTitle(page, "모든 배송이 완료되었습니다.");
+    const endDlg = await waitForDialogTitle(page, "마지막 배송이 완료되었습니다.");
     record("QA-5. 마지막(X3) 배송완료 → 운행종료 안내 팝업 노출", endDlg);
 
     await page.getByRole("button", { name: "나중에", exact: true }).click();
@@ -261,7 +288,7 @@ async function main() {
     const x4 = await createShipment(`${QA_PREFIX}X4`, driverAId);
     await page.reload({ waitUntil: "networkidle" });
     await page.locator(`[data-testid="delivery-card-${x4}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
-    await waitForDialogTitle(page, "모든 배송이 완료되었습니다.");
+    await waitForDialogTitle(page, "마지막 배송이 완료되었습니다.");
     await page.getByRole("button", { name: "운행 종료", exact: true }).click();
     const shiftAfterEnd = await waitForCondition(
       () => getShift(driverAId),
@@ -281,11 +308,11 @@ async function main() {
     const x5 = await createShipment(`${QA_PREFIX}X5`, driverAId);
     await page.reload({ waitUntil: "networkidle" });
     await page.locator(`[data-testid="delivery-card-${x5}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
-    const dlg8a = await waitForDialogTitle(page, "운행을 시작하시겠습니까?");
+    const dlg8a = await waitForDialogTitle(page, "운행을 시작하지 않았습니다.");
     record("QA-8a. 운행 전 + 유일한 1건 → 운행시작 확인 팝업", dlg8a);
 
     await page.getByRole("button", { name: "운행 시작 후 배송완료", exact: true }).click();
-    const dlg8b = await waitForDialogTitle(page, "모든 배송이 완료되었습니다.");
+    const dlg8b = await waitForDialogTitle(page, "마지막 배송이 완료되었습니다.");
     const x5StatusMid = await getShipmentStatus(x5);
     const shift8Mid = await getShift(driverAId);
     record(
@@ -311,7 +338,7 @@ async function main() {
     // 이미 완료된 오늘 배송이 있어 "운행 전" 상태는 아니지만(QA-8에서 started_at
     // 남음), 혹시 새 확인 팝업이 떴다면 안전하게 닫는다 — 이번 검증 목적은
     // "중복 처리 여부"이지 팝업 흐름 자체가 아니다.
-    if (await page.getByRole("heading", { name: "운행을 시작하시겠습니까?" }).isVisible().catch(() => false)) {
+    if (await page.getByRole("heading", { name: "운행을 시작하지 않았습니다." }).isVisible().catch(() => false)) {
       await page.getByRole("button", { name: "운행 시작 후 배송완료", exact: true }).click();
     }
     const x6Status = await waitForCondition(
@@ -341,6 +368,49 @@ async function main() {
     const x7StatusUntouched = await getShipmentStatus(x7);
     record("QA-10b. 기사A 배송건 상태는 기사B 접근 시도와 무관하게 그대로(배송중)", x7StatusUntouched?.delivery_status === "배송중");
 
+    // ============================================================
+    // QA-11 (§7): 운행 시작은 성공했지만 배송완료가 실패하는 경우 — mock 없이
+    // 진짜 DB 실패를 재현한다. 확인 팝업이 뜬 뒤 "운행 시작 후 배송완료"를
+    // 누르기 직전, 그 배송건을 관리자가 취소 처리했다고 가정한다(동시성
+    // 상황을 모사). markDelivered는 delivery_status="취소" 건을 절대
+    // 업데이트하지 않으므로(.neq("delivery_status","취소")) 이 시점에 실제로
+    // 실패하며, 이미 성공한 운행 시작은 그대로 남아야 한다(§6/§7 구분).
+    // ============================================================
+    await setSession(context, driverAUsername, "driver");
+    await resetShiftRow(driverAId);
+    const x9 = await createShipment(`${QA_PREFIX}X9`, driverAId);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.locator(`[data-testid="delivery-card-${x9}"]`).getByRole("button", { name: "배송완료", exact: true }).click();
+    await waitForDialogTitle(page, "운행을 시작하지 않았습니다.");
+    await admin.from("order_shipments").update({ delivery_status: "취소" }).eq("id", x9);
+    await page.getByRole("button", { name: "운행 시작 후 배송완료", exact: true }).click();
+    const shiftAfterPartialFail = await waitForCondition(
+      () => getShift(driverAId),
+      (s) => !!s?.started_at
+    );
+    // 요청이 완전히 끝날 때까지(성공/실패 무관) 버튼이 다시 활성화되길 기다린다 — 고정 대기 대신.
+    const x9Btn = page.locator(`[data-testid="delivery-card-${x9}"] button`).first();
+    await waitForCondition(
+      () => x9Btn.isDisabled(),
+      (disabled) => disabled === false
+    );
+    const x9StatusAfterFail = await getShipmentStatus(x9);
+    record(
+      "QA-11 (§7). 운행 시작 성공 + 배송완료 실패 → 운행 시작 상태 유지 + 배송완료로 바뀌지 않음",
+      !!shiftAfterPartialFail?.started_at && x9StatusAfterFail?.delivery_status === "취소",
+      JSON.stringify({ shiftAfterPartialFail, x9StatusAfterFail })
+    );
+    const { count: shiftRowCountAfterPartialFail } = await admin
+      .from("driver_shifts")
+      .select("id", { count: "exact", head: true })
+      .eq("driver_id", driverAId)
+      .eq("shift_date", today);
+    record(
+      "QA-11b. 배송완료 실패에도 운행 재시작(중복 driver_shifts 행) 없음",
+      shiftRowCountAfterPartialFail === 1,
+      JSON.stringify({ shiftRowCountAfterPartialFail })
+    );
+
     await context.close();
 
     // X7은 QA-10 격리 확인용으로 의도적으로 미완료 상태로 남겨뒀다 — 이후
@@ -365,7 +435,7 @@ async function main() {
       record(`모바일 ${width}px. 배송완료 버튼이 뷰포트 안에 잘리지 않음`, !!btnBox && btnBox.x >= 0 && btnBox.x + btnBox.width <= width + 1, JSON.stringify(btnBox));
 
       await completeBtn.click();
-      await waitForDialogTitle(mpage, "운행을 시작하시겠습니까?");
+      await waitForDialogTitle(mpage, "운행을 시작하지 않았습니다.");
       const dialogBox = await mpage.locator('[data-slot="dialog-content"]').boundingBox();
       record(
         `모바일 ${width}px. 운행시작 확인 팝업이 화면 안에 들어옴(잘리지 않음)`,
@@ -379,7 +449,7 @@ async function main() {
       record(`모바일 ${width}px. 확인 버튼 터치 영역 충분(높이>=30px, 앱 표준 버튼 크기)`, !!confirmBox && confirmBox.height >= 30, JSON.stringify(confirmBox));
 
       await confirmBtn.click();
-      const endDlgVisible = await waitForDialogTitle(mpage, "모든 배송이 완료되었습니다.");
+      const endDlgVisible = await waitForDialogTitle(mpage, "마지막 배송이 완료되었습니다.");
       record(`모바일 ${width}px. 마지막 배송완료 팝업 정상 노출`, endDlgVisible);
       if (endDlgVisible) {
         await mpage.getByRole("button", { name: "운행 종료", exact: true }).click();

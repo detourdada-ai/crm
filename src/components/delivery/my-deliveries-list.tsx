@@ -170,15 +170,17 @@ export function MyDeliveriesList({
         setPendingShipmentId(null);
         return;
       }
+      // 운행 시작은 성공했으나 배송완료가 실패한 경우에도 서버가 startedShift를 돌려준다 —
+      // 재시도 시 운행 시작을 다시 실행하지 않도록 로컬 상태를 먼저 서버값으로 동기화한다(§7).
+      if (result.startedShift) {
+        setShift(result.startedShift);
+      }
       if (!result.ok) {
         toast.error(result.error ?? "처리 중 오류가 발생했습니다.");
         setPendingShipmentId(null);
         return;
       }
       setOrders((prev) => prev.map((o) => (o.rowKey === shipmentId ? { ...o, delivery_status: "완료" as const } : o)));
-      if (result.startedShift) {
-        setShift(result.startedShift);
-      }
       toast.success("배송완료로 처리했습니다.");
       // "마지막 배송" 여부는 서버가 그 시점에 다시 조회한 실제 남은 배송건
       // 전체 기준으로 판단한 값이다 — 화면 상태로 재계산하지 않는다(PART5).
@@ -378,8 +380,8 @@ export function MyDeliveriesList({
       <Dialog open={!!shiftStartPromptShipmentId} onOpenChange={(open) => !open && setShiftStartPromptShipmentId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>운행을 시작하시겠습니까?</DialogTitle>
-            <DialogDescription>운행을 시작한 후 배송완료 처리됩니다.</DialogDescription>
+            <DialogTitle>운행을 시작하지 않았습니다.</DialogTitle>
+            <DialogDescription>운행을 시작한 후 배송완료 처리할 수 있습니다.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={isPending} onClick={() => setShiftStartPromptShipmentId(null)}>
@@ -396,7 +398,7 @@ export function MyDeliveriesList({
       <Dialog open={showEndShiftDialog} onOpenChange={setShowEndShiftDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>모든 배송이 완료되었습니다.</DialogTitle>
+            <DialogTitle>마지막 배송이 완료되었습니다.</DialogTitle>
             <DialogDescription>운행을 종료하시겠습니까?</DialogDescription>
           </DialogHeader>
           <DialogFooter>
