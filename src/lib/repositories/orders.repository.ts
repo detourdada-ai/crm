@@ -249,6 +249,31 @@ export const ordersRepository = {
     return found;
   },
 
+  /**
+   * §CPO 작업지시(누적 표준 엑셀 중복방지): 주문번호가 없는 업로드 행의 중복
+   * 판정용 후보 풀 — tenant 범위 안에서 phone_snapshot이 일치하는 주문만
+   * 가져온다(§17 tenant 격리). 취소된 주문은 "더 이상 유효하지 않은 주문"이라
+   * 재업로드를 막을 이유가 없으므로 후보에서 제외한다 — 이 판단은 CTO
+   * 재량으로 최종보고서에 명시한다.
+   */
+  async findByPhonesForDedup(tenantId: string, phones: string[]): Promise<Order[]> {
+    if (phones.length === 0) return [];
+    const CHUNK_SIZE = 300;
+    const result: Order[] = [];
+    for (let i = 0; i < phones.length; i += CHUNK_SIZE) {
+      const chunk = phones.slice(i, i + CHUNK_SIZE);
+      const { data, error } = await getSupabaseAdmin()
+        .from("orders")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .in("phone_snapshot", chunk)
+        .neq("delivery_status", "취소");
+      if (error) throw error;
+      result.push(...((data as Order[]) ?? []));
+    }
+    return result;
+  },
+
   async findByCustomerId(customerId: string): Promise<Order[]> {
     const { data, error } = await getSupabaseAdmin()
       .from("orders")

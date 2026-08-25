@@ -98,3 +98,40 @@ export interface ColumnMappingResult {
   unmapped: MappableField[]; // required fields the auto-mapper could not resolve
   unrecognizedHeaders: string[]; // source headers that didn't match any known field
 }
+
+/**
+ * §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08): Analyze 직후 실행하는 중복
+ * 판정 결과 — DB에 아무 것도 쓰지 않는다(§13). "new"는 등록 대상, "confirmed_duplicate"는
+ * 이미 등록된 주문이라 자동 제외, "candidate"는 애매해서 사용자 확인이 필요,
+ * "error"는 이미 다른 계정이 쓰고 있는 주문번호 등 등록 자체가 불가능한 행.
+ */
+export type DedupStatus = "new" | "confirmed_duplicate" | "candidate" | "error";
+
+export interface DedupOrderSnapshot {
+  orderNumber: string | null;
+  recipientName: string;
+  phone: string | null;
+  address: string | null;
+  deliveryDate: string | null; // ISO
+  productSummary: string; // "상품명(옵션) x수량" 형태의 표시용 요약
+  deliveryStatus?: string; // 기존 주문에서만 채워짐(배차/배송중/완료 등 보호 대상 표시용)
+}
+
+export interface DedupGroupResult {
+  /** import.service.ts의 groupKey와 동일한 값(주문번호, 또는 "__no_order_number_{index}") — Confirm 시 승인 목록과 연결하는 키. */
+  groupKey: string;
+  status: DedupStatus;
+  reason: string;
+  upload: DedupOrderSnapshot;
+  /** confirmed_duplicate/candidate일 때만 존재 — 비교 대상 기존 주문. */
+  existing?: DedupOrderSnapshot;
+}
+
+export interface DedupAnalysis {
+  totalGroups: number;
+  newCount: number;
+  confirmedDuplicateCount: number;
+  candidateCount: number;
+  errorCount: number;
+  groups: DedupGroupResult[];
+}

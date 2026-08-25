@@ -5,6 +5,7 @@ import { ExcelParseError, parseSpreadsheet } from "@/lib/services/excel-parser.s
 import { autoMapColumns } from "@/lib/services/column-mapping.service";
 import { getSavedColumnMapping, saveColumnMapping } from "@/lib/services/import-mapping-settings.service";
 import { runImport, deleteImport, deleteAllImports } from "@/lib/services/import.service";
+import { classifyDuplicates } from "@/lib/services/import-dedup.service";
 import { importsRepository } from "@/lib/repositories/imports.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { orderShipmentsRepository } from "@/lib/repositories/order-shipments.repository";
@@ -12,7 +13,7 @@ import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
-import type { ColumnMapping, MappableField, ParsedSheet } from "@/types/excel";
+import type { ColumnMapping, MappableField, ParsedSheet, DedupAnalysis } from "@/types/excel";
 import type { ImportRecord, ImportSummary, ImportRowError } from "@/types/domain";
 
 export interface AnalyzeImportResult {
@@ -49,6 +50,34 @@ export async function analyzeImportFileAction(
   }
 }
 
+export interface AnalyzeDuplicatesResult {
+  ok: true;
+  analysis: DedupAnalysis;
+}
+export interface AnalyzeDuplicatesError {
+  ok: false;
+  error: string;
+}
+
+/**
+ * §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08): 컬럼 매핑 확정 직후,
+ * 실제 등록(Confirm) 전에 호출한다 — DB에 아무 것도 쓰지 않는다(§13 Analyze
+ * 단계 원칙). 결과는 사용자가 검토 화면에서 신규/이미등록/확인필요를
+ * 구분해서 볼 수 있도록 그대로 돌려준다.
+ */
+export async function analyzeDuplicatesAction(
+  parsed: ParsedSheet,
+  mapping: ColumnMapping
+): Promise<AnalyzeDuplicatesResult | AnalyzeDuplicatesError> {
+  try {
+    const session = await requireSession();
+    const analysis = await classifyDuplicates({ parsed, mapping, ownerUsername: session.username });
+    return { ok: true, analysis };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "중복 확인 중 오류가 발생했습니다.") };
+  }
+}
+
 export interface ConfirmImportResult {
   ok: true;
   importId: string;
@@ -63,11 +92,18 @@ export interface ConfirmImportError {
 export async function confirmImportAction(
   fileName: string,
   parsed: ParsedSheet,
-  mapping: ColumnMapping
+  mapping: ColumnMapping,
+  approvedCandidateGroupKeys?: string[]
 ): Promise<ConfirmImportResult | ConfirmImportError> {
   try {
     const session = await requireSession();
-    const { importId, summary, errors } = await runImport({ fileName, parsed, mapping, ownerUsername: session.username });
+    const { importId, summary, errors } = await runImport({
+      fileName,
+      parsed,
+      mapping,
+      ownerUsername: session.username,
+      approvedCandidateGroupKeys,
+    });
     // STD-4: 다음 업로드부터 같은 헤더는 자동매핑되도록 저장 — import는 이미
     // 끝났으므로 저장 실패로 이번 확정 자체를 실패시키지 않는다(best-effort).
     saveColumnMapping(session.username, mapping).catch(() => {});

@@ -15,13 +15,28 @@ import { geocodeBatch, type GeocodeFields } from "@/lib/services/geocoding.servi
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { kstDayDateStrOf } from "@/lib/utils/kst-date";
 import type { ParsedSheet, ColumnMapping } from "@/types/excel";
-import type { Customer, ImportRowError, ImportSummary } from "@/types/domain";
+import type { Customer, ImportRowError, ImportSummary, Order, OrderItem } from "@/types/domain";
+
+// 주문번호가 없는 행은 다른 행과 묶일 근거가 없어 행 하나만으로 독립된
+// 주문 1건이 된다(§19 CPO 원칙: 1행=1주문=1상품) — import-dedup.service.ts가
+// analyze 단계에서도 동일한 groupKey 포맷을 재현해야 Confirm 시 재검증과
+// 정확히 대응되므로 export한다.
+export const NO_ORDER_NUMBER_PREFIX = "__no_order_number_";
 
 export interface RunImportInput {
   fileName: string;
   parsed: ParsedSheet;
   mapping: ColumnMapping;
   ownerUsername: string;
+  /**
+   * §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08): Analyze 단계에서
+   * 사용자가 "이번 주문으로 등록"을 선택한 중복 후보 그룹의 groupKey 목록.
+   * Confirm 시점에 서버가 중복 여부를 다시 계산하므로(§14/§15, 브라우저
+   * 판단을 신뢰하지 않음), 이 목록은 "그때 후보였던 걸 지금도 후보이거나
+   * 신규라면 등록해도 된다"는 승인 의사만 전달한다 — 재검증 결과 확정
+   * 중복으로 바뀌었다면 승인 여부와 무관하게 등록하지 않는다.
+   */
+  approvedCandidateGroupKeys?: string[];
 }
 
 export interface RunImportResult {
@@ -30,7 +45,7 @@ export interface RunImportResult {
   errors: ImportRowError[];
 }
 
-function getMapped(row: Record<string, unknown>, mapping: ColumnMapping, field: string): unknown {
+export function getMapped(row: Record<string, unknown>, mapping: ColumnMapping, field: string): unknown {
   const header = mapping[field];
   if (!header) return null;
   return row[header];
@@ -60,12 +75,12 @@ function errorMessageOf(e: unknown): string {
   return "알 수 없는 오류";
 }
 
-function cellToString(value: unknown): string {
+export function cellToString(value: unknown): string {
   if (value == null) return "";
   return String(value).trim();
 }
 
-function parseNumber(value: unknown): number {
+export function parseNumber(value: unknown): number {
   if (value == null) return 0;
   if (typeof value === "number") return value;
   const cleaned = String(value).replace(/[^0-9.-]/g, "");
@@ -73,7 +88,7 @@ function parseNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function parseOrderDate(value: unknown): string {
+export function parseOrderDate(value: unknown): string {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
   if (typeof value === "string" && value.trim()) {
     const d = new Date(value);
@@ -82,7 +97,7 @@ function parseOrderDate(value: unknown): string {
   return new Date().toISOString();
 }
 
-function parseOptionalDate(value: unknown): string | null {
+export function parseOptionalDate(value: unknown): string | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
   if (typeof value === "string" && value.trim()) {
     const d = new Date(value);
@@ -232,7 +247,14 @@ class CustomerPoolIndex {
  * CustomerPoolIndex above. Matching/dedup RULES are byte-for-byte identical
  * to before; only how the data backing them is fetched changed.
  */
-export async function runImport({ fileName, parsed, mapping, ownerUsername }: RunImportInput): Promise<RunImportResult> {
+export async function runImport({
+  fileName,
+  parsed,
+  mapping,
+  ownerUsername,
+  approvedCandidateGroupKeys,
+}: RunImportInput): Promise<RunImportResult> {
+  const approvedGroupKeys = new Set(approvedCandidateGroupKeys ?? []);
   const tenant = await tenantsRepository.findByUsername(ownerUsername);
   if (!tenant) throw new Error(`No tenant membership found for account "${ownerUsername}".`);
 
@@ -259,6 +281,11 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   // 불가·처리 예외)를 각각 추적한다.
   let alreadyImportedRows = 0;
   let alreadyImportedOrders = 0;
+  // §CPO 작업지시(누적 표준 엑셀 중복방지): 주문번호 없는 그룹 중 "중복
+  // 가능성"으로 분류됐지만 사용자가 승인하지 않아 건너뛴 건수(§24 자동 제외
+  // 투명성 — successRows/alreadyImportedRows와 분리해서 별도로 센다).
+  let candidateSkippedRows = 0;
+  let candidateSkippedOrders = 0;
   let failedRowCount = 0;
   // CPO 정책(2026-08): 업로드 결과 화면에 "배송일 미지정 N건 → 일괄 지정"을
   // 보여주기 위한 카운터 — 주문(그룹) 단위로 센다(행 단위 아님).
@@ -272,7 +299,6 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   // 주문 1건을 만든다(스마트스토어처럼 여러 줄이 한 주문번호를 공유하는
   // 케이스는 order_number가 있을 때만 발생). orders.order_number는 NULL
   // 다건을 허용하므로(0004 스키마 주석 참고) DB 제약과도 충돌하지 않는다.
-  const NO_ORDER_NUMBER_PREFIX = "__no_order_number_";
   // 그룹마다 "몇 번째 원본 행부터 시작하는지"를 같이 들고 있어야 오류 메시지의
   // 행 번호(row:0 버그)를 실제 엑셀 행으로 채울 수 있다.
   const groups = new Map<string, { row: Record<string, unknown>; index: number }[]>();
@@ -283,6 +309,16 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
     list.push({ row, index });
     groups.set(groupKey, list);
   });
+  // §CPO 작업지시(누적 표준 엑셀 중복방지): 주문번호 없는 그룹의 전화번호를
+  // 미리 모아 Phase 1에서 한 번에 "중복 판정용 후보 풀"을 조회한다(건마다
+  // DB 왕복하지 않는 기존 배치 원칙과 동일).
+  const noOrderNumberPhones = new Set<string>();
+  for (const [key, entries] of groups) {
+    if (!key.startsWith(NO_ORDER_NUMBER_PREFIX)) continue;
+    const rawPhone = cellToString(getMapped(entries[0].row, mapping, "phone"));
+    const formatted = formatPhoneNumber(rawPhone);
+    if (formatted) noOrderNumberPhones.add(formatted);
+  }
   // CPO 정책(2026-08): "주문번호 없는 행은 각각 별도 주문으로 등록됩니다"를
   // 업로드 결과 화면에 명시하기 위한 카운트 — 자동 그룹핑 로직 자체는
   // 바꾸지 않는다(주문번호 있으면 그대로 묶이고, 없으면 그대로 행 단위).
@@ -315,16 +351,28 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
   let currentStage: "배치 조회" | "고객/주문 생성" | "좌표 처리" | "주문번호 채번" | "DB 저장" = "배치 조회";
 
   let crossTenantConflicts: Set<string>;
+  // §CPO 작업지시(누적 표준 엑셀 중복방지): 주문번호 없는 그룹의 확정중복/
+  // 후보 판정에 쓰는 후보 풀 — Phase 1에서 한 번만 조회한다.
+  let dedupCandidateOrders: Order[];
+  let dedupCandidateItemsByOrderId: Map<string, OrderItem[]>;
   try {
     // ---------- Phase 1: batch-fetch everything the per-row logic used to query individually ----------
     let ownerCustomers: Customer[];
     let globallyExistingOrderNumbers: Set<string>;
     const realGroupKeys = Array.from(groups.keys()).filter((k) => !k.startsWith(NO_ORDER_NUMBER_PREFIX));
-    [existingOrderNumbers, globallyExistingOrderNumbers, ownerCustomers] = await Promise.all([
+    [existingOrderNumbers, globallyExistingOrderNumbers, ownerCustomers, dedupCandidateOrders] = await Promise.all([
       ordersRepository.findExistingOrderNumbers(realGroupKeys, tenant.id),
       ordersRepository.findGloballyExistingOrderNumbers(realGroupKeys),
       customersRepository.findAllByOwner(ownerUsername),
+      ordersRepository.findByPhonesForDedup(tenant.id, [...noOrderNumberPhones]),
     ]);
+    const dedupCandidateItems = await ordersRepository.findItemsByOrderIds(dedupCandidateOrders.map((o) => o.id));
+    dedupCandidateItemsByOrderId = new Map();
+    for (const item of dedupCandidateItems) {
+      const list = dedupCandidateItemsByOrderId.get(item.order_id) ?? [];
+      list.push(item);
+      dedupCandidateItemsByOrderId.set(item.order_id, list);
+    }
     // 베타 런칭 전 핵심 시나리오 최종 정리 PART 9-11: orders.order_number는
     // tenant 무관 전역 UNIQUE라, 이 테넌트에는 없지만(existingOrderNumbers
     // 밖) 다른 테넌트에는 이미 있는(globallyExistingOrderNumbers 안) 번호는
@@ -545,6 +593,49 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       // 별개다(orders 컬럼은 이번 스프린트에서 삭제하지 않는다).
       const deliveryDate = itemDeliveryDates.find((d) => d !== null) ?? explicitDeliveryDate ?? null;
       if (!deliveryDate) missingDeliveryDateOrderCount += 1;
+
+      // §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08): 주문번호가 있는 그룹은
+      // 이미 위(existingOrderNumbers)에서 확정중복 처리됐다 — 여기서는 주문번호가
+      // 없는 그룹만 다룬다. Confirm 직전 서버 재검증(§14/§15) 원칙에 따라 Analyze
+      // 단계(import-dedup.service.ts)와 동일한 규칙을 여기서도 다시 계산한다:
+      // 고객(전화+이름+정규화주소 완전일치) + 배송일이 같은 기존 주문이 있고,
+      // 그중 상품명/옵션/수량까지 정확히 같은 게 있으면 확정중복(등록 안 함),
+      // 없으면 중복 후보(사용자가 승인한 경우에만 등록).
+      if (!hasRealOrderNumber) {
+        const matchedOrders = dedupCandidateOrders.filter(
+          (o) =>
+            o.phone_snapshot === phone &&
+            o.recipient_name === name &&
+            normalizeAddressForCompare(o.address_snapshot) === addressNormalized &&
+            !!o.delivery_date &&
+            !!deliveryDate &&
+            kstDayDateStrOf(o.delivery_date) === kstDayDateStrOf(deliveryDate)
+        );
+        if (matchedOrders.length > 0) {
+          const uploadItem = items[0]; // 주문번호 없는 행은 1행=1주문=1상품(§19)
+          const exactItemMatch = matchedOrders.some((o) =>
+            (dedupCandidateItemsByOrderId.get(o.id) ?? []).some(
+              (it) =>
+                it.product_name === uploadItem.product_name &&
+                it.option_name === uploadItem.option_name &&
+                it.quantity === uploadItem.quantity
+            )
+          );
+          if (exactItemMatch) {
+            successRows += rows.length;
+            alreadyImportedRows += rows.length;
+            alreadyImportedOrders += 1;
+            continue;
+          }
+          if (!approvedGroupKeys.has(groupKey)) {
+            candidateSkippedRows += rows.length;
+            candidateSkippedOrders += 1;
+            continue;
+          }
+          // 사용자가 승인한 후보 — 아래로 통과해 신규 주문처럼 등록한다.
+        }
+      }
+
       const deliveryArea = items
         .map((item) => parseDeliveryAreaFromOption(item.option_name))
         .find((a) => a !== null) ?? null;
@@ -778,6 +869,8 @@ export async function runImport({ fileName, parsed, mapping, ownerUsername }: Ru
       geocodeFailed,
       rowsWithoutOrderNumber,
       missingDeliveryDateOrders: missingDeliveryDateOrderCount,
+      candidateSkippedRows,
+      candidateSkippedOrders,
     },
     errors,
   };

@@ -104,6 +104,11 @@ export function ImportResultCards({
             주문번호가 없는 {summary.rowsWithoutOrderNumber.toLocaleString()}개 행은 각각 별도 주문으로 등록되었습니다.
           </p>
         ) : null}
+        {summary.candidateSkippedOrders > 0 ? (
+          <p className="text-xs text-warning">
+            중복 가능성이 있어 등록하지 않은 주문 {summary.candidateSkippedOrders.toLocaleString()}건이 있습니다(검토 화면에서 승인하지 않은 후보).
+          </p>
+        ) : null}
 
         {missingCount > 0 ? (
           <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3">

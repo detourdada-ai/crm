@@ -3,11 +3,12 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { analyzeImportFileAction, confirmImportAction } from "@/actions/import";
-import type { ColumnMapping, MappableField, ParsedSheet } from "@/types/excel";
+import { analyzeImportFileAction, analyzeDuplicatesAction, confirmImportAction } from "@/actions/import";
+import type { ColumnMapping, MappableField, ParsedSheet, DedupAnalysis } from "@/types/excel";
 import type { ImportSummary, ImportRowError } from "@/types/domain";
 import { ImportDropzone } from "./import-dropzone";
 import { ColumnMappingForm } from "./column-mapping-form";
+import { DedupReview } from "./dedup-review";
 import { ImportResultCards } from "./import-result-cards";
 import { LoadingOverlay } from "@/components/common/loading-overlay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,14 +24,16 @@ type Stage =
       unmapped: MappableField[];
       unrecognizedHeaders: string[];
     }
+  | { step: "review"; fileName: string; parsed: ParsedSheet; mapping: ColumnMapping; analysis: DedupAnalysis }
   | { step: "done"; importId: string; summary: ImportSummary; errors: ImportRowError[] };
 
 export function ImportWorkspace() {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>({ step: "idle" });
   const [isAnalyzing, startAnalyzing] = useTransition();
+  const [isCheckingDuplicates, startCheckingDuplicates] = useTransition();
   const [isConfirming, startConfirming] = useTransition();
-  const isBusy = isAnalyzing || isConfirming;
+  const isBusy = isAnalyzing || isCheckingDuplicates || isConfirming;
 
   // Guard against the user navigating away or refreshing mid-upload — this
   // is exactly how a duplicate registration happened before (no feedback
@@ -73,10 +76,26 @@ export function ImportWorkspace() {
     });
   }
 
-  function handleConfirm(mapping: ColumnMapping) {
+  // §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08): 컬럼 매핑 확정 →
+  // 즉시 등록이 아니라 중복 분석(읽기 전용)을 먼저 거친다. 사용자가 검토
+  // 화면에서 확인한 뒤에만 실제 등록(handleFinalConfirm)이 실행된다.
+  function handleCheckDuplicates(mapping: ColumnMapping) {
     if (stage.step !== "mapping") return;
+    const { fileName, parsed } = stage;
+    startCheckingDuplicates(async () => {
+      const result = await analyzeDuplicatesAction(parsed, mapping);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      setStage({ step: "review", fileName, parsed, mapping, analysis: result.analysis });
+    });
+  }
+
+  function handleFinalConfirm(approvedCandidateGroupKeys: string[]) {
+    if (stage.step !== "review") return;
     startConfirming(async () => {
-      const result = await confirmImportAction(stage.fileName, stage.parsed, mapping);
+      const result = await confirmImportAction(stage.fileName, stage.parsed, stage.mapping, approvedCandidateGroupKeys);
       if (!result.ok) {
         toast.error(result.error);
         return;
@@ -91,8 +110,10 @@ export function ImportWorkspace() {
     <>
       {isBusy ? (
         <LoadingOverlay
-          message={isAnalyzing ? "파일을 확인하고 있습니다..." : "엑셀 주문을 처리하고 있습니다..."}
-          hint={isAnalyzing ? undefined : "파일 크기에 따라 시간이 걸릴 수 있습니다."}
+          message={
+            isAnalyzing ? "파일을 확인하고 있습니다..." : isCheckingDuplicates ? "중복 여부를 확인하고 있습니다..." : "엑셀 주문을 처리하고 있습니다..."
+          }
+          hint={isConfirming ? "파일 크기에 따라 시간이 걸릴 수 있습니다." : undefined}
         />
       ) : null}
       {stage.step === "done" ? (
@@ -102,6 +123,8 @@ export function ImportWorkspace() {
             다른 파일 업로드
           </Button>
         </div>
+      ) : stage.step === "review" ? (
+        <DedupReview analysis={stage.analysis} onConfirm={handleFinalConfirm} isSubmitting={isConfirming} />
       ) : stage.step === "mapping" ? (
         <Card>
           <CardHeader>
@@ -114,8 +137,8 @@ export function ImportWorkspace() {
               initialMapping={stage.mapping}
               initialUnmapped={stage.unmapped}
               unrecognizedHeaders={stage.unrecognizedHeaders}
-              onConfirm={handleConfirm}
-              isSubmitting={isConfirming}
+              onConfirm={handleCheckDuplicates}
+              isSubmitting={isCheckingDuplicates}
             />
           </CardContent>
         </Card>

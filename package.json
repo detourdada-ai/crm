@@ -11,7 +11,8 @@
     "qa:account-management": "tsx scripts/qa/account-management.ts",
     "qa:beta": "tsx scripts/qa/beta-flow.ts",
     "qa:delivery-region": "tsx scripts/qa/region-filter-flow.ts",
-    "qa:driver-shift": "tsx scripts/qa/driver-shift-completion-flow.ts"
+    "qa:driver-shift": "tsx scripts/qa/driver-shift-completion-flow.ts",
+    "qa:import-dedup": "tsx scripts/qa/import-dedup-flow.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
