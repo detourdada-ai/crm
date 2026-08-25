@@ -9,7 +9,8 @@
     "lint": "eslint",
     "qa:delivery": "tsx scripts/qa/delivery-flow.ts",
     "qa:account-management": "tsx scripts/qa/account-management.ts",
-    "qa:beta": "tsx scripts/qa/beta-flow.ts"
+    "qa:beta": "tsx scripts/qa/beta-flow.ts",
+    "qa:delivery-region": "tsx scripts/qa/region-filter-flow.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
