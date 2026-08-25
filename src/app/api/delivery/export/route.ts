@@ -6,9 +6,9 @@ import { isValidDateString } from "@/lib/utils/date";
 import { kstTodayIso, resolveKstQuickRange, isQuickDateFilter, type QuickDateFilterValue } from "@/lib/utils/kst-date";
 import { digitsOnly } from "@/lib/utils/phone";
 import { filterOrdersByDriver } from "@/lib/utils/delivery-driver-filter";
+import { filterOrdersBySigungu } from "@/lib/utils/delivery-region-filter";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
-const UNGROUPED_SENTINEL = "__ungrouped__";
 const EXPORT_MAX_ROWS = 5000;
 
 function isDeliveryFilter(value: string | null): value is "unassigned" | "assigned" | "배송중" | "완료" {
@@ -18,8 +18,9 @@ function isDeliveryFilter(value: string | null): value is "unassigned" | "assign
 /**
  * S2-C STEP6: 배송관리(/delivery) 화면과 정확히 같은 조회+필터 조건으로
  * Excel을 만든다. delivery/page.tsx의 날짜 해석과 q/상태 필터,
- * DeliveryFilterStack의 group/driverFilter 필터 로직을 그대로 복제한다 —
- * 그 중 하나만 바뀌면 "화면=엑셀"이 깨지므로 수정 시 함께 맞춰야 한다.
+ * DeliveryFilterStack의 region(멀티, sigungu)/driverFilter 필터 로직을
+ * 그대로 복제한다 — 그 중 하나만 바뀌면 "화면=엑셀"이 깨지므로 수정 시
+ * 함께 맞춰야 한다.
  */
 export async function GET(request: NextRequest) {
   await requireSession();
@@ -66,10 +67,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const group = params.get("group");
-  if (group) {
-    orders = group === UNGROUPED_SENTINEL ? orders.filter((o) => !o.delivery_group_id) : orders.filter((o) => o.delivery_group_id === group);
-  }
+  orders = filterOrdersBySigungu(orders, params.getAll("region"));
 
   orders = filterOrdersByDriver(orders, params.get("driverFilter"));
 

@@ -55,13 +55,16 @@ export default async function DeliveryPage({
     dateTo?: string;
     q?: string;
     filter?: string;
-    group?: string;
+    region?: string | string[];
     driverFilter?: string;
     product?: string;
   }>;
 }) {
   const params = await searchParams;
   const today = kstTodayIso();
+  // 배송목록 필터 UX 개편: region은 같은 key가 여러 번 실릴 수 있는(멀티선택)
+  // param이라 Next.js가 string | string[] | undefined로 준다 — 항상 배열로 정규화.
+  const activeRegions = Array.isArray(params.region) ? params.region : params.region ? [params.region] : [];
 
   // Phase 4-B STEP8: 배송일 빠른 필터(전체/오늘/이번주/이번달/기간선택) —
   // Orders와 동일 패턴. 기본값은 "오늘"(배송관리는 원래 오늘 업무 화면이므로
@@ -111,8 +114,8 @@ export default async function DeliveryPage({
   const accountUsernames = accounts.filter((a) => a.role !== "driver").map((a) => a.username);
 
   // 검색은 이미 불러온 목록 위에서 필터링한다 — 신규 DB 쿼리 조건을 늘리지
-  // 않고 최소 범위로 구현(Phase 4-B STEP13 원칙). 담당기사 필터는 배송그룹
-  // 필터와 함께 DeliveryFilterStack이 한 곳에서 처리한다(§핵심 UX 재설계).
+  // 않고 최소 범위로 구현(Phase 4-B STEP13 원칙). 지역(sigungu) 필터는
+  // DeliveryFilterStack이 한 곳에서 처리한다(배송목록 필터 UX 개편).
   let orders = fetchedOrders;
   if (params.q?.trim()) {
     const q = params.q.trim().toLowerCase();
@@ -174,10 +177,9 @@ export default async function DeliveryPage({
 
   const visibleOrders = filterOrders(orders);
 
-  // 배송그룹 필터(그룹 URL param)는 DeliveryBoard가 client에서 자체적으로
-  // 적용한다(§6 설명) — 여기서는 그룹 select/카드에 쓸 라벨·건수만
-  // 계산한다. driverCounts는 검색/기사 필터와 무관하게 "오늘 전체" 기준이어야
-  // 하므로 좁혀지기 전인 fetchedOrders에서 뽑는다.
+  // 지역(sigungu) 필터는 DeliveryFilterStack이 client에서 자체적으로
+  // 적용한다(§6 설명). driverCounts는 검색/지역 필터와 무관하게 "오늘 전체"
+  // 기준이어야 하므로 좁혀지기 전인 fetchedOrders에서 뽑는다.
   const driverCounts: Record<string, number> = {};
   for (const o of fetchedOrders) {
     if (o.driver_id) driverCounts[o.driver_id] = (driverCounts[o.driver_id] ?? 0) + 1;
@@ -189,7 +191,7 @@ export default async function DeliveryPage({
     if (params.dateFrom) search.set("dateFrom", params.dateFrom);
     if (params.dateTo) search.set("dateTo", params.dateTo);
     if (params.q) search.set("q", params.q);
-    if (params.group) search.set("group", params.group);
+    for (const r of activeRegions) search.append("region", r);
     if (params.driverFilter) search.set("driverFilter", params.driverFilter);
     if (params.product) search.set("product", params.product);
     // 기본값이 "배정필요"로 바뀌었으므로, 그 값으로 이동할 때만 filter
@@ -209,7 +211,7 @@ export default async function DeliveryPage({
     if (params.dateFrom) search.set("dateFrom", params.dateFrom);
     if (params.dateTo) search.set("dateTo", params.dateTo);
     if (params.q) search.set("q", params.q);
-    if (params.group) search.set("group", params.group);
+    for (const r of activeRegions) search.append("region", r);
     if (params.driverFilter) search.set("driverFilter", params.driverFilter);
     if (activeFilter !== "all") search.set("filter", activeFilter);
     if (params.product) search.set("product", params.product);
@@ -277,7 +279,6 @@ export default async function DeliveryPage({
               orders={visibleOrders}
               drivers={drivers}
               groups={groupResult?.groups ?? []}
-              showGroupFilter={isSingleDay}
               statusLabel={STATUS_LABELS[activeFilter]}
               itemSummaries={itemSummaries}
               bagManagementEnabled={features.bagManagement}

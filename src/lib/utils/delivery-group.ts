@@ -1,22 +1,5 @@
 import type { DeliveryGroup } from "@/types/domain";
 
-export const UNGROUPED_SENTINEL = "__ungrouped__";
-
-/**
- * S2-C 인터뷰 8/21: 배송관리 "지역별" 필터의 유일한 판정 로직. 목록(DeliveryBoard)과
- * 지도(DeliveryMapView)가 각자 필터를 따로 구현하면 "목록엔 12건인데 지도엔
- * 13건" 같은 불일치가 생길 수 있어, 이 함수 하나만 양쪽에서 공유한다 —
- * activeGroupId는 특정 배송그룹 id, UNGROUPED_SENTINEL, 또는 null(전체)이다.
- */
-export function filterOrdersByGroup<T extends { delivery_group_id: string | null }>(
-  orders: T[],
-  activeGroupId: string | null
-): T[] {
-  if (!activeGroupId) return orders;
-  if (activeGroupId === UNGROUPED_SENTINEL) return orders.filter((o) => !o.delivery_group_id);
-  return orders.filter((o) => o.delivery_group_id === activeGroupId);
-}
-
 /**
  * P14-B: 배송그룹 A/B/C(group_no를 알파벳으로 바꾼 것뿐, 지역과 무관)는
  * 배송담당자가 의미를 알 수 없다는 CEO 피드백에 따라 대체됐다. 그룹은

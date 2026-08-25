@@ -54,13 +54,13 @@ export function DeliveryFilterBar({
     }
     if (query.trim()) params.set("q", query.trim());
     if (product !== PRODUCT_ALL) params.set("product", product);
-    // 이 필터바가 모르는 상위 필터(배송상태/배송그룹/기사)는 그대로 들고
-    // 간다 — "조회"를 눌렀다고 다른 곳에서 고른 필터가 초기화되면 안 된다.
+    // 이 필터바가 모르는 상위 필터(배송상태/지역/기사)는 그대로 들고 간다 —
+    // "조회"를 눌렀다고 다른 곳에서 고른 필터가 초기화되면 안 된다.
     const filterParam = searchParams.get("filter");
-    const groupParam = searchParams.get("group");
+    const regionParams = searchParams.getAll("region");
     const driverFilterParam = searchParams.get("driverFilter");
     if (filterParam) params.set("filter", filterParam);
-    if (groupParam) params.set("group", groupParam);
+    for (const r of regionParams) params.append("region", r);
     if (driverFilterParam) params.set("driverFilter", driverFilterParam);
     return params;
   }

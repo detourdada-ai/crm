@@ -2,12 +2,12 @@
 
 import { useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { DeliveryRegionFilter } from "@/components/delivery/delivery-region-filter";
-import { DeliveryDriverChips } from "@/components/delivery/delivery-driver-chips";
+import { DeliveryRegionMultiFilter } from "@/components/delivery/delivery-region-multi-filter";
 import { DeliveryBoard } from "@/components/delivery/delivery-board";
 import { DeliveryMapView } from "@/components/delivery/delivery-map-view";
 import { DeliveryRoutePanel } from "@/components/delivery/delivery-route-panel";
-import { buildGroupBuildingLabels, filterOrdersByGroup, UNGROUPED_SENTINEL, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import { buildGroupBuildingLabels, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import { filterOrdersBySigungu } from "@/lib/utils/delivery-region-filter";
 import { filterOrdersByDriver, DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { buildDriverColorMap } from "@/lib/utils/driver-colors";
 import type { OrderItemSummary } from "@/actions/orders";
@@ -38,7 +38,6 @@ export function DeliveryFilterStack({
   orders,
   drivers,
   groups,
-  showGroupFilter,
   statusLabel,
   itemSummaries,
   bagManagementEnabled,
@@ -49,8 +48,6 @@ export function DeliveryFilterStack({
   orders: OrderShipmentBoardRow[];
   drivers: Driver[];
   groups: DeliveryGroup[];
-  /** 그룹 개념은 특정 하루를 조회할 때만 의미가 있다 — 기간 조회에서는 필터 자체를 숨긴다. */
-  showGroupFilter: boolean;
   /** 상위 배송상태 Filter(배정필요 등)의 현재 라벨 — "현재 조건" 요약에 쓴다. */
   statusLabel: string;
   itemSummaries: Record<string, OrderItemSummary>;
@@ -64,11 +61,15 @@ export function DeliveryFilterStack({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const activeGroupId = searchParams.get("group");
-  function setActiveGroupId(next: string | null) {
+  // 배송목록 필터 UX 개편(CPO, 2026-08): 기존 배송그룹 단일선택("전체
+  // 지역" Select)을 행정구역(sigungu) 멀티선택으로 바꾼다 — 여러 지역을
+  // 한 번에 조회할 수 있어야 한다는 요구. URL은 같은 key를 여러 번 실어
+  // 표현한다(region=강남구&region=송파구).
+  const activeRegions = searchParams.getAll("region");
+  function setActiveRegions(next: string[]) {
     const params = new URLSearchParams(searchParams);
-    if (next) params.set("group", next);
-    else params.delete("group");
+    params.delete("region");
+    for (const r of next) params.append("region", r);
     router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
   }
 
@@ -82,22 +83,27 @@ export function DeliveryFilterStack({
 
   // 화면에 보이지 않는 필터 컨트롤은 조건에서도 빼야 한다 — 예를 들어
   // 배송중(progress)에서는 지역 필터를 아예 숨기므로, 다른 탭에서 걸어둔
-  // group URL param이 남아있어도 배송중 화면에서는 무시한다("보이는 필터
-  // 조건 = 실제 필터링 조건" 원칙, 과거 stale filter 재발 방지).
-  const showRegionFilterUI = (mode === "assign" || mode === "default") && showGroupFilter && groups.length > 0;
-  const showDriverChipsUI = mode === "default";
+  // region URL param이 남아있어도 배송중 화면에서는 무시한다("보이는 필터
+  // 조건 = 실제 필터링 조건" 원칙, 과거 stale filter 재발 방지). 지역
+  // 필터는 배송그룹과 달리 특정 하루 단위 개념이 아니므로(각 주문 자체의
+  // sigungu일 뿐) 기간 조회에서도 그대로 노출한다.
+  const showRegionFilterUI = mode === "assign" || mode === "default";
   const showRoutePanel = mode === "progress" || mode === "default";
   const showMap = mode !== "pickup";
-  const applyGroupFilter = mode === "assign" || mode === "default";
-  const applyDriverFilter = mode === "progress" || mode === "default";
+  const applyRegionFilter = mode === "assign" || mode === "default";
+  // 기사 필터(칩)는 완전히 제거됐다 — 다만 배송중(progress) 탭의 Route
+  // 패널에서 기사를 고르는 것은 "필터"가 아니라 그 기사의 경로/순서를
+  // 보기 위한 선택이라 driverFilter param을 그대로 재사용한다(route_order
+  // 관리 기능 유지, CPO 지시 §10).
+  const applyDriverFilter = mode === "progress";
 
-  const groupFilteredOrders = useMemo(
-    () => (applyGroupFilter ? filterOrdersByGroup(orders, activeGroupId) : orders),
-    [orders, activeGroupId, applyGroupFilter]
+  const regionFilteredOrders = useMemo(
+    () => (applyRegionFilter ? filterOrdersBySigungu(orders, activeRegions) : orders),
+    [orders, activeRegions, applyRegionFilter]
   );
   const driverFilteredOrders = useMemo(
-    () => (applyDriverFilter ? filterOrdersByDriver(groupFilteredOrders, activeDriverId) : groupFilteredOrders),
-    [groupFilteredOrders, activeDriverId, applyDriverFilter]
+    () => (applyDriverFilter ? filterOrdersByDriver(regionFilteredOrders, activeDriverId) : regionFilteredOrders),
+    [regionFilteredOrders, activeDriverId, applyDriverFilter]
   );
   // PART 6: 배정필요 목록 기본 정렬 — 1순위 배송그룹, 2순위 미그룹(주소순).
   const filteredOrders = useMemo(
@@ -144,29 +150,16 @@ export function DeliveryFilterStack({
   // progress 모드는 이미 URL 필터로 좁혀졌으므로 목록/지도를 추가로 dim할 필요가 없다.
   const dimDriverId = mode === "default" ? emphasizedDriverId : null;
 
-  const countsByGroupId = useMemo(() => {
+  // STD-6과 동일한 "자기 자신 제외" 원칙: select 안의 지역별 건수는 지역
+  // 필터 자체를 뺀 나머지 조건(날짜/상태/검색)만 반영한 orders 기준이라야
+  // "강남구를 고르면 옵션이 강남구 하나로 붕괴"하는 문제가 안 생긴다.
+  const regionCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const o of orders) {
-      if (o.delivery_group_id) map.set(o.delivery_group_id, (map.get(o.delivery_group_id) ?? 0) + 1);
+      if (o.sigungu) map.set(o.sigungu, (map.get(o.sigungu) ?? 0) + 1);
     }
-    return map;
+    return Array.from(map.entries()).map(([sigungu, count]) => ({ sigungu, count }));
   }, [orders]);
-  const ungroupedCount = useMemo(() => orders.filter((o) => !o.delivery_group_id).length, [orders]);
-
-  const countsByDriverId = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const o of groupFilteredOrders) {
-      if (o.driver_id) map.set(o.driver_id, (map.get(o.driver_id) ?? 0) + 1);
-    }
-    return map;
-  }, [groupFilteredOrders]);
-  const unassignedDriverCount = useMemo(() => groupFilteredOrders.filter((o) => !o.driver_id).length, [groupFilteredOrders]);
-
-  const activeGroupLabel = !activeGroupId
-    ? "전체지역"
-    : activeGroupId === UNGROUPED_SENTINEL
-      ? "미그룹"
-      : (groupLabels.get(activeGroupId)?.full ?? "선택 지역");
 
   const activeDriverLabel = !activeDriverId
     ? "전체"
@@ -174,34 +167,19 @@ export function DeliveryFilterStack({
       ? "미배정"
       : (drivers.find((d) => d.id === activeDriverId)?.name ?? "기사");
 
+  const activeRegionLabel =
+    activeRegions.length === 0 ? "전체지역" : activeRegions.length === 1 ? activeRegions[0] : `${activeRegions.length}개 지역`;
+
   const summaryParts = [statusLabel];
-  if (mode === "assign" || mode === "default") summaryParts.push(activeGroupLabel);
-  if (mode === "progress" || mode === "default") summaryParts.push(activeDriverLabel);
+  if (mode === "assign" || mode === "default") summaryParts.push(activeRegionLabel);
+  if (mode === "progress") summaryParts.push(activeDriverLabel);
   summaryParts.push(`총 ${filteredOrders.length}건`);
 
   return (
     <div className="space-y-3">
-      {showRegionFilterUI || showDriverChipsUI ? (
+      {showRegionFilterUI ? (
         <div className="flex flex-wrap items-center gap-3">
-          {showRegionFilterUI ? (
-            <DeliveryRegionFilter
-              groups={groups}
-              labelById={groupLabels}
-              countsByGroupId={countsByGroupId}
-              ungroupedCount={ungroupedCount}
-              activeGroupId={activeGroupId}
-              onSelectGroup={setActiveGroupId}
-            />
-          ) : null}
-          {showDriverChipsUI ? (
-            <DeliveryDriverChips
-              drivers={drivers}
-              countsByDriverId={countsByDriverId}
-              unassignedCount={unassignedDriverCount}
-              activeDriverId={activeDriverId}
-              onSelectDriver={setActiveDriverId}
-            />
-          ) : null}
+          <DeliveryRegionMultiFilter regionCounts={regionCounts} activeRegions={activeRegions} onChange={setActiveRegions} />
         </div>
       ) : null}
       <p className="text-sm text-muted-foreground">
