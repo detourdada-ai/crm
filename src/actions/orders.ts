@@ -137,22 +137,23 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
   const session = await requireSession();
   const ownerUsername = ownerScopeFor(session);
 
-  // STD-6: 상품 집계 칩을 클릭하면 productName이 실려온다 — 이 상품이 포함된
-  // 주문 id로 먼저 좁혀서 아래 두 조회 경로(주문 단위/배송건 단위) 모두에
-  // 공통 필터로 넘긴다(STD-7: 두 화면이 같은 필터 체계를 공유).
-  const productOrderIds = params.productName
-    ? await ordersRepository.findOrderIdsByProductName(params.productName)
-    : undefined;
-
   // S1-3: 배송일 필터가 걸려 있으면(기본값이 "오늘"이라 사실상 항상) 배송건
   // 단위로 조회한다 — 같은 주문이라도 상품주문별 발송일이 다르면 여러 행으로
   // 나타난다. 배송일 필터가 없는("전체") 경우에만 기존 주문 단위 조회로
   // 돌아간다.
+  //
+  // 긴급수정(2026-08): 상품 필터는 두 경로에서 서로 다른 단위로 좁혀야 한다.
+  // 배송건 단위 조회는 productShipmentIds(그 상품이 실제로 포함된 배송건)를
+  // 써야 한다 — order_id로만 좁히면 같은 주문의 다른 배송건(오늘이지만 전혀
+  // 다른 상품)까지 끌려와 select 배지 건수와 실제 목록 건수가 어긋난다.
   if (params.deliveryDateFrom || params.deliveryDateTo) {
+    const productShipmentIds = params.productName
+      ? await ordersRepository.findShipmentIdsByProductName(params.productName)
+      : undefined;
     const { rows, total, allShipmentIds } = await ordersRepository.searchByShipmentDate({
       ...params,
       ownerUsername,
-      productOrderIds,
+      productShipmentIds,
     });
     const orders: OrderListRow[] = rows.map((r) => ({ ...r, rowKey: r.rowKey, shipmentId: r.shipmentId }));
     const itemSummaries = await buildShipmentItemSummaries(rows);
@@ -172,6 +173,9 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
     return { orders, total, itemSummaries, driverNames, productSummary };
   }
 
+  const productOrderIds = params.productName
+    ? await ordersRepository.findOrderIdsByProductName(params.productName)
+    : undefined;
   const { orders: rawOrders, total } = await ordersRepository.search({ ...params, ownerUsername, productOrderIds });
   const orders: OrderListRow[] = rawOrders.map((o) => ({ ...o, rowKey: o.id }));
   const itemSummaries = await buildOrderItemSummaries(rawOrders);

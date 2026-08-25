@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
@@ -103,6 +103,11 @@ export function DeliveryOrderRow({
             onUnassign={onUnassign}
             onClearDirectPickup={onClearDirectPickup}
           />
+          {/* 긴급수정(2026-08): 가방번호/회수를 담당기사 배정 바로 옆으로 이동 —
+              기사를 배정하면서 같은 자리에서 가방번호도 등록할 수 있게. */}
+          {bagManagementEnabled ? (
+            <ShipmentBagCell shipmentId={order.rowKey} bagNumber={order.bag_number} bagReturned={order.bag_returned} />
+          ) : null}
         </div>
 
         <DeliveryAddressBlock order={order} />
@@ -110,13 +115,6 @@ export function DeliveryOrderRow({
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <ItemSummaryBlock summary={itemSummary} />
           <div className="flex flex-wrap items-center gap-2">
-            {bagManagementEnabled ? (
-              <ShipmentBagCell
-                shipmentId={order.rowKey}
-                bagNumber={order.bag_number}
-                bagReturned={order.bag_returned}
-              />
-            ) : null}
             <Link href={`/orders/${order.id}`} className="hover:underline">
               {order.internal_order_number}
             </Link>
@@ -153,11 +151,17 @@ export function ShipmentBagCell({
   const [number, setNumber] = useState(bagNumber ?? "");
   const [returned, setReturned] = useState(bagReturned);
   const [isPending, startTransition] = useTransition();
+  // 속도 개선(2026-08): 실제로 바뀐 값이 없으면(입력칸에 클릭만 하고 나가는
+  // 경우 등) 저장 요청 자체를 보내지 않는다.
+  const lastSaved = useRef({ bagNumber: bagNumber ?? "", bagReturned });
 
   function save(next: { bagNumber: string; bagReturned: boolean }) {
+    const trimmed = next.bagNumber.trim();
+    if (trimmed === lastSaved.current.bagNumber && next.bagReturned === lastSaved.current.bagReturned) return;
+    lastSaved.current = { bagNumber: trimmed, bagReturned: next.bagReturned };
     startTransition(async () => {
       const result = await updateShipmentBagAction(shipmentId, {
-        bagNumber: next.bagNumber.trim() || null,
+        bagNumber: trimmed || null,
         bagReturned: next.bagReturned,
       });
       if (!result.ok) {

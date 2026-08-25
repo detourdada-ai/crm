@@ -53,20 +53,18 @@ export function ColumnMappingForm({
         </p>
       )}
 
-      {/* S1-6/긴급수정(2026-08): "구분 | CRM 항목 | 업로드 파일 컬럼 | 데이터"
-          — 예전엔 "업로드 파일 컬럼" 헤더 밑에 CRM 필드명과 실제 파일 컬럼
-          select가 한 셀에 같이 있어서, 헤더가 가리키는 게 뭔지 헷갈렸다
-          (필드명이 먼저 보이고 그 아래 select가 있어 "업로드 파일 컬럼"이
-          필드명을 뜻하는 것처럼 보였다). CRM 항목(고정 필드명)과 업로드 파일
-          컬럼(실제 select)을 별도 열로 분리해 헤더-내용이 정확히 대응하게
-          한다. 마지막 열은 첫 번째 행의 실제 값을 그대로 보여줘서 "이 컬럼이
-          실제로 이런 값이 들어오는구나"를 매핑을 바꾸지 않고도 바로 확인할
-          수 있게 한다. */}
+      {/* S1-6/긴급수정(2026-08): "구분 | 업로드 파일 컬럼 | 데이터" — 예전엔
+          "업로드 파일 컬럼" 헤더 밑에 CRM 필드명과 실제 파일 컬럼 select가 한
+          셀에 같이 있어서, 헤더가 가리키는 게 뭔지 헷갈렸다. 구분(CRM 필드명)과
+          업로드 파일 컬럼(실제 select)을 별도 열로 분리해 헤더-내용이 정확히
+          대응하게 한다(카테고리 배지는 CPO 지시로 제거 — 구분 열 하나로 충분).
+          마지막 열은 첫 번째 행의 실제 값을 그대로 보여줘서 "이 컬럼이 실제로
+          이런 값이 들어오는구나"를 매핑을 바꾸지 않고도 바로 확인할 수 있게
+          한다. */}
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-20">구분</TableHead>
-            <TableHead className="w-40">CRM 항목</TableHead>
+            <TableHead className="w-40">구분</TableHead>
             <TableHead className="w-56">업로드 파일 컬럼</TableHead>
             <TableHead>데이터</TableHead>
           </TableRow>
@@ -77,11 +75,6 @@ export function ColumnMappingForm({
             const sampleValue = selectedHeader ? cellPreview(parsed.rows[0]?.[selectedHeader]) : null;
             return (
               <TableRow key={field.key}>
-                <TableCell className="align-top">
-                  <Badge variant="outline" className="font-normal">
-                    {field.category}
-                  </Badge>
-                </TableCell>
                 <TableCell className="align-top">
                   <p className="text-sm font-medium">
                     {field.label}

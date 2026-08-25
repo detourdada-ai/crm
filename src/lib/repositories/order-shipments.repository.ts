@@ -544,28 +544,40 @@ export const orderShipmentsRepository = {
     ownerUsername?: string
   ): Promise<{ autoReturnedCount: number }> {
     const admin = getSupabaseAdmin();
-    let q = admin
+
+    // 속도 개선(2026-08): 회수 체크박스만 토글할 때는(가방번호 변경 없음)
+    // "이전 미회수 가방 자동회수" 조회 자체를 건너뛴다 — 실사용에서 가장
+    // 잦은 조작(회수 체크)이 매번 불필요한 추가 쿼리를 타던 것이 체감
+    // 지연의 주 원인이었다. 변경 전 값을 알아야 하므로 update보다 먼저
+    // 현재 행을 읽는다.
+    let selectQ = admin
+      .from("order_shipments")
+      .select("id, order_id, owner_username, delivery_date, bag_number")
+      .eq("id", shipmentId);
+    if (ownerUsername) selectQ = selectQ.eq("owner_username", ownerUsername);
+    const { data: current, error: selectError } = await selectQ.maybeSingle();
+    if (selectError) throw selectError;
+    if (!current) throw new Error("배송건을 찾을 수 없거나 권한이 없습니다.");
+
+    const { error: updateError } = await admin
       .from("order_shipments")
       .update({ bag_number: input.bagNumber, bag_returned: input.bagReturned })
       .eq("id", shipmentId);
-    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
-    const { data, error } = await q.select("id, order_id, owner_username, delivery_date");
-    if (error) throw error;
-    if (!data || data.length === 0) throw new Error("배송건을 찾을 수 없거나 권한이 없습니다.");
-    const updated = data[0];
+    if (updateError) throw updateError;
 
     let autoReturnedCount = 0;
-    const orderIdsToSync = [updated.order_id];
+    const orderIdsToSync = [current.order_id];
+    const bagNumberChanged = input.bagNumber !== current.bag_number;
 
-    if (input.bagNumber && updated.delivery_date) {
+    if (input.bagNumber && bagNumberChanged && current.delivery_date) {
       const { data: priorReturned, error: priorError } = await admin
         .from("order_shipments")
         .update({ bag_returned: true })
-        .eq("owner_username", updated.owner_username)
+        .eq("owner_username", current.owner_username)
         .eq("bag_number", input.bagNumber)
         .eq("bag_returned", false)
         .neq("id", shipmentId)
-        .lt("delivery_date", updated.delivery_date)
+        .lt("delivery_date", current.delivery_date)
         .select("id, order_id");
       if (priorError) throw priorError;
       autoReturnedCount = priorReturned?.length ?? 0;

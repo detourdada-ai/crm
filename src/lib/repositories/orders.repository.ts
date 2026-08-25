@@ -120,8 +120,11 @@ export interface OrderSearchParams {
    * 좁힌다. order_items.product_name 기준으로 미리 조회한 order_id 목록을
    * 넘겨받는 형태 — actions/orders.ts에서 findOrderIdsByProductName()으로
    * 구해서 넘긴다(레포지토리는 문자열 매칭을 모르고 id 필터만 안다).
+   * search()(주문 단위 조회) 전용.
    */
   productOrderIds?: string[];
+  /** 긴급수정(2026-08): searchByShipmentDate(배송건 단위 조회) 전용 — 같은 주문의 다른 배송건까지 끌려오지 않도록 배송건 id로 좁힌다. */
+  productShipmentIds?: string[];
 }
 
 /**
@@ -386,6 +389,25 @@ export const ordersRepository = {
   },
 
   /**
+   * 긴급수정(2026-08): 배송건(order_shipments) 단위 조회에서는 "그 상품이
+   * 포함된 주문"이 아니라 "그 상품이 포함된 배송건"으로 좁혀야 한다 — 같은
+   * 주문이 발송일이 달라 여러 배송건으로 나뉘면(S1-3), order_id 기준 필터는
+   * 그 주문의 다른 배송건(오늘이지만 전혀 다른 상품)까지 같이 끌고 와서
+   * "상품명 select의 건수"와 "실제 필터링된 목록 건수"가 어긋나는 버그가
+   * 있었다(예: 세트봄날반찬 26건인데 목록엔 29건). searchByShipmentDate
+   * 전용 — search()의 주문 단위 조회는 findOrderIdsByProductName을 그대로 쓴다.
+   */
+  async findShipmentIdsByProductName(productName: string): Promise<string[]> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("order_items")
+      .select("shipment_id")
+      .eq("product_name", productName)
+      .not("shipment_id", "is", null);
+    if (error) throw error;
+    return Array.from(new Set((data ?? []).map((r) => r.shipment_id as string)));
+  },
+
+  /**
    * S1-3: 배송일 필터가 걸려 있을 때는 "주문" 대신 "배송건(order_shipments)"이
    * 조회 단위가 된다 — 같은 주문이라도 상품주문별 발송일이 다르면 서로 다른
    * 배송건이므로 여러 행으로 나뉘어 나타난다(CEO 지시: 절대 합산 금지).
@@ -416,10 +438,10 @@ export const ordersRepository = {
     deliveryDateTo,
     sortBy = "delivery_date",
     sortAscending = false,
-    productOrderIds,
+    productShipmentIds,
   }: OrderSearchParams): Promise<{ rows: OrderShipmentRow[]; total: number; allShipmentIds: string[] }> {
-    if (productOrderIds && productOrderIds.length === 0) return { rows: [], total: 0, allShipmentIds: [] };
-    const productOrderIdSet = productOrderIds ? new Set(productOrderIds) : null;
+    if (productShipmentIds && productShipmentIds.length === 0) return { rows: [], total: 0, allShipmentIds: [] };
+    const productShipmentIdSet = productShipmentIds ? new Set(productShipmentIds) : null;
     let sq = getSupabaseAdmin().from("order_shipments").select("id, order_id, delivery_date");
     if (ownerUsername) sq = sq.eq("owner_username", ownerUsername);
     if (deliveryDateFrom) sq = sq.gte("delivery_date", kstDayStartIso(deliveryDateFrom));
@@ -463,7 +485,7 @@ export const ordersRepository = {
         if (!matches) continue;
       }
       allShipmentIdsExcludingProduct.push(s.id);
-      if (productOrderIdSet && !productOrderIdSet.has(order.id)) continue;
+      if (productShipmentIdSet && !productShipmentIdSet.has(s.id)) continue;
       rows.push({ ...order, shipmentId: s.id, rowKey: s.id, delivery_date: s.delivery_date });
     }
 
