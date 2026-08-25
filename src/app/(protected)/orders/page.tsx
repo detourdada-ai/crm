@@ -238,7 +238,6 @@ export default async function OrdersPage({
               showCustomerLink
               showOwner={session.role === "admin"}
               bagManagementEnabled={features.bagManagement}
-              editableBag={features.bagManagement}
               visibleColumns={resolvedVisibleColumns}
             />
             <PaginationControls page={page} pageSize={PAGE_SIZE} total={total} />

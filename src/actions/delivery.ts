@@ -256,24 +256,32 @@ export async function setDeliveryStatusAction(
   }
 }
 
+export interface UpdateShipmentBagActionState extends DeliveryActionState {
+  autoReturnedCount: number;
+}
+
 /**
- * 배송관리 UX 최종화 실사용 피드백: 가방 회수 관리는 배송관리 화면에서
- * 바로 처리할 수 있어야 한다 — 배송건(order_shipments) 단위 bag_number/
- * bag_returned를 갱신한다. 주문관리의 updateOrderBagAction과는 별개
- * 컬럼(테이블)이라 서로 덮어쓰지 않는다.
+ * 가방번호/회수 등록은 배송관리 화면 전용이다(주문관리는 조회만) — 기사
+ * 배정 시 또는 배송 목록에서 언제든 배송건(order_shipments) 단위 bag_number/
+ * bag_returned를 갱신한다. 같은 가방번호가 아직 회수되지 않은 채 더 늦은
+ * 배송일에 재등록되면 이전 배송건은 자동으로 회수 처리된다(autoReturnedCount).
  */
 export async function updateShipmentBagAction(
   shipmentId: string,
   input: { bagNumber: string | null; bagReturned: boolean }
-): Promise<DeliveryActionState> {
+): Promise<UpdateShipmentBagActionState> {
   try {
     const session = await requireSession();
-    await orderShipmentsRepository.updateBag(shipmentId, input, session.role === "admin" ? undefined : session.username);
+    const { autoReturnedCount } = await orderShipmentsRepository.updateBag(
+      shipmentId,
+      input,
+      session.role === "admin" ? undefined : session.username
+    );
     revalidatePath("/delivery");
     revalidatePath("/orders");
-    return { ok: true, error: null };
+    return { ok: true, error: null, autoReturnedCount };
   } catch (e) {
-    return { ok: false, error: toActionError(e, "가방 정보 저장 중 오류가 발생했습니다.") };
+    return { ok: false, error: toActionError(e, "가방 정보 저장 중 오류가 발생했습니다."), autoReturnedCount: 0 };
   }
 }
 

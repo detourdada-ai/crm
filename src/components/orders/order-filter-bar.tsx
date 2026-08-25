@@ -205,7 +205,7 @@ export function OrderFilterBar({
             </Select>
             {product !== PRODUCT_ALL ? (
               <span className="text-xs whitespace-nowrap text-muted-foreground">
-                {productOptions.find((p) => p.productName === product)?.totalQuantity ?? 0}개
+                {productOptions.find((p) => p.productName === product)?.orderCount ?? 0}건
               </span>
             ) : null}
           </div>

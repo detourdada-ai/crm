@@ -4,7 +4,6 @@ import { DeliveryFilterStack } from "@/components/delivery/delivery-filter-stack
 import { DriverManagementDialog } from "@/components/delivery/driver-management-dialog";
 import { DriverLocationsDialog } from "@/components/delivery/driver-locations-dialog";
 import { DeliveryStatusFlow, type DeliveryFilter, type DeliveryFlowCount } from "@/components/delivery/delivery-status-flow";
-import { ProductSummaryBar } from "@/components/common/product-summary-bar";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
@@ -200,21 +199,6 @@ export default async function DeliveryPage({
     return qs ? `/delivery?${qs}` : "/delivery";
   }
 
-  // STD-6: 상품 집계 칩 클릭 — 같은 상품을 다시 누르면 필터가 풀린다.
-  function buildProductHref(productName: string | null) {
-    const search = new URLSearchParams();
-    if (params.dateFilter) search.set("dateFilter", params.dateFilter);
-    if (params.dateFrom) search.set("dateFrom", params.dateFrom);
-    if (params.dateTo) search.set("dateTo", params.dateTo);
-    if (params.q) search.set("q", params.q);
-    if (params.group) search.set("group", params.group);
-    if (params.driverFilter) search.set("driverFilter", params.driverFilter);
-    if (activeFilter !== "unassigned") search.set("filter", activeFilter);
-    if (productName) search.set("product", productName);
-    const qs = search.toString();
-    return qs ? `/delivery?${qs}` : "/delivery";
-  }
-
   // S2-C STEP6: 지금 화면에 적용된 필터 그대로 Excel API를 호출한다 —
   // params.filter(원본 쿼리) 대신 activeFilter(기본값까지 반영해 이미
   // 해석된 값)를 써야, filter param이 없는 기본 상태(배정필요)에서도
@@ -259,15 +243,12 @@ export default async function DeliveryPage({
 
       <DeliveryStatusFlow counts={flowCounts} active={activeFilter} buildHref={buildFilterHref} />
 
-      <ProductSummaryBar
-        entries={productSummary}
-        totalCount={orders.length}
-        totalLabel="현재 목록"
-        activeProduct={params.product}
-        buildHref={buildProductHref}
+      <DeliveryFilterBar
+        dateFilter={dateFilter}
+        dateFrom={range?.start ?? today}
+        dateTo={range?.end ?? today}
+        productOptions={productSummary}
       />
-
-      <DeliveryFilterBar dateFilter={dateFilter} dateFrom={range?.start ?? today} dateTo={range?.end ?? today} />
 
       {orders.length === 0 ? (
         <EmptyState

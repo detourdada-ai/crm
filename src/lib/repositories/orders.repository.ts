@@ -859,38 +859,6 @@ export const ordersRepository = {
     return data as Order;
   },
 
-  /** Other not-yet-returned bags for the same customer, delivered before `beforeIso` — used for the "이전 미회수 가방" confirm alert on order detail. */
-  async findUnreturnedPriorOrders(customerId: string, excludeOrderId: string, beforeIso: string): Promise<Order[]> {
-    const { data, error } = await getSupabaseAdmin()
-      .from("orders")
-      .select("*")
-      .eq("customer_id", customerId)
-      .eq("bag_returned", false)
-      .neq("id", excludeOrderId)
-      .lt("delivery_date", beforeIso)
-      .order("delivery_date", { ascending: true });
-    if (error) throw error;
-    return (data as Order[]) ?? [];
-  },
-
-  /** Sprint 14-I P1 hotfix: `ownerUsername`, when passed, is re-verified against every id before the UPDATE runs — second line of defense alongside the action-layer check (see markBagReturnedAction). */
-  async markManyBagsReturned(orderIds: string[], ownerUsername?: string): Promise<void> {
-    if (orderIds.length === 0) return;
-    if (ownerUsername) {
-      const { data: owned, error: checkError } = await getSupabaseAdmin()
-        .from("orders")
-        .select("id")
-        .in("id", orderIds)
-        .eq("owner_username", ownerUsername);
-      if (checkError) throw checkError;
-      if ((owned?.length ?? 0) !== orderIds.length) {
-        throw new Error("회수 처리 권한이 없는 주문이 포함되어 있습니다.");
-      }
-    }
-    const { error } = await getSupabaseAdmin().from("orders").update({ bag_returned: true }).in("id", orderIds);
-    if (error) throw error;
-  },
-
   /**
    * UX11-STEP1 P0-1: 업로드 직후 "배송일 미지정" 주문들에 한 번에 배송일을
    * 지정한다 — 이미 배송일이 있는 주문은 절대 덮어쓰지 않도록 `.is("delivery_date", null)`로

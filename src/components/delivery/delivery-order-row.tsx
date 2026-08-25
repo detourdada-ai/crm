@@ -5,6 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -109,8 +110,12 @@ export function DeliveryOrderRow({
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <ItemSummaryBlock summary={itemSummary} />
           <div className="flex flex-wrap items-center gap-2">
-            {bagManagementEnabled && order.bag_number ? (
-              <ShipmentBagToggle shipmentId={order.rowKey} bagNumber={order.bag_number} bagReturned={order.bag_returned} />
+            {bagManagementEnabled ? (
+              <ShipmentBagCell
+                shipmentId={order.rowKey}
+                bagNumber={order.bag_number}
+                bagReturned={order.bag_returned}
+              />
             ) : null}
             <Link href={`/orders/${order.id}`} className="hover:underline">
               {order.internal_order_number}
@@ -129,30 +134,62 @@ export function DeliveryOrderRow({
 }
 
 /**
- * 배송관리 UX 최종화 실사용 피드백: 가방 회수 여부를 주문관리로 건너가지
- * 않고 배송관리 화면에서 바로 클릭 한 번으로 토글한다(배송건 단위,
- * updateShipmentBagAction — 주문관리의 가방 관리와는 별개 컬럼).
+ * 가방번호/회수 입력을 주문관리에서 배송관리로 옮긴다(CPO 지시) — 기사에게
+ * 배정하면서 가방번호를 등록하고, 배송완료된 목록에서도 그대로 회수를
+ * 체크할 수 있어야 하므로 상태와 무관하게 항상 입력 가능하게 둔다.
+ * updateShipmentBagAction은 같은 가방번호의 이전 미회수 배송건을 자동으로
+ * 회수 처리하므로(가방 재사용), autoReturnedCount가 있으면 안내 토스트를
+ * 띄운다.
  */
-export function ShipmentBagToggle({ shipmentId, bagNumber, bagReturned }: { shipmentId: string; bagNumber: string; bagReturned: boolean }) {
+export function ShipmentBagCell({
+  shipmentId,
+  bagNumber,
+  bagReturned,
+}: {
+  shipmentId: string;
+  bagNumber: string | null;
+  bagReturned: boolean;
+}) {
+  const [number, setNumber] = useState(bagNumber ?? "");
   const [returned, setReturned] = useState(bagReturned);
   const [isPending, startTransition] = useTransition();
 
-  function toggle() {
-    const next = !returned;
-    setReturned(next);
+  function save(next: { bagNumber: string; bagReturned: boolean }) {
     startTransition(async () => {
-      const result = await updateShipmentBagAction(shipmentId, { bagNumber, bagReturned: next });
+      const result = await updateShipmentBagAction(shipmentId, {
+        bagNumber: next.bagNumber.trim() || null,
+        bagReturned: next.bagReturned,
+      });
       if (!result.ok) {
-        setReturned(!next);
-        toast.error(result.error ?? "가방 회수 상태 저장 중 오류가 발생했습니다.");
+        toast.error(result.error ?? "가방 정보 저장 중 오류가 발생했습니다.");
+        return;
+      }
+      if (result.autoReturnedCount > 0) {
+        toast.success(`이전 배송(${result.autoReturnedCount}건)의 가방을 자동으로 회수 처리했습니다.`);
       }
     });
   }
 
   return (
-    <span className="flex items-center gap-1">
-      가방 {bagNumber}
-      <button type="button" onClick={toggle} disabled={isPending} className="disabled:opacity-60">
+    <span className="flex items-center gap-1.5">
+      <Input
+        value={number}
+        placeholder="가방번호"
+        className="h-7 w-16 px-1.5 text-xs"
+        disabled={isPending}
+        onChange={(e) => setNumber(e.target.value)}
+        onBlur={() => save({ bagNumber: number, bagReturned: returned })}
+      />
+      <button
+        type="button"
+        disabled={isPending}
+        onClick={() => {
+          const next = !returned;
+          setReturned(next);
+          save({ bagNumber: number, bagReturned: next });
+        }}
+        className="disabled:opacity-60"
+      >
         <Badge variant={returned ? "secondary" : "outline"} className="cursor-pointer px-1.5 py-0 text-[10px]">
           {isPending ? <Loader2 className="size-2.5 animate-spin" /> : returned ? "회수완료" : "미회수"}
         </Badge>

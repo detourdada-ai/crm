@@ -5,7 +5,6 @@ import { SortableTableHead } from "@/components/common/sortable-table-head";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants/order-status";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
-import { OrderBagCell } from "./order-bag-cell";
 import type { Order } from "@/types/domain";
 import type { OrderItemSummary } from "@/actions/orders";
 
@@ -21,7 +20,6 @@ export function OrderTable({
   showCustomerLink = false,
   showOwner = false,
   bagManagementEnabled = false,
-  editableBag = false,
   visibleColumns,
 }: {
   /** S1-3: rowKey가 있으면(배송건 단위 조회) 그것을 React key/상품요약 조회 키로 쓴다 — 같은 주문이 배송일별로 여러 행이 될 수 있어 order.id만으로는 행이 충돌한다. */
@@ -32,8 +30,6 @@ export function OrderTable({
   showOwner?: boolean;
   /** Phase 10: 가방 관리 미사용 사업장에서는 컬럼 자체를 숨긴다. */
   bagManagementEnabled?: boolean;
-  /** 컬럼이 보일 때, 인라인으로 값을 수정할 수 있게 할지(false면 읽기 전용 배지만). */
-  editableBag?: boolean;
   /**
    * STD-8/UX11: 계정이 선택한 노출 컬럼 id 목록 — 항상 구체적인 배열이다
    * (기본값은 호출부에서 ORDER_TABLE_TOGGLEABLE_COLUMN_IDS로 이미 채워서
@@ -155,20 +151,13 @@ export function OrderTable({
                 ) : null}
                 {bagManagementEnabled && isVisible("bag") ? (
                   <TableCell className="hidden lg:table-cell">
-                    {editableBag ? (
-                      <OrderBagCell
-                        orderId={order.id}
-                        initialBagNumber={order.bag_number}
-                        initialBagReturned={order.bag_returned}
-                      />
-                    ) : (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <span>{order.bag_number ?? "-"}</span>
-                        <Badge variant={order.bag_returned ? "secondary" : "outline"}>
-                          {order.bag_returned ? "회수완료" : "미회수"}
-                        </Badge>
-                      </div>
-                    )}
+                    {/* 가방번호/회수 입력은 배송관리 화면 전용 — 주문관리는 조회만(배송건에서 동기화된 값). */}
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <span>{order.bag_number ?? "-"}</span>
+                      <Badge variant={order.bag_returned ? "secondary" : "outline"}>
+                        {order.bag_returned ? "회수완료" : "미회수"}
+                      </Badge>
+                    </div>
                   </TableCell>
                 ) : null}
                 {isVisible("driver") ? (

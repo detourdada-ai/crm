@@ -529,22 +529,51 @@ export const orderShipmentsRepository = {
   },
 
   /**
-   * 배송관리 UX 최종화 실사용 피드백: 가방 회수 여부는 배송건(그날 그
-   * 배송) 단위 개념인데도 그동안 쓰기 경로가 전혀 없었다(화면에는
-   * order_shipments.bag_number/bag_returned를 표시만 하고 있었음, 주문관리의
-   * updateOrderBagAction/markBagReturnedAction은 orders 테이블의 별도
-   * bag_number/bag_returned를 갱신할 뿐 여기로 반영되지 않았다) — 배송관리
-   * 화면에서 직접 회수 여부를 토글할 수 있도록 배송건 단위 쓰기를 추가한다.
+   * 가방번호/회수는 배송관리 전용 입력이다(주문관리는 조회만) — 기사에게
+   * 배정하면서, 또는 배송 목록에서 언제든 가방번호를 등록·수정하고 회수
+   * 여부를 체크한다. 물리적 가방은 한정된 개수를 돌려쓰므로, 같은
+   * 가방번호가 아직 회수되지 않은 채로 더 늦은 배송일에 다시 등록되면 그
+   * 가방은 실제로는 이미 돌아온 것 — 이전 배송건들을 자동으로 회수 처리한다
+   * (사장님이 매번 "이전 것도 회수됐나요?"를 수동으로 체크하지 않아도 됨).
+   * 갱신 후에는 orders 테이블에도 항상 동기화한다(syncOrdersFromShipments —
+   * 주문관리의 "전체" 조회가 이 스냅샷을 읽는다).
    */
-  async updateBag(shipmentId: string, input: { bagNumber: string | null; bagReturned: boolean }, ownerUsername?: string): Promise<void> {
-    let q = getSupabaseAdmin()
+  async updateBag(
+    shipmentId: string,
+    input: { bagNumber: string | null; bagReturned: boolean },
+    ownerUsername?: string
+  ): Promise<{ autoReturnedCount: number }> {
+    const admin = getSupabaseAdmin();
+    let q = admin
       .from("order_shipments")
       .update({ bag_number: input.bagNumber, bag_returned: input.bagReturned })
       .eq("id", shipmentId);
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
-    const { data, error } = await q.select("id");
+    const { data, error } = await q.select("id, order_id, owner_username, delivery_date");
     if (error) throw error;
     if (!data || data.length === 0) throw new Error("배송건을 찾을 수 없거나 권한이 없습니다.");
+    const updated = data[0];
+
+    let autoReturnedCount = 0;
+    const orderIdsToSync = [updated.order_id];
+
+    if (input.bagNumber && updated.delivery_date) {
+      const { data: priorReturned, error: priorError } = await admin
+        .from("order_shipments")
+        .update({ bag_returned: true })
+        .eq("owner_username", updated.owner_username)
+        .eq("bag_number", input.bagNumber)
+        .eq("bag_returned", false)
+        .neq("id", shipmentId)
+        .lt("delivery_date", updated.delivery_date)
+        .select("id, order_id");
+      if (priorError) throw priorError;
+      autoReturnedCount = priorReturned?.length ?? 0;
+      orderIdsToSync.push(...(priorReturned ?? []).map((r) => r.order_id));
+    }
+
+    await syncOrdersFromShipments(orderIdsToSync);
+    return { autoReturnedCount };
   },
 
   /** 기사 세션에서 배송건 하나를 완료 처리한다. driverId가 주어지면 본인에게 배정된 배송건만 대상이 된다. */

@@ -8,7 +8,6 @@ import { getOrderDetailAction } from "@/actions/orders";
 import { listDriversAction } from "@/actions/drivers";
 import { listCandidateDriversAction } from "@/actions/driver-regions";
 import { OrderItemRawData } from "@/components/orders/order-item-raw-data";
-import { OrderBagManagement } from "@/components/orders/order-bag-management";
 import { requireSession } from "@/lib/auth/current-session";
 import { getTenantFeaturesForSession } from "@/lib/tenant/features";
 import { ManualOrderEditDialog } from "@/components/orders/manual-order-edit-dialog";
@@ -226,14 +225,18 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         {features.bagManagement ? (
           <Card>
             <CardHeader>
-              <CardTitle>가방 관리</CardTitle>
+              <CardTitle>가방 정보</CardTitle>
             </CardHeader>
-            <CardContent>
-              <OrderBagManagement
-                orderId={order.id}
-                initialBagNumber={order.bag_number}
-                initialBagReturned={order.bag_returned}
-              />
+            <CardContent className="space-y-2">
+              {/* 가방번호/회수 입력은 배송관리 화면 전용 — 여기는 조회만. */}
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">가방번호</span>
+                <span className="font-medium">{order.bag_number ?? "-"}</span>
+                <Badge variant={order.bag_returned ? "secondary" : "outline"}>
+                  {order.bag_returned ? "회수완료" : "미회수"}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">가방번호 등록·회수 처리는 배송관리에서 합니다.</p>
             </CardContent>
           </Card>
         ) : null}
