@@ -7,7 +7,7 @@ import { DeliveryBoard } from "@/components/delivery/delivery-board";
 import { DeliveryMapView } from "@/components/delivery/delivery-map-view";
 import { DeliveryRoutePanel } from "@/components/delivery/delivery-route-panel";
 import { buildGroupBuildingLabels, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
-import { filterOrdersBySigungu } from "@/lib/utils/delivery-region-filter";
+import { filterOrdersByRegionOrBuilding, buildRegionBuildingCounts, UNKNOWN_REGION_LABEL } from "@/lib/utils/delivery-region-filter";
 import { filterOrdersByDriver, DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { buildDriverColorMap } from "@/lib/utils/driver-colors";
 import type { OrderItemSummary } from "@/actions/orders";
@@ -73,6 +73,28 @@ export function DeliveryFilterStack({
     router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
   }
 
+  // 지역 필터 2단계(CPO 추가 요청, 2026-08): 지역 안의 건물(아파트1/아파트2/
+  // 기타) 하위 선택 — region과 별도 URL param으로 관리해 뒤로가기/공유 링크에도
+  // 그대로 남는다.
+  const activeBuildingKeys = searchParams.getAll("building");
+  function setActiveBuildingKeys(next: string[]) {
+    const params = new URLSearchParams(searchParams);
+    params.delete("building");
+    for (const b of next) params.append("building", b);
+    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
+  }
+  // "전체" 체크박스는 region/building 두 param을 동시에 지워야 한다 — setActiveRegions([])와
+  // setActiveBuildingKeys([])를 연달아 호출하면 둘 다 같은(클릭 시점의) searchParams
+  // 스냅샷에서 새 URL을 만들기 때문에, 뒤에 호출된 쪽이 앞의 변경을 덮어써 버린다
+  // (region 삭제 push 직후 building 삭제 push가 region을 다시 원래 값으로 되살림).
+  // 그래서 두 param을 한 번의 router.push로 함께 지운다.
+  function clearRegionAndBuildingFilters() {
+    const params = new URLSearchParams(searchParams);
+    params.delete("region");
+    params.delete("building");
+    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
+  }
+
   const activeDriverId = searchParams.get("driverFilter");
   function setActiveDriverId(next: string | null) {
     const params = new URLSearchParams(searchParams);
@@ -98,8 +120,8 @@ export function DeliveryFilterStack({
   const applyDriverFilter = mode === "progress";
 
   const regionFilteredOrders = useMemo(
-    () => (applyRegionFilter ? filterOrdersBySigungu(orders, activeRegions) : orders),
-    [orders, activeRegions, applyRegionFilter]
+    () => (applyRegionFilter ? filterOrdersByRegionOrBuilding(orders, activeRegions, activeBuildingKeys) : orders),
+    [orders, activeRegions, activeBuildingKeys, applyRegionFilter]
   );
   const driverFilteredOrders = useMemo(
     () => (applyDriverFilter ? filterOrdersByDriver(regionFilteredOrders, activeDriverId) : regionFilteredOrders),
@@ -153,13 +175,20 @@ export function DeliveryFilterStack({
   // STD-6과 동일한 "자기 자신 제외" 원칙: select 안의 지역별 건수는 지역
   // 필터 자체를 뺀 나머지 조건(날짜/상태/검색)만 반영한 orders 기준이라야
   // "강남구를 고르면 옵션이 강남구 하나로 붕괴"하는 문제가 안 생긴다.
+  // CPO 지적(2026-08): 지오코딩이 안 됐거나 실패해 sigungu가 없는 배송건도
+  // 필터 목록에서 조용히 빠지면 안 된다 — "지역 미확인"으로 명시적으로
+  // 노출해 선택할 수 있게 한다(UNKNOWN_REGION_LABEL, filterOrdersByRegionOrBuilding과 동일 규칙).
   const regionCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const o of orders) {
-      if (o.sigungu) map.set(o.sigungu, (map.get(o.sigungu) ?? 0) + 1);
+      const label = o.sigungu ?? UNKNOWN_REGION_LABEL;
+      map.set(label, (map.get(label) ?? 0) + 1);
     }
     return Array.from(map.entries()).map(([sigungu, count]) => ({ sigungu, count }));
   }, [orders]);
+  // 지역 필터 2단계: select 안의 건물별 건수도 자기 자신 제외 원칙(§STD-6과
+  // 동일)을 따라 region/building 필터 자체를 뺀 나머지 조건 기준(orders)으로 센다.
+  const buildingCounts = useMemo(() => buildRegionBuildingCounts(orders), [orders]);
 
   const activeDriverLabel = !activeDriverId
     ? "전체"
@@ -179,7 +208,15 @@ export function DeliveryFilterStack({
     <div className="space-y-3">
       {showRegionFilterUI ? (
         <div className="flex flex-wrap items-center gap-3">
-          <DeliveryRegionMultiFilter regionCounts={regionCounts} activeRegions={activeRegions} onChange={setActiveRegions} />
+          <DeliveryRegionMultiFilter
+            regionCounts={regionCounts}
+            activeRegions={activeRegions}
+            onChange={setActiveRegions}
+            buildingCounts={buildingCounts}
+            activeBuildingKeys={activeBuildingKeys}
+            onBuildingChange={setActiveBuildingKeys}
+            onClearAll={clearRegionAndBuildingFilters}
+          />
         </div>
       ) : null}
       <p className="text-sm text-muted-foreground">
