@@ -117,6 +117,33 @@ export function normalizeHeader(header: string): string {
     .trim();
 }
 
+const MAX_PLAUSIBLE_HEADER_LENGTH = 30;
+// 스마트스토어 "1행 삭제 후 업로드하세요" 같은 안내문이 흔히 시작 기호로 쓴다.
+const GUIDE_TEXT_MARKERS = /[◈※▶▷▪•]/;
+
+/**
+ * §12 CPO 작업지시(STEP2 상품주문번호 재설계, 2026-08): 스마트스토어 원본
+ * 엑셀의 안내문(예: "◈ 다운로드 받은 파일로 '엑셀 일괄발송' 처리하는
+ * 방법...상품주문번호, 배송방법, 택배사...")이 1행에 그대로 남아있으면, 그
+ * 문장 안에 별칭 단어("상품주문번호"/"택배사")가 우연히 포함돼 아래 부분일치
+ * fallback이 안내문 셀 자체를 그 필드의 실제 헤더로 잘못 인식했다(2026-08-25
+ * 실제 사고: 첫 업로드 0/422 성공). 실제 컬럼 헤더로 채택하기 전에 "헤더처럼
+ * 생겼는지"를 먼저 걸러낸다 — 안내문/설명 문장은 헤더보다 훨씬 길고, 문장
+ * 부호와 여러 단어를 포함한다.
+ */
+export function looksLikePlausibleHeader(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) return false;
+  if (trimmed.length > MAX_PLAUSIBLE_HEADER_LENGTH) return false;
+  if (/[\r\n]/.test(trimmed)) return false;
+  if (GUIDE_TEXT_MARKERS.test(trimmed)) return false;
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+  if (wordCount > 4) return false;
+  const sentencePunctuationCount = (trimmed.match(/[.,?!]/g) ?? []).length;
+  if (sentencePunctuationCount > 1) return false;
+  return true;
+}
+
 /**
  * STD-4: `savedMapping`은 이 계정이 지난번 업로드에서 실제로 확정한 매핑
  * (import-mapping-settings.service.ts에 저장됨)이다. 같은 헤더 문자열이
@@ -134,7 +161,7 @@ export function autoMapColumns(headers: string[], savedMapping?: ColumnMapping):
     for (const field of MAPPABLE_FIELDS) {
       const savedHeader = savedMapping[field.key];
       if (!savedHeader || usedHeaders.has(savedHeader)) continue;
-      if (headers.includes(savedHeader)) {
+      if (headers.includes(savedHeader) && looksLikePlausibleHeader(savedHeader)) {
         mapping[field.key] = savedHeader;
         usedHeaders.add(savedHeader);
       }
@@ -148,7 +175,7 @@ export function autoMapColumns(headers: string[], savedMapping?: ColumnMapping):
 
     // 1. exact normalized match
     for (const { raw, normalized } of normalizedHeaders) {
-      if (usedHeaders.has(raw)) continue;
+      if (usedHeaders.has(raw) || !looksLikePlausibleHeader(raw)) continue;
       if (aliases.includes(normalized)) {
         matchedHeader = raw;
         break;
@@ -158,7 +185,7 @@ export function autoMapColumns(headers: string[], savedMapping?: ColumnMapping):
     // 2. fallback: normalized header contains (or is contained by) an alias
     if (!matchedHeader) {
       for (const { raw, normalized } of normalizedHeaders) {
-        if (usedHeaders.has(raw) || !normalized) continue;
+        if (usedHeaders.has(raw) || !normalized || !looksLikePlausibleHeader(raw)) continue;
         const isPartialMatch = aliases.some(
           (alias) => normalized.includes(alias) || alias.includes(normalized)
         );

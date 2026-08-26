@@ -12,7 +12,8 @@
     "qa:beta": "tsx scripts/qa/beta-flow.ts",
     "qa:delivery-region": "tsx scripts/qa/region-filter-flow.ts",
     "qa:driver-shift": "tsx scripts/qa/driver-shift-completion-flow.ts",
-    "qa:import-dedup": "tsx scripts/qa/import-dedup-flow.ts"
+    "qa:import-dedup": "tsx scripts/qa/import-dedup-flow.ts",
+    "qa:import-step2": "tsx scripts/qa/import-step2-product-order.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

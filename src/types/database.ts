@@ -563,6 +563,7 @@ export interface Database {
         Row: {
           id: string;
           order_id: string;
+          tenant_id: string;
           shipment_id: string | null;
           product_order_number: string | null;
           product_code: string | null;
@@ -578,6 +579,7 @@ export interface Database {
         Insert: {
           id?: string;
           order_id: string;
+          tenant_id: string;
           shipment_id?: string | null;
           product_order_number?: string | null;
           product_code?: string | null;

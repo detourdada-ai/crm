@@ -516,6 +516,28 @@ alter table order_items add column if not exists product_id uuid references prod
 create index if not exists idx_order_items_product_id on order_items (product_id);
 
 -- ----------------------------------------------------------------------------
+-- STEP2(0042, 누적 스마트스토어 엑셀 중복판정 재설계): order_items에 tenant_id를
+-- 비정규화(order_shipments와 동일 패턴)하고, product_order_number(상품주문번호)를
+-- tenant 범위 내에서 UNIQUE하게 강제한다 — 부모 주문(order_number) 단위가 아니라
+-- 상품주문 단위로 중복을 판정하기 위한 DB 레벨 최후 방어선.
+-- ----------------------------------------------------------------------------
+alter table order_items add column if not exists tenant_id uuid references tenants (id);
+
+update order_items oi
+set tenant_id = o.tenant_id
+from orders o
+where oi.order_id = o.id
+  and oi.tenant_id is null;
+
+alter table order_items alter column tenant_id set not null;
+
+create index if not exists idx_order_items_tenant_id on order_items (tenant_id);
+
+create unique index if not exists uq_order_items_tenant_product_order_number
+  on order_items (tenant_id, product_order_number)
+  where product_order_number is not null;
+
+-- ----------------------------------------------------------------------------
 -- duplicate_candidates (same-person detection queue; never auto-merged)
 -- ----------------------------------------------------------------------------
 create table if not exists duplicate_candidates (

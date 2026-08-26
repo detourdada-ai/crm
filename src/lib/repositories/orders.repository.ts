@@ -142,6 +142,7 @@ export interface OrderShipmentRow extends Order {
 
 export interface OrderItemInsert {
   order_id: string;
+  tenant_id: string;
   shipment_id?: string | null;
   product_order_number?: string | null;
   product_code?: string | null;
@@ -223,6 +224,50 @@ export const ordersRepository = {
       for (const r of data ?? []) found.add(r.order_number as string);
     }
     return found;
+  },
+
+  /**
+   * STEP2(누적 스마트스토어 엑셀 중복판정 재설계, 2026-08 CPO 작업지시): 상품주문번호
+   * (product_order_number) 기준 1차 중복 판정 — tenant 범위 안에서만 조회한다.
+   * order_number(부모)는 더 이상 중복판정 키가 아니라 그룹 연결 정보로만 쓰인다.
+   * 전체 행을 반환하는 이유: §6/QA-7 "정보 차이 표시"(배송일/주소 등)를 위해
+   * shipment_id로 배송건을 마저 조회해야 하고, 단순 존재 여부(Set)만으로는
+   * 부족하다.
+   */
+  async findExistingProductOrderItems(productOrderNumbers: string[], tenantId: string): Promise<OrderItem[]> {
+    if (productOrderNumbers.length === 0) return [];
+    const CHUNK_SIZE = 300;
+    const found: OrderItem[] = [];
+    for (let i = 0; i < productOrderNumbers.length; i += CHUNK_SIZE) {
+      const chunk = productOrderNumbers.slice(i, i + CHUNK_SIZE);
+      const { data, error } = await getSupabaseAdmin()
+        .from("order_items")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .in("product_order_number", chunk);
+      if (error) throw error;
+      found.push(...((data as OrderItem[]) ?? []));
+    }
+    return found;
+  },
+
+  /**
+   * STEP2: 이미 이 tenant에 존재하는 부모 주문(order_number)을 찾는다 — 신규
+   * 상품주문을 붙일 기존 order_id를 알아야 하기 때문(§2-2, §8 Case B/D).
+   * order_number 없이 새 orders row를 만드는 게 아니라, 있으면 반드시
+   * 재사용한다(부모 주문 중복 생성 방지).
+   */
+  async findOrdersByOrderNumbersForTenant(orderNumbers: string[], tenantId: string): Promise<Map<string, Order>> {
+    const result = new Map<string, Order>();
+    if (orderNumbers.length === 0) return result;
+    const CHUNK_SIZE = 300;
+    for (let i = 0; i < orderNumbers.length; i += CHUNK_SIZE) {
+      const chunk = orderNumbers.slice(i, i + CHUNK_SIZE);
+      const { data, error } = await getSupabaseAdmin().from("orders").select("*").eq("tenant_id", tenantId).in("order_number", chunk);
+      if (error) throw error;
+      for (const o of (data as Order[]) ?? []) if (o.order_number) result.set(o.order_number, o);
+    }
+    return result;
   },
 
   /**

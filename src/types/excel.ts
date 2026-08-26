@@ -100,12 +100,15 @@ export interface ColumnMappingResult {
 }
 
 /**
- * §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08): Analyze 직후 실행하는 중복
- * 판정 결과 — DB에 아무 것도 쓰지 않는다(§13). "new"는 등록 대상, "confirmed_duplicate"는
- * 이미 등록된 주문이라 자동 제외, "candidate"는 애매해서 사용자 확인이 필요,
- * "error"는 이미 다른 계정이 쓰고 있는 주문번호 등 등록 자체가 불가능한 행.
+ * §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08 / STEP2 재설계): Analyze 직후
+ * 실행하는 중복 판정 결과 — DB에 아무 것도 쓰지 않는다(§13). "new"는 등록
+ * 대상, "confirmed_duplicate"는 이미 등록된 주문이라 자동 제외, "candidate"는
+ * 애매해서 사용자 확인이 필요, "error"는 부모 주문번호가 다른 계정에 이미
+ * 존재해 새 부모 주문 자체를 만들 수 없는 경우, "partial"은 STEP2에서 새로
+ * 생긴 상태 — 같은 부모 주문(order_number) 아래 상품주문(product_order_number)
+ * 일부는 이미 등록, 일부는 신규인 "혼재 그룹"(CPO 작업지시서 Case D)이다.
  */
-export type DedupStatus = "new" | "confirmed_duplicate" | "candidate" | "error";
+export type DedupStatus = "new" | "confirmed_duplicate" | "candidate" | "error" | "partial";
 
 export interface DedupOrderSnapshot {
   orderNumber: string | null;
@@ -117,6 +120,21 @@ export interface DedupOrderSnapshot {
   deliveryStatus?: string; // 기존 주문에서만 채워짐(배차/배송중/완료 등 보호 대상 표시용)
 }
 
+/**
+ * STEP2: 부모 주문(order_number) 그룹 내부의 상품주문(product_order_number)
+ * 하나하나의 개별 판정 — "partial"(혼재) 그룹을 화면에 투명하게 보여주기
+ * 위해 존재한다. product_order_number가 없는 파일(표준 엑셀 등)에서는 이
+ * 배열 자체가 비어 있고, 그룹 전체가 기존처럼 하나의 status로만 판정된다.
+ */
+export interface DedupProductOrderItem {
+  productOrderNumber: string;
+  status: "new" | "confirmed_duplicate";
+  productSummary: string;
+  deliveryDate: string | null;
+  /** §CPO 작업지시서 §6/QA-7 "정보 차이 표시": 이미 등록된 상품주문인데 배송일/주소가 이번 업로드 값과 다른 경우만 true. 표시만 하고 등록 여부/기존 데이터에는 영향 없음(절대 UPDATE 안 함). */
+  infoDiffers?: boolean;
+}
+
 export interface DedupGroupResult {
   /** import.service.ts의 groupKey와 동일한 값(주문번호, 또는 "__no_order_number_{index}") — Confirm 시 승인 목록과 연결하는 키. */
   groupKey: string;
@@ -125,11 +143,18 @@ export interface DedupGroupResult {
   upload: DedupOrderSnapshot;
   /** confirmed_duplicate/candidate일 때만 존재 — 비교 대상 기존 주문. */
   existing?: DedupOrderSnapshot;
+  /** status가 "partial"일 때만 존재 — 그룹 내 상품주문별 개별 판정. */
+  productOrderItems?: DedupProductOrderItem[];
 }
 
 export interface DedupAnalysis {
+  /** 부모 주문(또는 주문번호 없는 개별 행) 그룹 수 — 화면 카드 단위. */
   totalGroups: number;
+  /** STEP2: 실제 엑셀 행(=상품주문) 총수 — totalGroups와 별개로, "421건 중 몇 건이 실제로 신규/기존인지"를 정확히 보고하기 위한 숫자. */
+  totalProductOrders: number;
+  /** 상품주문 단위로 신규 판정된 건수(product_order_number가 없는 그룹은 그룹 자체를 1건으로 센다). */
   newCount: number;
+  /** 상품주문 단위로 이미 등록된 것으로 판정된 건수. */
   confirmedDuplicateCount: number;
   candidateCount: number;
   errorCount: number;

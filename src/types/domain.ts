@@ -311,6 +311,8 @@ export interface Settlement {
 export interface OrderItem {
   id: UUID;
   order_id: UUID;
+  /** STEP2(누적 스마트스토어 중복판정 재설계, 2026-08): order_shipments와 같은 이유로 비정규화 — product_order_number를 tenant 범위로 UNIQUE 강제하기 위한 partial index(tenant_id, product_order_number)에 필요하다. */
+  tenant_id: UUID;
   /** S1-1: 이 상품주문이 속한 배송건. 어느 발송일 그룹에 묶였는지 — 같은 order_id라도 shipment_id가 다르면 발송일이 다르다는 뜻이다. */
   shipment_id: UUID | null;
   product_order_number: string | null;

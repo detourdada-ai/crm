@@ -373,6 +373,7 @@ export async function createManualOrderAction(
     await ordersRepository.createItems([
       {
         order_id: order.id,
+        tenant_id: tenantId,
         shipment_id: shipmentId,
         product_id: productId,
         product_name: productName,
@@ -526,7 +527,7 @@ export async function updateManualOrderAction(
       });
     } else {
       await ordersRepository.createItems([
-        { order_id: orderId, product_name: productName, option_name: optionName, quantity, unit_price: unitPrice, amount },
+        { order_id: orderId, tenant_id: order.tenant_id, product_name: productName, option_name: optionName, quantity, unit_price: unitPrice, amount },
       ]);
     }
 

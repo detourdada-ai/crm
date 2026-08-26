@@ -15,7 +15,7 @@ import { geocodeBatch, type GeocodeFields } from "@/lib/services/geocoding.servi
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { kstDayDateStrOf } from "@/lib/utils/kst-date";
 import type { ParsedSheet, ColumnMapping } from "@/types/excel";
-import type { Customer, ImportRowError, ImportSummary, Order, OrderItem } from "@/types/domain";
+import type { Customer, ImportRowError, ImportSummary, Order, OrderItem, OrderShipment } from "@/types/domain";
 
 // 주문번호가 없는 행은 다른 행과 묶일 근거가 없어 행 하나만으로 독립된
 // 주문 1건이 된다(§19 CPO 원칙: 1행=1주문=1상품) — import-dedup.service.ts가
@@ -335,6 +335,13 @@ export async function runImport({
   // 어느 단계에서 실패하든 반드시 rollback + status="failed" + 실제 원인이
   // error_log에 남도록 한다.
   let existingOrderNumbers: Set<string>;
+  // STEP2(누적 스마트스토어 엑셀 중복판정 재설계, 2026-08 CPO 작업지시): 이
+  // tenant에 이미 존재하는 부모 주문(order_number -> Order) — 신규
+  // 상품주문을 어느 order_id에 붙일지 결정하는 데 쓴다(§2-2/§8 Case B/D).
+  let existingParentOrders: Map<string, Order>;
+  let hasProductOrderNumberColumn: boolean;
+  let existingItemByProductOrderNumber: Map<string, OrderItem>;
+  let existingShipmentsByOrderId: Map<string, OrderShipment[]>;
   let pool: CustomerPoolIndex;
   let priorOrderCounts: Map<string, number>;
   const newCustomerInserts: CustomerInsert[] = [];
@@ -360,12 +367,13 @@ export async function runImport({
     let ownerCustomers: Customer[];
     let globallyExistingOrderNumbers: Set<string>;
     const realGroupKeys = Array.from(groups.keys()).filter((k) => !k.startsWith(NO_ORDER_NUMBER_PREFIX));
-    [existingOrderNumbers, globallyExistingOrderNumbers, ownerCustomers, dedupCandidateOrders] = await Promise.all([
-      ordersRepository.findExistingOrderNumbers(realGroupKeys, tenant.id),
+    [existingParentOrders, globallyExistingOrderNumbers, ownerCustomers, dedupCandidateOrders] = await Promise.all([
+      ordersRepository.findOrdersByOrderNumbersForTenant(realGroupKeys, tenant.id),
       ordersRepository.findGloballyExistingOrderNumbers(realGroupKeys),
       customersRepository.findAllByOwner(ownerUsername),
       ordersRepository.findByPhonesForDedup(tenant.id, [...noOrderNumberPhones]),
     ]);
+    existingOrderNumbers = new Set(existingParentOrders.keys());
     const dedupCandidateItems = await ordersRepository.findItemsByOrderIds(dedupCandidateOrders.map((o) => o.id));
     dedupCandidateItemsByOrderId = new Map();
     for (const item of dedupCandidateItems) {
@@ -382,6 +390,40 @@ export async function runImport({
     // 구분한다.
     crossTenantConflicts = new Set([...globallyExistingOrderNumbers].filter((n) => !existingOrderNumbers.has(n)));
     pool = new CustomerPoolIndex(ownerCustomers);
+
+    // STEP2(누적 스마트스토어 엑셀 중복판정 재설계, 2026-08 CPO 작업지시 §7/§8):
+    // 이미 부모 주문(order_number)이 존재하는 그룹만 상품주문(product_order_
+    // number) 단위로 재검증한다 — 부모 주문이 아예 없는 그룹(Case A)은 통째로
+    // 신규이므로 이 조회 대상이 아니다. Confirm 시점에 다시 계산하므로(브라우저
+    // 판단을 신뢰하지 않음) Analyze 이후 다른 업로드가 끼어들어도 여기서 잡힌다.
+    hasProductOrderNumberColumn = !!mapping["product_order_number"];
+    const productOrderNumbersToCheck: string[] = [];
+    if (hasProductOrderNumberColumn) {
+      for (const [groupKey, entries] of groups) {
+        if (!existingParentOrders.has(groupKey)) continue;
+        for (const { row } of entries) {
+          const pon = cellToString(getMapped(row, mapping, "product_order_number"));
+          if (pon) productOrderNumbersToCheck.push(pon);
+        }
+      }
+    }
+    const existingParentOrderIds = [...existingParentOrders.values()].map((o) => o.id);
+    const [existingProductOrderItems, existingShipmentsFlat] = await Promise.all([
+      productOrderNumbersToCheck.length > 0
+        ? ordersRepository.findExistingProductOrderItems(productOrderNumbersToCheck, tenant.id)
+        : Promise.resolve([] as OrderItem[]),
+      existingParentOrderIds.length > 0 ? orderShipmentsRepository.findByOrderIds(existingParentOrderIds) : Promise.resolve([] as OrderShipment[]),
+    ]);
+    existingItemByProductOrderNumber = new Map(
+      existingProductOrderItems.filter((i): i is OrderItem & { product_order_number: string } => !!i.product_order_number).map((i) => [i.product_order_number, i])
+    );
+    existingShipmentsByOrderId = new Map();
+    for (const s of existingShipmentsFlat) {
+      const list = existingShipmentsByOrderId.get(s.order_id) ?? [];
+      list.push(s);
+      existingShipmentsByOrderId.set(s.order_id, list);
+    }
+
     // Import 시작 시점의 "고객별 기존 주문 수"(취소 제외, customer_order_stats
     // 뷰) — 이 파일 안에서 같은 고객이 여러 번 주문하면 첫 등장만 신규로
     // 세고 그 다음부터는 즉시 반복으로 넘어가도록 처리 중에 카운트를 올린다.
@@ -407,10 +449,90 @@ export async function runImport({
     const hasRealOrderNumber = !groupKey.startsWith(NO_ORDER_NUMBER_PREFIX);
     const orderNumber = hasRealOrderNumber ? groupKey : null;
     try {
-      if (hasRealOrderNumber && existingOrderNumbers.has(groupKey)) {
-        successRows += rows.length;
-        alreadyImportedRows += rows.length;
-        alreadyImportedOrders += 1;
+      // STEP2(누적 스마트스토어 엑셀 중복판정 재설계, 2026-08 CPO 작업지시
+      // §2-2/§5/§8): 부모 주문(order_number)이 이미 이 테넌트에 존재하면 더
+      // 이상 그룹 전체를 "이미 등록됨"으로 뭉개지 않는다 — 상품주문번호
+      // 컬럼이 있는 파일(스마트스토어 등)은 상품주문 단위로 신규/기존을
+      // 나눠, 신규 상품주문만 기존 order_id 아래 INSERT한다(Case B/D).
+      // 기존 orders row 자체는 절대 UPDATE하지 않는다(§2-1).
+      if (hasRealOrderNumber && existingParentOrders.has(groupKey)) {
+        const existingParent = existingParentOrders.get(groupKey)!;
+
+        if (!hasProductOrderNumberColumn) {
+          // 상품주문번호 컬럼이 없는 파일(표준 엑셀 등)은 기존 규칙 그대로
+          // 부모 주문번호 단위로만 판정한다 — product_order_number가 없으면
+          // 행 단위 재구성 근거가 없다(§9).
+          successRows += rows.length;
+          alreadyImportedRows += rows.length;
+          alreadyImportedOrders += 1;
+          continue;
+        }
+
+        const newRowEntries = entries.filter(({ row }) => {
+          const pon = cellToString(getMapped(row, mapping, "product_order_number"));
+          return !pon || !existingItemByProductOrderNumber.has(pon);
+        });
+
+        if (newRowEntries.length === 0) {
+          // Case C: 이 부모 주문의 상품주문이 전부 이미 등록됨 — 그룹 전체를
+          // 건너뛴다. 기존 주문/배송/기사배정 등은 아무 것도 건드리지 않는다.
+          successRows += rows.length;
+          alreadyImportedRows += rows.length;
+          alreadyImportedOrders += 1;
+          continue;
+        }
+
+        // Case B(전부 신규)/D(일부만 신규): 이미 등록된 상품주문 행은
+        // "이미 등록됨"으로 세고, 신규 상품주문만 기존 부모 주문(order_id)
+        // 아래 INSERT한다 — 그룹 단위로 건너뛰지 않는다.
+        const skippedCount = rows.length - newRowEntries.length;
+        if (skippedCount > 0) successRows += skippedCount;
+        alreadyImportedRows += skippedCount;
+
+        const newItems = newRowEntries.map(({ row }) => ({
+          product_order_number: cellToString(getMapped(row, mapping, "product_order_number")) || null,
+          product_code: cellToString(getMapped(row, mapping, "product_code")) || null,
+          product_name: cellToString(getMapped(row, mapping, "product_name")) || "상품",
+          option_name: cellToString(getMapped(row, mapping, "option_name")) || null,
+          quantity: parseNumber(getMapped(row, mapping, "quantity")) || 1,
+          unit_price: parseNumber(getMapped(row, mapping, "unit_price")),
+          amount: parseNumber(getMapped(row, mapping, "amount")),
+          extra: row,
+        }));
+        const parentOrderDateObj = new Date(existingParent.order_date);
+        const newItemDeliveryDates = newItems.map((item) => parseDeliveryDateFromOption(item.option_name, parentOrderDateObj));
+        const explicitDeliveryDate = parseOptionalDate(getMapped(rows[0], mapping, "delivery_date"));
+
+        // S1-2와 동일한 규칙: 배송일이 같으면(KST 캘린더일 기준) 기존
+        // shipment를 재사용하고, 다르면 새 shipment를 만든다(§2-3) — 절대로
+        // 배송일이 다른데도 기존 shipment에 합치지 않는다.
+        const shipmentsForParent = existingShipmentsByOrderId.get(existingParent.id) ?? [];
+        const shipmentIdByDateKey = new Map<string, string>(
+          shipmentsForParent.map((s) => [s.delivery_date ? kstDayDateStrOf(s.delivery_date) : "unassigned", s.id])
+        );
+        newItems.forEach((item, i) => {
+          const effectiveDate = newItemDeliveryDates[i] ?? explicitDeliveryDate ?? null;
+          const dateKey = effectiveDate ? kstDayDateStrOf(effectiveDate) : "unassigned";
+          let shipmentId = shipmentIdByDateKey.get(dateKey);
+          if (!shipmentId) {
+            shipmentId = randomUUID();
+            shipmentIdByDateKey.set(dateKey, shipmentId);
+            newShipmentInserts.push({
+              id: shipmentId,
+              order_id: existingParent.id,
+              tenant_id: tenant.id,
+              owner_username: ownerUsername,
+              delivery_date: effectiveDate,
+            });
+          }
+          newItemInserts.push({ ...item, order_id: existingParent.id, shipment_id: shipmentId, tenant_id: tenant.id });
+        });
+
+        // 이 부모 주문은 이미 존재했으므로(반복), 새로 붙는 상품주문도
+        // "반복 주문" 쪽으로 센다 — S1-4 정의(상품주문 단위 카운트)를 그대로
+        // 따른다.
+        repeatOrderCount += newRowEntries.length;
+        successRows += newRowEntries.length;
         continue;
       }
 
@@ -697,7 +819,7 @@ export async function runImport({
             delivery_date: effectiveDate,
           });
         }
-        newItemInserts.push({ ...item, order_id: orderId, shipment_id: shipmentId });
+        newItemInserts.push({ ...item, order_id: orderId, shipment_id: shipmentId, tenant_id: tenant.id });
       });
 
       if (isNew) {

@@ -179,6 +179,14 @@ export const orderShipmentsRepository = {
     return (data as OrderShipment[]) ?? [];
   },
 
+  /** STEP2(누적 스마트스토어 엑셀 중복판정 재설계): 여러 부모 주문의 배송건을 한 번에 조회 — Import Phase 1의 배치 조회 원칙과 동일(그룹마다 DB 왕복하지 않음). */
+  async findByOrderIds(orderIds: string[]): Promise<OrderShipment[]> {
+    if (orderIds.length === 0) return [];
+    const { data, error } = await getSupabaseAdmin().from("order_shipments").select("*").in("order_id", orderIds);
+    if (error) throw error;
+    return (data as OrderShipment[]) ?? [];
+  },
+
   /**
    * S2-B STEP0: 주문 배송일 수정 시 order_shipments도 함께 맞춘다 — 이전에는
    * orders.delivery_date만 바뀌고 order_shipments는 예전 날짜로 남아

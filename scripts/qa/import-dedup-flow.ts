@@ -331,7 +331,7 @@ async function main() {
     });
     const { data: itemsInsertG } = await admin
       .from("order_items")
-      .insert({ order_id: orderGId, product_name: "이불", option_name: null, quantity: 1, unit_price: 0, amount: 0 })
+      .insert({ order_id: orderGId, tenant_id: tenant.id, product_name: "이불", option_name: null, quantity: 1, unit_price: 0, amount: 0 })
       .select("id");
     createdOrderIds.push(orderGId);
     createdCustomerIds.push(custGId);
