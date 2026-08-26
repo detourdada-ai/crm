@@ -14,9 +14,16 @@ const UNREADABLE_FILE_MESSAGE =
 const NO_DATA_MESSAGE = "업로드할 데이터가 없습니다.";
 
 /**
- * Parses the first sheet of an uploaded xlsx/xls/csv file into headers + row
- * objects. Column mapping (which header means what) is handled separately in
+ * Parses an uploaded xlsx/xls/csv file into headers + row objects. Column
+ * mapping (which header means what) is handled separately in
  * column-mapping.service.ts so this stays a pure "read the file" concern.
+ *
+ * 표준 엑셀 양식(api/import/template)은 "작성가이드" 시트를 1번째, 실제 입력
+ * 시트("주문템플릿")를 2번째에 둔다 — 안내문 자체가 "그대로 업로드"하라고
+ * 안내하므로, 사용자가 안내 시트를 지우지 않고 그대로 올리면 예전엔 항상 첫
+ * 시트(가이드)만 읽어 실제 주문 데이터가 통째로 무시됐다. "주문템플릿"이라는
+ * 이름의 시트가 있으면 그걸 우선 사용하고, 없으면(스마트스토어 등 다른 파일)
+ * 기존처럼 첫 시트를 그대로 쓴다.
  */
 export function parseSpreadsheet(buffer: ArrayBuffer, fileName: string): ParsedSheet {
   const ext = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
@@ -31,7 +38,7 @@ export function parseSpreadsheet(buffer: ArrayBuffer, fileName: string): ParsedS
     throw new ExcelParseError(UNREADABLE_FILE_MESSAGE);
   }
 
-  const sheetName = workbook.SheetNames[0];
+  const sheetName = workbook.SheetNames.includes("주문템플릿") ? "주문템플릿" : workbook.SheetNames[0];
   if (!sheetName) {
     throw new ExcelParseError(UNREADABLE_FILE_MESSAGE);
   }

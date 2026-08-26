@@ -982,6 +982,7 @@ export async function runImport({
       totalOrderGroups: groups.size,
       newOrdersCreated: newOrderInserts.length,
       alreadyImportedOrders,
+      alreadyImportedRows,
       newOrders: newOrderCount,
       repeatOrders: repeatOrderCount,
       newCustomers: newCustomerInserts.length,

@@ -77,6 +77,17 @@ export function ImportResultCards({
             <dt className="text-muted-foreground">재주문</dt>
             <dd className="font-medium text-text-strong">{summary.repeatOrders.toLocaleString()}건</dd>
           </div>
+          {/*
+            STEP2(2026-08 CPO 작업지시): "421건 중 몇 건이 실제 처리됐는지"를
+            사장님이 검증할 수 있어야 한다 — alreadyImportedOrders(부모 주문
+            묶음 수)가 아니라 alreadyImportedRows(상품주문 단위)를 써야
+            newOrders+repeatOrders+alreadyImportedRows+failedRows+
+            candidateSkippedRows의 합이 위 totalRawRows와 정확히 일치한다.
+          */}
+          <div className="flex items-baseline justify-between">
+            <dt className="text-muted-foreground">이미 등록된 상품주문</dt>
+            <dd className="font-medium text-text-strong">{summary.alreadyImportedRows.toLocaleString()}건</dd>
+          </div>
           <div className="flex items-baseline justify-between">
             <dt className="text-muted-foreground">신규 고객</dt>
             <dd className="font-medium text-text-strong">{summary.newCustomers.toLocaleString()}건</dd>
@@ -94,9 +105,11 @@ export function ImportResultCards({
             </dd>
           </div>
         </dl>
-        {summary.alreadyImportedOrders > 0 ? (
+        {summary.alreadyImportedRows > 0 ? (
           <p className="text-xs text-muted-foreground">
-            이미 등록된 주문 {summary.alreadyImportedOrders.toLocaleString()}건은 건너뛰었습니다(재업로드 시 정상).
+            이미 등록된 상품주문(위 {summary.alreadyImportedRows.toLocaleString()}건)은 건너뛰었습니다(재업로드 시 정상) — 부모 주문
+            {summary.alreadyImportedOrders.toLocaleString()}건 전체가 이미 등록된 경우와, 그중 일부 상품주문만 신규였던 경우가 모두
+            포함된 숫자입니다.
           </p>
         ) : null}
         {summary.rowsWithoutOrderNumber > 0 ? (

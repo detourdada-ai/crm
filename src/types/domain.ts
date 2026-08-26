@@ -347,7 +347,10 @@ export interface ImportSummary {
   totalRawRows: number;
   totalOrderGroups: number;
   newOrdersCreated: number;
+  /** 부모 주문(order_number 그룹) 단위로 통째로 건너뛴 건수 — 상품주문 단위 검증에는 alreadyImportedRows를 써야 한다. */
   alreadyImportedOrders: number;
+  /** STEP2(2026-08 CPO 작업지시): 상품주문(엑셀 원본 행) 단위로 이미 등록되어 건너뛴 건수 — totalRawRows = newOrders + repeatOrders + alreadyImportedRows + failedRows + candidateSkippedRows가 항상 성립해야, 421건 중 몇 건이 실제 처리됐는지 화면에서 검증할 수 있다. */
+  alreadyImportedRows: number;
   /** S1-4: 상품주문(엑셀 원본 행) 기준 — 주문 건수가 아니다. */
   newOrders: number;
   /** S1-4: 상품주문(엑셀 원본 행) 기준 — 주문 건수가 아니다. */

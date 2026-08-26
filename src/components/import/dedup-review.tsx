@@ -122,7 +122,6 @@ export function DedupReview({
   isSubmitting: boolean;
 }) {
   const [approved, setApproved] = useState<Set<string>>(new Set());
-  const newGroups = analysis.groups.filter((g) => g.status === "new");
   const candidates = analysis.groups.filter((g) => g.status === "candidate");
   const confirmedDuplicates = analysis.groups.filter((g) => g.status === "confirmed_duplicate");
   const errorGroups = analysis.groups.filter((g) => g.status === "error");
@@ -147,36 +146,47 @@ export function DedupReview({
           누적된 주문 엑셀을 매일 업로드해도 됩니다. 이미 등록된 주문은 자동으로 중복 처리되지 않습니다.
         </p>
         <p className="text-sm text-muted-foreground">
-          총 <span className="font-semibold text-text-strong">{analysis.totalGroups.toLocaleString()}건</span>을 확인했습니다.
+          총 <span className="font-semibold text-text-strong">{analysis.totalProductOrders.toLocaleString()}개 상품주문</span>을
+          확인했습니다(주문 묶음 {analysis.totalGroups.toLocaleString()}건).
         </p>
+        {/*
+          STEP2(2026-08 CPO 작업지시): 아래 숫자는 반드시 상품주문(엑셀 원본 행)
+          단위로 세어 위 총 개수와 정확히 합이 맞아야 한다 — 부모 주문(그룹) 수로
+          세면 "421건 중 몇 건이 처리됐는지" 사장님이 검증할 수 없다(예: 혼재
+          그룹 하나 안에 신규 1개+기존 4개가 섞여 있으면 그룹 수로는 "1건"이지만
+          실제로는 신규 1개/기존 4개로 나뉜다). analysis.newCount 등은
+          import-dedup.service.ts가 이미 상품주문 단위로 계산해 둔 값이라
+          newCount+confirmedDuplicateCount+candidateCount+errorCount는 항상
+          totalProductOrders와 정확히 일치한다.
+        */}
         <dl className="space-y-1.5 text-sm">
           <div className="flex items-baseline justify-between">
-            <dt className="text-muted-foreground">신규 주문</dt>
-            <dd className="font-medium text-text-strong">{newGroups.length.toLocaleString()}건</dd>
+            <dt className="text-muted-foreground">신규 상품주문</dt>
+            <dd className="font-medium text-text-strong">{analysis.newCount.toLocaleString()}건</dd>
           </div>
           <div className="flex items-baseline justify-between">
-            <dt className={candidates.length > 0 ? "text-warning" : "text-muted-foreground"}>중복 가능성이 있는 주문</dt>
-            <dd className={`font-medium ${candidates.length > 0 ? "text-warning" : "text-text-strong"}`}>
-              {candidates.length.toLocaleString()}건
+            <dt className={analysis.candidateCount > 0 ? "text-warning" : "text-muted-foreground"}>중복 가능성이 있는 상품주문</dt>
+            <dd className={`font-medium ${analysis.candidateCount > 0 ? "text-warning" : "text-text-strong"}`}>
+              {analysis.candidateCount.toLocaleString()}건
             </dd>
           </div>
           <div className="flex items-baseline justify-between">
-            <dt className="text-muted-foreground">이미 등록된 주문</dt>
-            <dd className="font-medium text-text-strong">{confirmedDuplicates.length.toLocaleString()}건</dd>
+            <dt className="text-muted-foreground">이미 등록된 상품주문</dt>
+            <dd className="font-medium text-text-strong">{analysis.confirmedDuplicateCount.toLocaleString()}건</dd>
           </div>
-          {partialGroups.length > 0 ? (
-            <div className="flex items-baseline justify-between">
-              <dt className="text-muted-foreground">일부만 신규(같은 주문번호 안에 혼재)</dt>
-              <dd className="font-medium text-text-strong">{partialGroups.length.toLocaleString()}건</dd>
-            </div>
-          ) : null}
-          {errorGroups.length > 0 ? (
+          {analysis.errorCount > 0 ? (
             <div className="flex items-baseline justify-between">
               <dt className="text-destructive">오류</dt>
-              <dd className="font-medium text-destructive">{errorGroups.length.toLocaleString()}건</dd>
+              <dd className="font-medium text-destructive">{analysis.errorCount.toLocaleString()}건</dd>
             </div>
           ) : null}
         </dl>
+        {partialGroups.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            이 중 {partialGroups.length.toLocaleString()}개 주문 묶음은 같은 주문번호 안에 신규/기존 상품주문이 섞여 있어, 신규
+            상품주문만 자동으로 추가 등록됩니다(아래 상세 참고).
+          </p>
+        ) : null}
 
         {candidates.length > 0 ? (
           <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3">
