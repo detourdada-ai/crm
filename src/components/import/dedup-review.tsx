@@ -5,6 +5,38 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { DedupAnalysis, DedupGroupResult, DedupOrderSnapshot, DedupProductOrderItem } from "@/types/excel";
 
+/**
+ * 주문관리·표준엑셀·배송관리 UX 개선(2026-08 CPO 작업지시) §3-2/§4 Phase1:
+ * "identity_conflict" 그룹은 병합 선택지 없이 등록 자체를 차단한다 — 발견된
+ * 서로 다른 고객을 전부 나열해, 사장님이 원본 엑셀에서 어떤 행을 고쳐야
+ * 하는지 바로 알 수 있게 한다(전화/주소를 가리지 않는 이유: 이 화면의
+ * 목적이 "본인 파일에서 실제 고객을 찾아 고치는 것"이라 마스킹하면 오히려
+ * 방해가 된다).
+ */
+function IdentityConflictCard({ group }: { group: DedupGroupResult }) {
+  const identities = group.conflictingIdentities ?? [];
+  return (
+    <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
+      <p className="text-sm font-medium text-destructive">
+        {group.upload.orderNumber ? `주문번호 ${group.upload.orderNumber}` : "주문번호 없음"} — 등록하지 않았습니다
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        같은 주문번호에 서로 다른 고객 정보가 섞여 있습니다. 아래 고객 중 이 주문번호에 실제로 해당하는 사람이 누구인지 원본 엑셀에서
+        확인 후 각 고객마다 다른 주문번호를 쓰거나, 같은 주문번호를 쓰려면 이름·연락처·주소를 모두 동일하게 맞춰 다시
+        업로드해주세요.
+      </p>
+      <div className="mt-2 space-y-1">
+        {identities.map((entry, i) => (
+          <p key={i} className="rounded-md bg-card/60 px-2 py-1.5 text-xs text-text-strong">
+            {entry.recipientName} · {entry.phone ?? "연락처 없음"} · {entry.address ?? "주소 없음"}
+            <span className="text-muted-foreground"> ({entry.productSummary})</span>
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function formatDeliveryDate(iso: string | null): string {
   if (!iso) return "배송일 미지정";
   const d = new Date(iso);
@@ -126,6 +158,7 @@ export function DedupReview({
   const confirmedDuplicates = analysis.groups.filter((g) => g.status === "confirmed_duplicate");
   const errorGroups = analysis.groups.filter((g) => g.status === "error");
   const partialGroups = analysis.groups.filter((g) => g.status === "partial");
+  const identityConflictGroups = analysis.groups.filter((g) => g.status === "identity_conflict");
 
   function toggle(key: string) {
     setApproved((prev) => {
@@ -174,18 +207,51 @@ export function DedupReview({
             <dt className="text-muted-foreground">이미 등록된 상품주문</dt>
             <dd className="font-medium text-text-strong">{analysis.confirmedDuplicateCount.toLocaleString()}건</dd>
           </div>
-          {analysis.errorCount > 0 ? (
+          {analysis.identityConflictCount > 0 ? (
+            <div className="flex items-baseline justify-between">
+              <dt className="text-destructive">등록 차단(다른 고객 정보 혼재)</dt>
+              <dd className="font-medium text-destructive">{analysis.identityConflictCount.toLocaleString()}건</dd>
+            </div>
+          ) : null}
+          {analysis.errorCount - analysis.identityConflictCount > 0 ? (
             <div className="flex items-baseline justify-between">
               <dt className="text-destructive">오류</dt>
-              <dd className="font-medium text-destructive">{analysis.errorCount.toLocaleString()}건</dd>
+              <dd className="font-medium text-destructive">{(analysis.errorCount - analysis.identityConflictCount).toLocaleString()}건</dd>
             </div>
           ) : null}
         </dl>
+        {analysis.suspiciousOrderNumberRepeats.length > 0 ? (
+          <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-muted-foreground">
+            <p className="font-medium text-text-strong">
+              ℹ️ 하나의 주문번호가 비정상적으로 많은 행에 반복됩니다 — 등록은 진행되지만 한 번 확인해보세요.
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {analysis.suspiciousOrderNumberRepeats.map((r) => (
+                <li key={r.orderNumber}>
+                  주문번호 {r.orderNumber} — {r.rowCount.toLocaleString()}행
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {partialGroups.length > 0 ? (
           <p className="text-xs text-muted-foreground">
             이 중 {partialGroups.length.toLocaleString()}개 주문 묶음은 같은 주문번호 안에 신규/기존 상품주문이 섞여 있어, 신규
             상품주문만 자동으로 추가 등록됩니다(아래 상세 참고).
           </p>
+        ) : null}
+
+        {identityConflictGroups.length > 0 ? (
+          <div className="space-y-2 rounded-md border border-destructive/50 bg-destructive/10 p-3">
+            <p className="text-sm font-medium text-destructive">
+              🚫 서로 다른 고객이 같은 주문번호를 사용해 등록이 차단된 주문 {identityConflictGroups.length}건
+            </p>
+            <div className="space-y-2">
+              {identityConflictGroups.map((g) => (
+                <IdentityConflictCard key={g.groupKey} group={g} />
+              ))}
+            </div>
+          </div>
         ) : null}
 
         {candidates.length > 0 ? (

@@ -107,8 +107,13 @@ export interface ColumnMappingResult {
  * 존재해 새 부모 주문 자체를 만들 수 없는 경우, "partial"은 STEP2에서 새로
  * 생긴 상태 — 같은 부모 주문(order_number) 아래 상품주문(product_order_number)
  * 일부는 이미 등록, 일부는 신규인 "혼재 그룹"(CPO 작업지시서 Case D)이다.
+ * "identity_conflict"는 주문관리·표준엑셀·배송관리 UX 개선(2026-08 CPO 작업지시)
+ * Phase 1에서 추가된 상태 — product_order_number가 없는 파일(표준 엑셀 등)에서
+ * 같은 order_number 그룹 안에 서로 다른 고객(이름/전화/주소)이 섞여 있는 경우다.
+ * 등록하면 첫 번째 고객만 남고 나머지 고객정보가 사라지므로, 절대 자동
+ * 병합하지 않고 등록 자체를 차단한다(§3-2/§4).
  */
-export type DedupStatus = "new" | "confirmed_duplicate" | "candidate" | "error" | "partial";
+export type DedupStatus = "new" | "confirmed_duplicate" | "candidate" | "error" | "partial" | "identity_conflict";
 
 export interface DedupOrderSnapshot {
   orderNumber: string | null;
@@ -135,6 +140,19 @@ export interface DedupProductOrderItem {
   infoDiffers?: boolean;
 }
 
+/**
+ * 주문관리·표준엑셀·배송관리 UX 개선(2026-08 CPO 작업지시) §3-2/§4: "identity_conflict"
+ * 그룹에서 실제로 서로 다른 고객이 몇 명이고 각각 어떤 정보인지 화면에
+ * 그대로 보여주기 위한 항목 — CPO가 지정한 "좋은 예" 형식(이름·전화·주소·상품)을
+ * 그대로 렌더링할 수 있게 한다.
+ */
+export interface DedupIdentityConflictEntry {
+  recipientName: string;
+  phone: string | null;
+  address: string | null;
+  productSummary: string;
+}
+
 export interface DedupGroupResult {
   /** import.service.ts의 groupKey와 동일한 값(주문번호, 또는 "__no_order_number_{index}") — Confirm 시 승인 목록과 연결하는 키. */
   groupKey: string;
@@ -145,6 +163,8 @@ export interface DedupGroupResult {
   existing?: DedupOrderSnapshot;
   /** status가 "partial"일 때만 존재 — 그룹 내 상품주문별 개별 판정. */
   productOrderItems?: DedupProductOrderItem[];
+  /** status가 "identity_conflict"일 때만 존재 — 그룹 안에서 실제로 발견된 서로 다른 고객 목록(전부, 중복 제거). */
+  conflictingIdentities?: DedupIdentityConflictEntry[];
 }
 
 export interface DedupAnalysis {
@@ -158,5 +178,13 @@ export interface DedupAnalysis {
   confirmedDuplicateCount: number;
   candidateCount: number;
   errorCount: number;
+  /** §3-2/§4: 서로 다른 고객이 같은 주문번호를 써서 자동 등록이 차단된 상품주문(행) 수. */
+  identityConflictCount: number;
+  /**
+   * §5 "추가 UX 제안": product_order_number가 없는 파일에서 하나의 주문번호가
+   * 비정상적으로 많은 행에 반복되는 경우(고객정보 일치 여부와 무관하게) 사전
+   * 경고용으로 노출한다 — 등록을 막지는 않는다(정보성 안내).
+   */
+  suspiciousOrderNumberRepeats: { orderNumber: string; rowCount: number }[];
   groups: DedupGroupResult[];
 }

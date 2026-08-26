@@ -449,6 +449,49 @@ export async function runImport({
     const hasRealOrderNumber = !groupKey.startsWith(NO_ORDER_NUMBER_PREFIX);
     const orderNumber = hasRealOrderNumber ? groupKey : null;
     try {
+      // 주문관리·표준엑셀·배송관리 UX 개선(2026-08 CPO 작업지시) §3-2/§4 Phase1
+      // Confirm 시점 재검증: import-dedup.service.ts(Analyze)와 동일한 검사를
+      // 여기서도 독립적으로 수행한다(브라우저 판단을 신뢰하지 않는다 — §14/§15
+      // 원칙). product_order_number가 없는 파일에서 하나의 order_number 그룹에
+      // 서로 다른 고객(이름/전화/주소)이 섞여 있으면, 첫 행 고객 정보로 나머지를
+      // 덮어써버리는 대신(Case C/D 데이터유실 재현 확인됨) 그룹 전체 등록을
+      // 차단한다.
+      if (hasRealOrderNumber && !hasProductOrderNumberColumn && rows.length > 1) {
+        const rowIdentities = rows.map((row) => {
+          const rPhoneRaw = cellToString(getMapped(row, mapping, "phone")) || null;
+          const rAddressRaw = cellToString(getMapped(row, mapping, "address")) || null;
+          const rBuyerName = cellToString(getMapped(row, mapping, "buyer_name")) || null;
+          const rBuyerId = cellToString(getMapped(row, mapping, "buyer_id")) || null;
+          const rRawName = cellToString(getMapped(row, mapping, "recipient_name"));
+          const rName = rRawName || rBuyerName || (rBuyerId ? `구매자(${rBuyerId})` : "") || "이름 미확인";
+          const rPhone = formatPhoneNumber(rPhoneRaw);
+          const rAddressNormalized = normalizeAddressForCompare(rAddressRaw);
+          return {
+            key: `${rName}|${rPhone ?? ""}|${rAddressNormalized ?? ""}`,
+            recipientName: rName,
+            phone: rPhone,
+            address: cleanAddress(rAddressRaw),
+          };
+        });
+        const distinctIdentities = new Map<string, (typeof rowIdentities)[number]>();
+        for (const r of rowIdentities) {
+          if (!distinctIdentities.has(r.key)) distinctIdentities.set(r.key, r);
+        }
+        if (distinctIdentities.size > 1) {
+          const identityList = [...distinctIdentities.values()]
+            .map((r) => `${r.recipientName} · ${r.phone ?? "연락처 없음"} · ${r.address ?? "주소 없음"}`)
+            .join(" / ");
+          errors.push({
+            row: firstIndex + 2,
+            code: "identity_conflict",
+            reason: `[${orderNumber}] 같은 주문번호에 서로 다른 고객 정보가 섞여 있어 등록하지 않았습니다. 발견된 고객: ${identityList}`,
+            raw: rows[0],
+          });
+          failedRowCount += rows.length;
+          continue;
+        }
+      }
+
       // STEP2(누적 스마트스토어 엑셀 중복판정 재설계, 2026-08 CPO 작업지시
       // §2-2/§5/§8): 부모 주문(order_number)이 이미 이 테넌트에 존재하면 더
       // 이상 그룹 전체를 "이미 등록됨"으로 뭉개지 않는다 — 상품주문번호

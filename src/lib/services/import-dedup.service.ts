@@ -7,7 +7,18 @@ import { cleanAddress, normalizeAddressForCompare } from "@/lib/utils/address";
 import { parseDeliveryDateFromOption } from "@/lib/utils/delivery-date";
 import { kstDayDateStrOf } from "@/lib/utils/kst-date";
 import { getMapped, cellToString, parseNumber, parseOptionalDate, parseOrderDate, NO_ORDER_NUMBER_PREFIX } from "@/lib/services/import.service";
-import type { ParsedSheet, ColumnMapping, DedupAnalysis, DedupGroupResult, DedupOrderSnapshot, DedupProductOrderItem } from "@/types/excel";
+import type {
+  ParsedSheet,
+  ColumnMapping,
+  DedupAnalysis,
+  DedupGroupResult,
+  DedupOrderSnapshot,
+  DedupProductOrderItem,
+  DedupIdentityConflictEntry,
+} from "@/types/excel";
+
+/** §5 "추가 UX 제안": 이 이상 한 주문번호로 반복되면(고객정보 일치 여부와 무관) 사전 경고를 띄운다 — 등록을 막지는 않는다. */
+const SUSPICIOUS_ORDER_NUMBER_REPEAT_THRESHOLD = 10;
 import type { Order } from "@/types/domain";
 
 export interface ClassifyDuplicatesInput {
@@ -167,6 +178,56 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
     }
 
     if (hasRealOrderNumber) {
+      // 주문관리·표준엑셀·배송관리 UX 개선(2026-08 CPO 작업지시) §3-2/§4 Phase1:
+      // product_order_number가 없는 파일(표준 엑셀 등)에서는 이 order_number
+      // 그룹의 여러 행이 실제로 같은 고객인지 검증할 방법이 이것뿐이다 — 이름/
+      // 전화/주소가 전부 같지 않으면 절대 자동으로 한 주문으로 병합하지 않는다
+      // (Case C/D: 실수로 서로 다른 고객에게 같은 주문번호를 입력한 경우, 병합하면
+      // 첫 번째 고객만 남고 나머지 고객정보가 사라진다 — 실제 재현으로 확인된
+      // 데이터 유실 결함).
+      if (!hasProductOrderNumberColumn && rows.length > 1) {
+        const rowIdentities = rows.map((row) => {
+          const rPhoneRaw = cellToString(getMapped(row, mapping, "phone")) || null;
+          const rAddressRaw = cellToString(getMapped(row, mapping, "address")) || null;
+          const rBuyerName = cellToString(getMapped(row, mapping, "buyer_name")) || null;
+          const rBuyerId = cellToString(getMapped(row, mapping, "buyer_id")) || null;
+          const rRawName = cellToString(getMapped(row, mapping, "recipient_name"));
+          const rName = rRawName || rBuyerName || (rBuyerId ? `구매자(${rBuyerId})` : "") || "이름 미확인";
+          const rPhone = formatPhoneNumber(rPhoneRaw);
+          const rAddressNormalized = normalizeAddressForCompare(rAddressRaw);
+          return {
+            key: `${rName}|${rPhone ?? ""}|${rAddressNormalized ?? ""}`,
+            recipientName: rName,
+            phone: rPhone,
+            address: cleanAddress(rAddressRaw),
+            productName: cellToString(getMapped(row, mapping, "product_name")) || "상품",
+            optionName: cellToString(getMapped(row, mapping, "option_name")) || null,
+            quantity: parseNumber(getMapped(row, mapping, "quantity")) || 1,
+          };
+        });
+        const distinctKeys = new Set(rowIdentities.map((r) => r.key));
+        if (distinctKeys.size > 1) {
+          const seen = new Map<string, DedupIdentityConflictEntry>();
+          for (const r of rowIdentities) {
+            if (seen.has(r.key)) continue;
+            seen.set(r.key, {
+              recipientName: r.recipientName,
+              phone: r.phone,
+              address: r.address,
+              productSummary: productSummaryOf([{ product_name: r.productName, option_name: r.optionName, quantity: r.quantity }]),
+            });
+          }
+          results.push({
+            groupKey,
+            status: "identity_conflict",
+            reason: `[${orderNumber}] 주문번호가 같지만 서로 다른 고객 정보가 섞여 있어 등록하지 않았습니다.`,
+            upload,
+            conflictingIdentities: [...seen.values()],
+          });
+          continue;
+        }
+      }
+
       const existingParent = existingParentOrders.get(orderNumber!);
 
       if (!existingParent) {
@@ -307,6 +368,11 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
   let confirmedDuplicateCount = 0;
   let candidateCount = 0;
   let errorCount = 0;
+  // §3-2/§4 Phase1: identity_conflict는 errorCount에도 접혀 들어가 기존
+  // newCount+confirmedDuplicateCount+candidateCount+errorCount===totalProductOrders
+  // 불변식을 유지하면서, 화면에서 "왜 오류인지"를 구분해 보여줄 수 있도록
+  // identityConflictCount로 별도 추적한다.
+  let identityConflictCount = 0;
   const resultByGroupKey = new Map(results.map((r) => [r.groupKey, r]));
   for (const [groupKey, entries] of groups) {
     const result = resultByGroupKey.get(groupKey)!;
@@ -319,10 +385,25 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
       }
       continue;
     }
-    if (result.status === "new") newCount += rowCount;
+    if (result.status === "identity_conflict") {
+      identityConflictCount += rowCount;
+      errorCount += rowCount;
+    } else if (result.status === "new") newCount += rowCount;
     else if (result.status === "confirmed_duplicate") confirmedDuplicateCount += rowCount;
     else if (result.status === "candidate") candidateCount += rowCount;
     else if (result.status === "error") errorCount += rowCount;
+  }
+
+  // §5 "추가 UX 제안": product_order_number가 없는 파일에서만 유효한 경고 —
+  // 있는 파일(스마트스토어 등)은 하나의 order_number에 여러 상품주문이 묶이는
+  // 게 정상 구조이므로 대상에서 제외한다.
+  const suspiciousOrderNumberRepeats: { orderNumber: string; rowCount: number }[] = [];
+  if (!hasProductOrderNumberColumn) {
+    for (const [groupKey, entries] of groups) {
+      if (entries.length >= SUSPICIOUS_ORDER_NUMBER_REPEAT_THRESHOLD) {
+        suspiciousOrderNumberRepeats.push({ orderNumber: groupKey, rowCount: entries.length });
+      }
+    }
   }
 
   return {
@@ -332,6 +413,8 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
     confirmedDuplicateCount,
     candidateCount,
     errorCount,
+    identityConflictCount,
+    suspiciousOrderNumberRepeats,
     groups: results,
   };
 }

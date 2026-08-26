@@ -391,7 +391,7 @@ export interface ImportRecord {
   created_at: ISODateString;
 }
 
-export type ImportErrorCode = "missing_order_number" | "missing_contact_info" | "processing_error" | "order_number_conflict";
+export type ImportErrorCode = "missing_order_number" | "missing_contact_info" | "processing_error" | "order_number_conflict" | "identity_conflict";
 
 export interface ImportRowError {
   row: number;
