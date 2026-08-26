@@ -106,6 +106,8 @@ export const FIELD_ALIASES: Record<MappableField, string[]> = {
     "totalprice",
   ],
   bag_no: ["가방번호", "가방no", "bagno", "bagnumber"],
+  payment_status: ["결제상태", "결제여부", "paymentstatus"],
+  payment_method: ["결제방법", "결제수단", "paymentmethod"],
 };
 
 /** Strips whitespace, parenthetical notes, and punctuation; lowercases latin chars. */

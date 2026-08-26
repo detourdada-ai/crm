@@ -128,6 +128,12 @@ export function ImportResultCards({
             있습니다(검토 화면에서 &ldquo;하나의 주문으로 등록&rdquo;을 누르지 않은 경우).
           </p>
         ) : null}
+        {summary.unrecognizedPaymentStatusOrders > 0 ? (
+          <p className="text-xs text-warning">
+            결제상태 값을 인식할 수 없는 주문 {summary.unrecognizedPaymentStatusOrders.toLocaleString()}건은 결제완료로 임의 처리하지
+            않고 &ldquo;확인 필요&rdquo;로 등록했습니다 — 주문관리에서 직접 확인해주세요.
+          </p>
+        ) : null}
 
         {missingCount > 0 ? (
           <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3">

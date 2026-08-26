@@ -2,7 +2,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { kstDayStartIso, kstDayEndIso } from "@/lib/utils/kst-date";
 import { digitsOnly, formatPhoneNumber } from "@/lib/utils/phone";
-import type { Order, OrderItem, OrderSource, DeliveryStatus, FulfillmentMethod, GeocodeStatus } from "@/types/domain";
+import type { Order, OrderItem, OrderSource, DeliveryStatus, FulfillmentMethod, GeocodeStatus, PaymentStatus, PaymentMethod } from "@/types/domain";
 
 export interface OrderInsert {
   id?: string; // client-generated (crypto.randomUUID()) for batch import — lets order_items reference the order before the actual insert round-trip
@@ -49,6 +49,12 @@ export interface OrderInsert {
   import_id?: string | null;
   owner_username: string;
   tenant_id: string;
+  /** Phase 2 §5: null = "확인 필요"(표준엑셀 값이 4개 표준값 중 아무 것도 아님) — 컬럼 자체가 없는 파일/수동주문은 호출부가 명시적으로 "결제완료"를 채운다. */
+  payment_status?: PaymentStatus | null;
+  payment_method?: PaymentMethod | null;
+  paid_at?: string | null;
+  delivery_fee?: number;
+  discount_amount?: number;
 }
 
 export interface OrderUpdate {
@@ -83,6 +89,11 @@ export interface OrderUpdate {
   status?: string;
   total_amount?: number;
   order_source?: OrderSource;
+  payment_status?: PaymentStatus | null;
+  payment_method?: PaymentMethod | null;
+  paid_at?: string | null;
+  delivery_fee?: number;
+  discount_amount?: number;
 }
 
 export type OrderSortField =
@@ -102,6 +113,8 @@ export interface OrderSearchParams {
   pageSize?: number;
   ownerUsername?: string;
   deliveryStatus?: DeliveryStatus;
+  /** Phase 2 §5(2026-08 CPO 작업지시): "unknown"은 payment_status IS NULL("확인 필요")만 걸러본다. */
+  paymentStatus?: PaymentStatus | "unknown";
   bagReturned?: boolean;
   /** F8: 고객명(recipient_name)/전화번호(phone_snapshot)/주문번호(order_number, internal_order_number) 통합 검색어. */
   query?: string;
@@ -356,6 +369,7 @@ export const ordersRepository = {
     pageSize = 20,
     ownerUsername,
     deliveryStatus,
+    paymentStatus,
     bagReturned,
     query,
     orderSource,
@@ -374,6 +388,8 @@ export const ordersRepository = {
     let q = getSupabaseAdmin().from("orders").select("*", { count: "exact" });
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     if (deliveryStatus) q = q.eq("delivery_status", deliveryStatus);
+    if (paymentStatus === "unknown") q = q.is("payment_status", null);
+    else if (paymentStatus) q = q.eq("payment_status", paymentStatus);
     if (bagReturned !== undefined) q = q.eq("bag_returned", bagReturned);
     if (orderSource) q = q.eq("order_source", orderSource);
     if (productOrderIds) q = q.in("id", productOrderIds);
@@ -415,6 +431,7 @@ export const ordersRepository = {
   async findAllMatchingOrderIds({
     ownerUsername,
     deliveryStatus,
+    paymentStatus,
     bagReturned,
     query,
     orderSource,
@@ -427,6 +444,8 @@ export const ordersRepository = {
     let q = getSupabaseAdmin().from("orders").select("id");
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     if (deliveryStatus) q = q.eq("delivery_status", deliveryStatus);
+    if (paymentStatus === "unknown") q = q.is("payment_status", null);
+    else if (paymentStatus) q = q.eq("payment_status", paymentStatus);
     if (bagReturned !== undefined) q = q.eq("bag_returned", bagReturned);
     if (orderSource) q = q.eq("order_source", orderSource);
     if (query && query.trim()) {
@@ -499,6 +518,7 @@ export const ordersRepository = {
     pageSize = 20,
     ownerUsername,
     deliveryStatus,
+    paymentStatus,
     bagReturned,
     query,
     orderSource,
@@ -541,6 +561,8 @@ export const ordersRepository = {
       const order = orderById.get(s.order_id);
       if (!order) continue; // 방어적: 삭제된 주문의 배송건이 FK cascade 반영 전에 조회된 경우
       if (deliveryStatus && order.delivery_status !== deliveryStatus) continue;
+      if (paymentStatus === "unknown" && order.payment_status !== null) continue;
+      else if (paymentStatus && paymentStatus !== "unknown" && order.payment_status !== paymentStatus) continue;
       if (bagReturned !== undefined && order.bag_returned !== bagReturned) continue;
       if (orderSource && order.order_source !== orderSource) continue;
       if (orderDateFrom && order.order_date < kstDayStartIso(orderDateFrom)) continue;

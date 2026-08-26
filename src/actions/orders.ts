@@ -19,7 +19,8 @@ import { isUuid } from "@/lib/utils/id";
 import { kstDayDateStrOf } from "@/lib/utils/kst-date";
 import { ownerScopeFor, requireSession, tenantScopeFor } from "@/lib/auth/current-session";
 import { isOrderSource } from "@/lib/constants/order-source";
-import type { Order, OrderItem, OrderShipment, DeliveryStatus, OrderSource, Customer } from "@/types/domain";
+import { DEFAULT_PAYMENT_STATUS, isPaymentStatus, isPaymentMethod } from "@/lib/constants/payment";
+import type { Order, OrderItem, OrderShipment, DeliveryStatus, OrderSource, Customer, PaymentStatus } from "@/types/domain";
 
 export async function listOrdersAction(page = 1, pageSize = 20) {
   const session = await requireSession();
@@ -39,6 +40,8 @@ export interface SearchOrdersParams {
   page?: number;
   pageSize?: number;
   deliveryStatus?: DeliveryStatus;
+  /** Phase 2 §5(2026-08 CPO 작업지시): "unknown"은 payment_status IS NULL("확인 필요")만 걸러본다. */
+  paymentStatus?: PaymentStatus | "unknown";
   bagReturned?: boolean;
   /** F8: 고객명/전화번호/주문번호 통합 검색어. */
   query?: string;
@@ -276,6 +279,15 @@ export async function createManualOrderAction(
   const quantity = Math.max(1, Number(formData.get("quantity")) || 1);
   const unitPrice = Math.max(0, Number(formData.get("unitPrice")) || 0);
 
+  const paymentStatusRaw = String(formData.get("paymentStatus") || "").trim();
+  const paymentStatus = isPaymentStatus(paymentStatusRaw) ? paymentStatusRaw : DEFAULT_PAYMENT_STATUS;
+  const paymentMethodRaw = String(formData.get("paymentMethod") || "").trim();
+  const paymentMethod = isPaymentMethod(paymentMethodRaw) ? paymentMethodRaw : null;
+  const paidAtRaw = String(formData.get("paidAt") || "").trim();
+  const paidAt = paidAtRaw ? new Date(paidAtRaw).toISOString() : null;
+  const deliveryFee = Math.max(0, Number(formData.get("deliveryFee")) || 0);
+  const discountAmount = Math.max(0, Number(formData.get("discountAmount")) || 0);
+
   const orderDate = orderDateRaw ? new Date(orderDateRaw).toISOString() : new Date().toISOString();
   const deliveryDate = new Date(deliveryDateRaw).toISOString();
   const amount = quantity * unitPrice;
@@ -346,6 +358,11 @@ export async function createManualOrderAction(
         internal_memo: internalMemo,
         delivery_date: deliveryDate,
         order_source: orderSourceRaw,
+        payment_status: paymentStatus,
+        payment_method: paymentMethod,
+        paid_at: paidAt,
+        delivery_fee: deliveryFee,
+        discount_amount: discountAmount,
         owner_username: session.username,
         tenant_id: tenantId,
       },
@@ -459,6 +476,15 @@ export async function updateManualOrderAction(
   const quantity = Math.max(1, Number(formData.get("quantity")) || 1);
   const unitPrice = Math.max(0, Number(formData.get("unitPrice")) || 0);
 
+  const paymentStatusRaw = String(formData.get("paymentStatus") || "").trim();
+  const paymentStatus = isPaymentStatus(paymentStatusRaw) ? paymentStatusRaw : (order.payment_status ?? DEFAULT_PAYMENT_STATUS);
+  const paymentMethodRaw = String(formData.get("paymentMethod") || "").trim();
+  const paymentMethod = isPaymentMethod(paymentMethodRaw) ? paymentMethodRaw : null;
+  const paidAtRaw = String(formData.get("paidAt") || "").trim();
+  const paidAt = paidAtRaw ? new Date(paidAtRaw).toISOString() : null;
+  const deliveryFee = Math.max(0, Number(formData.get("deliveryFee")) || 0);
+  const discountAmount = Math.max(0, Number(formData.get("discountAmount")) || 0);
+
   const orderDate = orderDateRaw ? new Date(orderDateRaw).toISOString() : order.order_date;
   const deliveryDate = deliveryDateRaw ? new Date(deliveryDateRaw).toISOString() : null;
   const amount = quantity * unitPrice;
@@ -507,6 +533,11 @@ export async function updateManualOrderAction(
       status,
       total_amount: amount,
       order_source: orderSourceRaw,
+      payment_status: paymentStatus,
+      payment_method: paymentMethod,
+      paid_at: paidAt,
+      delivery_fee: deliveryFee,
+      discount_amount: discountAmount,
     }, session.role === "admin" ? undefined : session.username);
 
     // S2-B STEP0: orders.delivery_date만 바뀌고 order_shipments.delivery_date는

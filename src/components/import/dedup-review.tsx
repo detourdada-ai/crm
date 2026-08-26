@@ -270,6 +270,12 @@ export function DedupReview({
             상품주문만 자동으로 추가 등록됩니다(아래 상세 참고).
           </p>
         ) : null}
+        {analysis.unrecognizedPaymentStatusCount > 0 ? (
+          <p className="text-xs text-warning">
+            결제상태 값을 인식할 수 없는 주문 {analysis.unrecognizedPaymentStatusCount.toLocaleString()}건이 있습니다 — 결제완료로
+            임의 처리하지 않고 등록 시 &ldquo;확인 필요&rdquo;로 남깁니다.
+          </p>
+        ) : null}
 
         {identityConflictGroups.length > 0 ? (
           <div className="space-y-2 rounded-md border border-destructive/50 bg-destructive/10 p-3">

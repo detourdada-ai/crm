@@ -16,11 +16,15 @@ import {
 } from "@/components/common/quick-date-range";
 import { DELIVERY_STATUS_OPTIONS } from "@/lib/constants/delivery-status";
 import { ORDER_SOURCE_OPTIONS } from "@/lib/constants/order-source";
+import { PAYMENT_STATUS_OPTIONS } from "@/lib/constants/payment";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import type { ProductSummaryEntry } from "@/lib/utils/product-summary";
 
 const STATUS_ALL = "all";
 const SOURCE_ALL = "all";
+const PAYMENT_STATUS_ALL = "all";
+/** Phase 2 §5(2026-08 CPO 작업지시): 결제상태가 null("확인 필요")인 주문만 따로 걸러볼 수 있게 하는 sentinel — 실제 PAYMENT_STATUS_OPTIONS 값과 겹치지 않는다. */
+const PAYMENT_STATUS_UNKNOWN = "unknown";
 const PRODUCT_ALL = "all";
 const SORT_OPTIONS = [
   { value: "delivery_date:desc", label: "배송일 최신순" },
@@ -72,6 +76,7 @@ export function OrderFilterBar({
   const [deliveryTo, setDeliveryTo] = useState(deliveryDateTo);
   const [status, setStatus] = useState(searchParams.get("deliveryStatus") ?? STATUS_ALL);
   const [source, setSource] = useState(searchParams.get("orderSource") ?? SOURCE_ALL);
+  const [paymentStatus, setPaymentStatus] = useState(searchParams.get("paymentStatus") ?? PAYMENT_STATUS_ALL);
   const [product, setProduct] = useState(searchParams.get("product") ?? PRODUCT_ALL);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [bagNotReturned, setBagNotReturned] = useState(searchParams.get("bagReturned") === "false");
@@ -103,6 +108,7 @@ export function OrderFilterBar({
     }
     if (status !== STATUS_ALL) params.set("deliveryStatus", status);
     if (source !== SOURCE_ALL) params.set("orderSource", source);
+    if (paymentStatus !== PAYMENT_STATUS_ALL) params.set("paymentStatus", paymentStatus);
     if (product !== PRODUCT_ALL) params.set("product", product);
     if (query.trim()) params.set("q", query.trim());
     if (bagNotReturned) params.set("bagReturned", "false");
@@ -126,6 +132,7 @@ export function OrderFilterBar({
     setDeliveryTo(today);
     setStatus(STATUS_ALL);
     setSource(SOURCE_ALL);
+    setPaymentStatus(PAYMENT_STATUS_ALL);
     setProduct(PRODUCT_ALL);
     setQuery("");
     setBagNotReturned(false);
@@ -184,6 +191,23 @@ export function OrderFilterBar({
                   {s}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">결제상태</Label>
+          <Select value={paymentStatus} onValueChange={setPaymentStatus}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={PAYMENT_STATUS_ALL}>전체</SelectItem>
+              {PAYMENT_STATUS_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+              <SelectItem value={PAYMENT_STATUS_UNKNOWN}>확인 필요</SelectItem>
             </SelectContent>
           </Select>
         </div>

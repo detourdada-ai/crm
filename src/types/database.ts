@@ -7,6 +7,8 @@
 import type {
   CustomerStatus,
   OrderSource,
+  PaymentStatus,
+  PaymentMethod,
   DeliveryStatus,
   FulfillmentMethod,
   DriverStatus,
@@ -265,6 +267,11 @@ export interface Database {
           import_id: string | null;
           owner_username: string;
           tenant_id: string;
+          payment_status: PaymentStatus | null;
+          payment_method: PaymentMethod | null;
+          paid_at: string | null;
+          delivery_fee: number;
+          discount_amount: number;
           created_at: string;
           updated_at: string;
         };
@@ -315,6 +322,11 @@ export interface Database {
           import_id?: string | null;
           owner_username?: string;
           tenant_id: string;
+          payment_status?: PaymentStatus | null;
+          payment_method?: PaymentMethod | null;
+          paid_at?: string | null;
+          delivery_fee?: number;
+          discount_amount?: number;
           created_at?: string;
           updated_at?: string;
         };

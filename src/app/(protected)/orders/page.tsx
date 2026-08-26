@@ -27,6 +27,7 @@ import {
   type QuickDateFilterValue,
 } from "@/lib/utils/kst-date";
 import { isOrderSource } from "@/lib/constants/order-source";
+import { isPaymentStatus } from "@/lib/constants/payment";
 import type { OrderSortField } from "@/lib/repositories/orders.repository";
 import type { DeliveryStatus } from "@/types/domain";
 
@@ -45,6 +46,7 @@ export default async function OrdersPage({
     deliveryDateTo?: string;
     deliveryStatus?: string;
     orderSource?: string;
+    paymentStatus?: string;
     q?: string;
     bagReturned?: string;
     sort?: string;
@@ -107,6 +109,12 @@ export default async function OrdersPage({
       pageSize: PAGE_SIZE,
       deliveryStatus: params.deliveryStatus as DeliveryStatus | undefined,
       orderSource: params.orderSource && isOrderSource(params.orderSource) ? params.orderSource : undefined,
+      paymentStatus:
+        params.paymentStatus === "unknown"
+          ? "unknown"
+          : params.paymentStatus && isPaymentStatus(params.paymentStatus)
+            ? params.paymentStatus
+            : undefined,
       query: params.q,
       bagReturned: params.bagReturned === "true" ? true : params.bagReturned === "false" ? false : undefined,
       ...commonDateFilter,
@@ -137,6 +145,7 @@ export default async function OrdersPage({
     if (params.deliveryDateTo) search.set("deliveryDateTo", params.deliveryDateTo);
     if (params.bagReturned) search.set("bagReturned", params.bagReturned);
     if (params.orderSource) search.set("orderSource", params.orderSource);
+    if (params.paymentStatus) search.set("paymentStatus", params.paymentStatus);
     if (params.q) search.set("q", params.q);
     if (params.sort) search.set("sort", params.sort);
     if (params.dir) search.set("dir", params.dir);
@@ -159,6 +168,7 @@ export default async function OrdersPage({
     if (params.deliveryDateTo) search.set("deliveryDateTo", params.deliveryDateTo);
     if (params.bagReturned) search.set("bagReturned", params.bagReturned);
     if (params.orderSource) search.set("orderSource", params.orderSource);
+    if (params.paymentStatus) search.set("paymentStatus", params.paymentStatus);
     if (params.q) search.set("q", params.q);
     if (params.sort) search.set("sort", params.sort);
     if (params.dir) search.set("dir", params.dir);

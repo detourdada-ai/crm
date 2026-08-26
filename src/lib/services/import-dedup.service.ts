@@ -12,6 +12,7 @@ import {
   parseNumber,
   parseOptionalDate,
   parseOrderDate,
+  resolvePaymentStatusCell,
   NO_ORDER_NUMBER_PREFIX,
   REPEAT_ORDER_NUMBER_CONFIRM_THRESHOLD,
 } from "@/lib/services/import.service";
@@ -80,6 +81,15 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
     list.push({ row, index });
     groups.set(groupKey, list);
   });
+
+  // Phase 2 §5(2026-08 CPO 작업지시): Confirm 이전 미리보기에도 "결제상태
+  // 인식불가" 경고를 노출한다 — import.service.ts(Confirm)와 동일한 판정
+  // 함수(resolvePaymentStatusCell)를 재사용해 결과가 어긋나지 않게 한다.
+  let unrecognizedPaymentStatusCount = 0;
+  for (const [, entries] of groups) {
+    const cell = cellToString(getMapped(entries[0].row, mapping, "payment_status"));
+    if (!resolvePaymentStatusCell(cell).recognized) unrecognizedPaymentStatusCount += 1;
+  }
 
   const realGroupKeys = Array.from(groups.keys()).filter((k) => !k.startsWith(NO_ORDER_NUMBER_PREFIX));
   const hasProductOrderNumberColumn = !!mapping["product_order_number"];
@@ -435,6 +445,7 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
     errorCount,
     identityConflictCount,
     repeatConfirmCount,
+    unrecognizedPaymentStatusCount,
     groups: results,
   };
 }

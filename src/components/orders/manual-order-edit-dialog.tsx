@@ -19,6 +19,12 @@ import {
 import { updateManualOrderAction } from "@/actions/orders";
 import { AddressSearchInput } from "@/components/common/address-search-input";
 import { ORDER_SOURCE_OPTIONS } from "@/lib/constants/order-source";
+import {
+  PAYMENT_STATUS_OPTIONS,
+  PAYMENT_METHOD_OPTIONS,
+  DEFAULT_PAYMENT_STATUS,
+  NO_PAYMENT_METHOD_VALUE,
+} from "@/lib/constants/payment";
 import type { Order, OrderItem } from "@/types/domain";
 
 export function ManualOrderEditDialog({ order, item }: { order: Order; item: OrderItem | null }) {
@@ -116,6 +122,52 @@ export function ManualOrderEditDialog({ order, item }: { order: Order; item: Ord
           <div className="space-y-2">
             <Label htmlFor="editUnitPrice">단가</Label>
             <Input id="editUnitPrice" name="unitPrice" type="number" min={0} defaultValue={item?.unit_price ?? 0} />
+          </div>
+          <div className="space-y-2 sm:col-span-2 border-t pt-4">
+            <Label className="text-sm font-medium">결제 정보</Label>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editPaymentStatus">결제상태</Label>
+            <Select name="paymentStatus" defaultValue={order.payment_status ?? DEFAULT_PAYMENT_STATUS}>
+              <SelectTrigger id="editPaymentStatus" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAYMENT_STATUS_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editPaymentMethod">결제방법</Label>
+            <Select name="paymentMethod" defaultValue={order.payment_method ?? NO_PAYMENT_METHOD_VALUE}>
+              <SelectTrigger id="editPaymentMethod" className="w-full">
+                <SelectValue placeholder="선택 안 함" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_PAYMENT_METHOD_VALUE}>선택 안 함</SelectItem>
+                {PAYMENT_METHOD_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editPaidAt">결제일</Label>
+            <Input id="editPaidAt" name="paidAt" type="date" defaultValue={order.paid_at?.slice(0, 10) ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editDeliveryFee">배송비</Label>
+            <Input id="editDeliveryFee" name="deliveryFee" type="number" min={0} defaultValue={order.delivery_fee ?? 0} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="editDiscountAmount">할인금액</Label>
+            <Input id="editDiscountAmount" name="discountAmount" type="number" min={0} defaultValue={order.discount_amount ?? 0} />
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="editOrderMemo">주문 메모</Label>

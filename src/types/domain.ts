@@ -182,9 +182,23 @@ export interface Order {
   import_id: UUID | null;
   owner_username: string;
   tenant_id: UUID;
+  /**
+   * Phase 2 §5(2026-08 CPO 작업지시): null은 "확인 필요"를 뜻한다 — 표준엑셀에
+   * 결제상태 컬럼이 아예 없으면 애플리케이션이 "결제완료"를 명시적으로 채우지만,
+   * 컬럼은 있는데 값이 4개 표준값 중 아무 것도 아니면 null로 남긴다(잘못된
+   * 값을 조용히 결제완료로 바꾸면 실제 미수금을 놓칠 위험이 있기 때문).
+   */
+  payment_status: PaymentStatus | null;
+  payment_method: PaymentMethod | null;
+  paid_at: ISODateString | null;
+  delivery_fee: number;
+  discount_amount: number;
   created_at: ISODateString;
   updated_at: ISODateString;
 }
+
+export type PaymentStatus = "결제완료" | "미결제" | "부분결제" | "환불";
+export type PaymentMethod = "카드" | "계좌이체" | "현금" | "네이버페이" | "기타";
 
 export type DriverStatus = "active" | "inactive";
 
@@ -374,6 +388,8 @@ export interface ImportSummary {
   repeatConfirmSkippedRows: number;
   /** 위와 동일한 개념의 주문(그룹) 수. */
   repeatConfirmSkippedOrders: number;
+  /** Phase 2 §5(2026-08 CPO 작업지시): 결제상태 컬럼은 있었지만 값이 표준 4개(결제완료/미결제/부분결제/환불)와 달라 payment_status=null("확인 필요")로 등록된 주문(그룹) 수 — 금전 리스크가 있어 결제완료로 임의 변환하지 않았다는 걸 업로드 결과 화면에서 명확히 경고해야 한다. */
+  unrecognizedPaymentStatusOrders: number;
 }
 
 export interface ImportRecord {

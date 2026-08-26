@@ -19,6 +19,7 @@ import { BackButton } from "@/components/common/back-button";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants/order-status";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
+import { PAYMENT_STATUS_BADGE_VARIANT } from "@/lib/constants/payment";
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
@@ -217,6 +218,18 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <Field label="택배사" value={order.courier} />
             <Field label="송장번호" value={order.tracking_number} />
             <Field label="배송완료일" value={order.shipped_at ? formatDateTime(order.shipped_at) : null} />
+            <div className="flex justify-between gap-3 border-b py-1.5 text-sm last:border-0">
+              <span className="text-muted-foreground">결제상태</span>
+              {order.payment_status ? (
+                <Badge variant={PAYMENT_STATUS_BADGE_VARIANT[order.payment_status]}>{order.payment_status}</Badge>
+              ) : (
+                <Badge variant="outline" className="text-warning">확인 필요</Badge>
+              )}
+            </div>
+            <Field label="결제방법" value={order.payment_method} />
+            <Field label="결제일" value={order.paid_at ? formatDateTime(order.paid_at) : null} />
+            <Field label="배송비" value={order.delivery_fee ? formatCurrency(Number(order.delivery_fee)) : null} />
+            <Field label="할인금액" value={order.discount_amount ? formatCurrency(Number(order.discount_amount)) : null} />
             <Field label="총 주문금액" value={formatCurrency(Number(order.total_amount))} />
             <Field label="담당자" value={order.owner_username} />
           </CardContent>

@@ -367,6 +367,18 @@ create table if not exists orders (
   -- order_number(스마트스토어 원본, 위)는 절대 이 값으로 대체되지 않는다 —
   -- 재업로드 시 중복 판정은 여전히 order_number 기준으로 동작한다.
   internal_order_number text not null,
+  -- Phase 2 §5(2026-08 CPO 작업지시): 결제정보. payment_status는 의도적으로
+  -- NOT NULL이 아니다 — 표준엑셀에 결제상태 컬럼이 아예 없으면 애플리케이션이
+  -- '결제완료'를 명시적으로 채우지만, 컬럼은 있는데 값이 4개 표준값 중 아무
+  -- 것도 아니면 NULL로 남겨 "확인 필요"로 표시한다(잘못된 값을 조용히
+  -- 결제완료로 바꾸면 실제 미수금을 놓칠 위험이 있다는 CPO 지적). check 제약은
+  -- NULL에 대해 평가되지 않으므로(Postgres 표준 동작) NOT NULL 없이도 4개
+  -- 표준값만 허용하는 제약은 유지된다.
+  payment_status text check (payment_status in ('결제완료', '미결제', '부분결제', '환불')),
+  payment_method text check (payment_method in ('카드', '계좌이체', '현금', '네이버페이', '기타')),
+  paid_at timestamptz,
+  delivery_fee numeric(12, 2) not null default 0,
+  discount_amount numeric(12, 2) not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (order_number),
@@ -377,6 +389,7 @@ create index if not exists idx_orders_customer_id on orders (customer_id);
 create index if not exists idx_orders_order_date on orders (order_date desc);
 create index if not exists idx_orders_delivery_date on orders (delivery_date desc);
 create index if not exists idx_orders_bag_returned on orders (bag_returned) where bag_returned = false;
+create index if not exists idx_orders_payment_status on orders (payment_status);
 create index if not exists idx_orders_import_id on orders (import_id);
 create index if not exists idx_orders_owner_username on orders (owner_username);
 create index if not exists idx_orders_tenant_id on orders (tenant_id);

@@ -5,6 +5,7 @@ import { SortableTableHead } from "@/components/common/sortable-table-head";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants/order-status";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
+import { PAYMENT_STATUS_BADGE_VARIANT } from "@/lib/constants/payment";
 import type { Order } from "@/types/domain";
 import type { OrderItemSummary } from "@/actions/orders";
 
@@ -76,6 +77,7 @@ export function OrderTable({
               </SortableTableHead>
             ) : null}
             {isVisible("memo") ? <TableHead className="hidden xl:table-cell">배송메세지</TableHead> : null}
+            {isVisible("payment") ? <TableHead className="hidden lg:table-cell">결제상태</TableHead> : null}
             {bagManagementEnabled && isVisible("bag") ? (
               <TableHead className="hidden lg:table-cell">가방번호 / 회수</TableHead>
             ) : null}
@@ -147,6 +149,15 @@ export function OrderTable({
                 {isVisible("memo") ? (
                   <TableCell className="hidden xl:table-cell max-w-40 truncate text-muted-foreground">
                     {order.delivery_memo ?? "-"}
+                  </TableCell>
+                ) : null}
+                {isVisible("payment") ? (
+                  <TableCell className="hidden lg:table-cell">
+                    {order.payment_status ? (
+                      <Badge variant={PAYMENT_STATUS_BADGE_VARIANT[order.payment_status]}>{order.payment_status}</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-warning">확인 필요</Badge>
+                    )}
                   </TableCell>
                 ) : null}
                 {bagManagementEnabled && isVisible("bag") ? (

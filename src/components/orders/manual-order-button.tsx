@@ -24,6 +24,7 @@ import { listActiveProductsAction } from "@/actions/products";
 import { AddressSearchInput } from "@/components/common/address-search-input";
 import { OrderCustomerPicker } from "@/components/orders/order-customer-picker";
 import { ORDER_SOURCE_OPTIONS } from "@/lib/constants/order-source";
+import { PAYMENT_STATUS_OPTIONS, PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_STATUS, NO_PAYMENT_METHOD_VALUE } from "@/lib/constants/payment";
 import { kstTodayIso, resolveKstQuickRange } from "@/lib/utils/kst-date";
 import { cn } from "@/lib/utils";
 import type { Customer, Product } from "@/types/domain";
@@ -85,6 +86,16 @@ export function ManualOrderButton() {
   const [quantity, setQuantity] = useState(1);
   const [deliveryDate, setDeliveryDate] = useState("");
   const [memoExpanded, setMemoExpanded] = useState(false);
+
+  // Phase 2 §5(CPO 작업지시, 2026-08): 결제상태/방법은 기본 노출, 결제일/배송비/
+  // 할인금액은 "메모 추가"와 같은 상세정보 접기 섹션에 함께 둔다. 결제상태는
+  // 신규 등록 시 항상 "결제완료"를 기본값으로 시작한다(대부분의 전화/현장
+  // 주문은 즉시 결제되기 때문 — CPO 확정, "미결제로 바꾸기 쉬우면 된다").
+  const [paymentStatus, setPaymentStatus] = useState<string>(DEFAULT_PAYMENT_STATUS);
+  const [paymentMethod, setPaymentMethod] = useState<string>(NO_PAYMENT_METHOD_VALUE);
+  const [paidAt, setPaidAt] = useState("");
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState(0);
 
   useEffect(() => {
     if (step === "manual") {
@@ -160,6 +171,11 @@ export function ManualOrderButton() {
     setQuantity(1);
     setDeliveryDate("");
     setMemoExpanded(false);
+    setPaymentStatus(DEFAULT_PAYMENT_STATUS);
+    setPaymentMethod(NO_PAYMENT_METHOD_VALUE);
+    setPaidAt("");
+    setDeliveryFee(0);
+    setDiscountAmount(0);
   }
 
   function handleOpenChange(next: boolean) {
@@ -353,6 +369,42 @@ export function ManualOrderButton() {
               <Label htmlFor="orderDate">주문일</Label>
               <Input id="orderDate" name="orderDate" type="date" defaultValue={kstTodayIso()} />
             </div>
+
+            <div className="space-y-2 sm:col-span-2 border-t pt-4">
+              <Label className="text-sm font-medium">결제 정보</Label>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="paymentStatus">결제상태</Label>
+              <Select name="paymentStatus" value={paymentStatus} onValueChange={setPaymentStatus}>
+                <SelectTrigger id="paymentStatus" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="paymentMethod">결제방법</Label>
+              <Select name="paymentMethod" value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger id="paymentMethod" className="w-full">
+                  <SelectValue placeholder="선택 안 함" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PAYMENT_METHOD_VALUE}>선택 안 함</SelectItem>
+                  {PAYMENT_METHOD_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {products.length > 0 ? (
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="productSelect">상품</Label>
@@ -451,11 +503,37 @@ export function ManualOrderButton() {
                   type="button"
                   className="flex w-full items-center justify-between text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  <span>메모 추가 (선택)</span>
+                  <span>결제 상세 및 메모 (선택)</span>
                   <ChevronDown className={cn("size-4 transition-transform", memoExpanded && "rotate-180")} />
                 </button>
               </CollapsibleTrigger>
               <CollapsibleContent className="grid gap-4 pt-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="paidAt">결제일</Label>
+                  <Input id="paidAt" name="paidAt" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="deliveryFee">배송비</Label>
+                  <Input
+                    id="deliveryFee"
+                    name="deliveryFee"
+                    type="number"
+                    min={0}
+                    value={deliveryFee}
+                    onChange={(e) => setDeliveryFee(Math.max(0, Number(e.target.value) || 0))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="discountAmount">할인금액</Label>
+                  <Input
+                    id="discountAmount"
+                    name="discountAmount"
+                    type="number"
+                    min={0}
+                    value={discountAmount}
+                    onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value) || 0))}
+                  />
+                </div>
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="orderMemo">주문 메모</Label>
                   <Input id="orderMemo" name="orderMemo" placeholder="고객 응대 시 참고할 메모" />

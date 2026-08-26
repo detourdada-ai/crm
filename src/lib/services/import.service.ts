@@ -14,8 +14,9 @@ import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { geocodeBatch, type GeocodeFields } from "@/lib/services/geocoding.service";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { kstDayDateStrOf } from "@/lib/utils/kst-date";
+import { DEFAULT_PAYMENT_STATUS, isPaymentStatus, isPaymentMethod } from "@/lib/constants/payment";
 import type { ParsedSheet, ColumnMapping } from "@/types/excel";
-import type { Customer, ImportRowError, ImportSummary, Order, OrderItem, OrderShipment } from "@/types/domain";
+import type { Customer, ImportRowError, ImportSummary, Order, OrderItem, OrderShipment, PaymentStatus, PaymentMethod } from "@/types/domain";
 
 // 주문번호가 없는 행은 다른 행과 묶일 근거가 없어 행 하나만으로 독립된
 // 주문 1건이 된다(§19 CPO 원칙: 1행=1주문=1상품) — import-dedup.service.ts가
@@ -117,6 +118,25 @@ export function parseOptionalDate(value: unknown): string | null {
     if (!Number.isNaN(d.getTime())) return d.toISOString();
   }
   return null;
+}
+
+/**
+ * Phase 2 §5(2026-08 CPO 작업지시): 결제상태는 금전 리스크가 있어 "인식 못한
+ * 값 → 결제완료로 임의 변환"을 절대 하지 않는다. 컬럼이 아예 매핑되지 않은
+ * 파일은 사장님이 결제정보를 관리하지 않는다는 뜻이므로 기본값(결제완료)을
+ * 쓰지만, 컬럼은 있는데 셀 값이 4개 표준값과 다르면 null("확인 필요")로
+ * 남기고 recognized=false를 반환해 호출 쪽이 경고 카운트를 올리게 한다.
+ * 셀이 비어 있는 경우(컬럼은 있지만 이 행만 안 채움)는 컬럼 자체가 없는
+ * 경우와 동일하게 취급한다 — 틀린 값이 아니라 "정보 없음"이기 때문이다.
+ */
+export function resolvePaymentStatusCell(rawValue: string): { status: PaymentStatus | null; recognized: boolean } {
+  if (!rawValue) return { status: DEFAULT_PAYMENT_STATUS, recognized: true };
+  if (isPaymentStatus(rawValue)) return { status: rawValue, recognized: true };
+  return { status: null, recognized: false };
+}
+
+export function resolvePaymentMethodCell(rawValue: string): PaymentMethod | null {
+  return isPaymentMethod(rawValue) ? rawValue : null;
 }
 
 interface DetectedCandidate {
@@ -308,6 +328,11 @@ export async function runImport({
   // CPO 정책(2026-08): 업로드 결과 화면에 "배송일 미지정 N건 → 일괄 지정"을
   // 보여주기 위한 카운터 — 주문(그룹) 단위로 센다(행 단위 아님).
   let missingDeliveryDateOrderCount = 0;
+  // Phase 2 §5(2026-08 CPO 작업지시): 결제상태는 금전 리스크가 있어 표준 4개
+  // 값과 다른 엑셀 값을 절대 임의로 "결제완료"로 바꾸지 않는다 — 이 카운터는
+  // 그렇게 payment_status=null("확인 필요")로 남긴 주문(그룹) 수를 세어
+  // 업로드 결과 화면에 명확한 경고로 보여주기 위한 것이다.
+  let unrecognizedPaymentStatusOrderCount = 0;
 
   // 베타 오픈 준비 — 주문 데이터 표준화: "주문번호" 컬럼은 스마트스토어 같은
   // 채널에서만 존재하고, 일반 엑셀(성명/전화/품목/수량/주소 등 한 줄=한 주문
@@ -640,6 +665,11 @@ export async function runImport({
       const courier = cellToString(getMapped(first, mapping, "courier")) || null;
       const trackingNumber = cellToString(getMapped(first, mapping, "tracking_number")) || null;
       const salesChannel = cellToString(getMapped(first, mapping, "sales_channel")) || null;
+      const { status: paymentStatus, recognized: paymentStatusRecognized } = resolvePaymentStatusCell(
+        cellToString(getMapped(first, mapping, "payment_status"))
+      );
+      if (!paymentStatusRecognized) unrecognizedPaymentStatusOrderCount += 1;
+      const paymentMethod = resolvePaymentMethodCell(cellToString(getMapped(first, mapping, "payment_method")));
       const buyerName = cellToString(getMapped(first, mapping, "buyer_name")) || null;
       const buyerId = cellToString(getMapped(first, mapping, "buyer_id")) || null;
       const shippedAt = parseOptionalDate(getMapped(first, mapping, "shipped_at"));
@@ -863,6 +893,8 @@ export async function runImport({
         delivery_date: deliveryDate,
         delivery_area: deliveryArea,
         order_source: "엑셀",
+        payment_status: paymentStatus,
+        payment_method: paymentMethod,
         import_id: importRecord.id,
         owner_username: ownerUsername,
         tenant_id: tenant.id,
@@ -1074,6 +1106,7 @@ export async function runImport({
       candidateSkippedOrders,
       repeatConfirmSkippedRows,
       repeatConfirmSkippedOrders,
+      unrecognizedPaymentStatusOrders: unrecognizedPaymentStatusOrderCount,
     },
     errors,
   };

@@ -15,6 +15,7 @@ export const ORDER_TABLE_TOGGLEABLE_COLUMNS: OrderTableColumnDef[] = [
   { id: "phone", label: "연락처" },
   { id: "address", label: "배송지주소" },
   { id: "memo", label: "배송메세지" },
+  { id: "payment", label: "결제상태" },
   { id: "bag", label: "가방번호 / 회수" },
   { id: "driver", label: "담당기사" },
   { id: "customerLink", label: "고객" },

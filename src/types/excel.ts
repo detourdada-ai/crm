@@ -26,10 +26,12 @@ export type MappableField =
   | "quantity"
   | "unit_price"
   | "amount"
-  | "bag_no";
+  | "bag_no"
+  | "payment_status"
+  | "payment_method";
 
 /** S1-6: 컬럼 매핑 화면에서 "구분"으로 묶어 보여줄 대분류 — 사장님이 이 필드가 주문/고객/배송/상품 중 어디에 속하는지 한눈에 파악하도록. */
-export type MappableFieldCategory = "주문" | "고객" | "배송" | "상품";
+export type MappableFieldCategory = "주문" | "고객" | "배송" | "상품" | "결제";
 
 export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boolean; category: MappableFieldCategory }[] = [
   // 베타 오픈 준비 — 주문 데이터 표준화: 스마트스토어 등 채널 주문에만 있는
@@ -81,6 +83,12 @@ export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boo
   // 관리하지 않는 사업장(반찬/도시락 등)의 일반 엑셀에는 없는 경우가 많다.
   { key: "amount", label: "금액", required: false, category: "상품" },
   { key: "bag_no", label: "가방번호", required: false, category: "배송" },
+  // Phase 2 §5(2026-08 CPO 작업지시): 결제정보는 금전 리스크가 있어 인식 못한
+  // 값을 절대 결제완료로 임의 변환하지 않는다 — import.service.ts에서 목록에
+  // 없는 값은 payment_status=null("확인 필요")로 남기고 경고를 노출한다.
+  // 컬럼 자체가 없으면(매핑 안 됨) 이 필드와 무관하게 기본값 결제완료로 처리.
+  { key: "payment_status", label: "결제상태", required: false, category: "결제" },
+  { key: "payment_method", label: "결제방법", required: false, category: "결제" },
 ];
 
 export interface ParsedSheet {
@@ -201,5 +209,7 @@ export interface DedupAnalysis {
   identityConflictCount: number;
   /** Phase 2 §2: 같은 고객이 같은 주문번호를 반복 사용해 병합/분리 확인이 필요한 상품주문(행) 수 — 사용자가 선택하기 전엔 등록되지 않는다. */
   repeatConfirmCount: number;
+  /** Phase 2 §5(2026-08 CPO 작업지시): 결제상태 컬럼 값이 표준 4개와 달라 결제완료로 임의 변환하지 않고 "확인 필요"로 남긴 그룹 수 — 금전 리스크 경고용. */
+  unrecognizedPaymentStatusCount: number;
   groups: DedupGroupResult[];
 }
