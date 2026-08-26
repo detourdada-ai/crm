@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { AutoRefresh } from "@/components/common/auto-refresh";
 import { Download } from "lucide-react";
 import { OrderTable } from "@/components/orders/order-table";
 import { OrderFilterBar } from "@/components/orders/order-filter-bar";
@@ -178,6 +179,7 @@ export default async function OrdersPage({
 
   return (
     <div className="space-y-6">
+      <AutoRefresh />
       <PageHeader
         title="주문관리"
         description={`${deliveryRangeLabel} 발송할 상품주문(배송일 기준)을 확인하고 처리하세요. 주문일 필터는 기본적으로 전체입니다.`}

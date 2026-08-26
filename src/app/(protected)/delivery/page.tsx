@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { AutoRefresh } from "@/components/common/auto-refresh";
 import { DeliveryFilterBar } from "@/components/delivery/delivery-filter-bar";
 import { DeliveryFilterStack } from "@/components/delivery/delivery-filter-stack";
 import { DriverManagementDialog } from "@/components/delivery/driver-management-dialog";
@@ -221,6 +222,7 @@ export default async function DeliveryPage({
 
   return (
     <div className="space-y-6">
+      <AutoRefresh />
       <PageHeader
         title="배송관리"
         description="오늘 배송할 주문을 확인하고 배정 및 배송 상태를 관리하세요."
