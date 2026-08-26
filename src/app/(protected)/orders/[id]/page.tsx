@@ -73,6 +73,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   // S1-1 Phase 5: 발송일이 같은 주문은 배송건이 1개뿐이라 기존 화면과 동일하게 보인다.
   // 발송일이 달라 배송건이 여러 개로 쪼개진 주문만 아래에서 배송건별로 따로 보여준다.
   const singleShipment = shipments.length === 1 ? shipments[0] : null;
+  // P4C STEP2-B(2026-08 CPO 작업지시): 배송건이 여러 개인데 상태가 서로
+  // 다르면(예: 오늘 배송은 완료, 다른 날짜 배송은 아직 배송대기) 상단의
+  // "주문 상태"(부모 롤업, 예: 배송중)만 보고는 "오늘 배송이 완료됐는데 왜
+  // 아직 배송중이지?"라는 혼란이 생긴다 — 그 이유를 짧게 설명한다.
+  const hasMixedShipmentStatus = shipments.length > 1 && new Set(shipments.map((s) => s.delivery_status)).size > 1;
 
   return (
     <div className="space-y-6">
@@ -81,7 +86,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         <h1 className="text-2xl font-semibold">{order.internal_order_number}</h1>
         <Badge variant="outline">{ORDER_SOURCE_LABELS[order.order_source]}</Badge>
         <div className="flex items-center gap-1.5 text-sm">
-          <span className="text-muted-foreground">배송 상태</span>
+          <span className="text-muted-foreground">{singleShipment ? "배송 상태" : "주문 상태"}</span>
           <Badge variant={DELIVERY_STATUS_BADGE_VARIANT[order.delivery_status]}>{order.delivery_status}</Badge>
           {singleShipment ? (
             <OrderDeliveryStatusAction shipmentId={singleShipment.id} deliveryStatus={singleShipment.delivery_status} />
@@ -89,6 +94,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <span className="text-xs text-muted-foreground">배송건 {shipments.length}건 — 아래에서 개별 확인</span>
           ) : null}
         </div>
+        {hasMixedShipmentStatus ? (
+          <p className="w-full text-xs text-muted-foreground">
+            ※ 일부 배송이 아직 완료되지 않아 주문 상태가 &ldquo;{order.delivery_status}&rdquo;로 표시됩니다.
+          </p>
+        ) : null}
         <div className="ml-auto flex gap-2">
           <ManualOrderEditDialog order={order} item={items[0] ?? null} />
           <OrderCancelButton orderId={order.id} deliveryStatus={order.delivery_status} />

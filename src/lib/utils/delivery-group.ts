@@ -56,21 +56,58 @@ export function isApartmentName(complexName: string): boolean {
 }
 
 export interface GroupBuildingLabel {
-  /** 카드/select 안에 쓰는 짧은 부분 — 건물명 확정 시 "○○아파트", 아니면 "N구역" fallback. */
+  /** 카드/select 안에 쓰는 짧은 부분 표시명 — 우선순위(§8)에 따라 건물명 / "건물명 외 N곳" / 지역명 / "N구역" 중 하나. */
   suffix: string;
-  /** 지역 헤딩("망월동")과 합친 전체 라벨 — "망월동 · ○○아파트". */
+  /** 지역 헤딩과 합친 전체 라벨(건물명이 확정된 경우만 "지역 · 건물명" 형태, 지역명 단독일 땐 suffix와 동일). */
   full: string;
 }
 
+export interface GroupBuildingCount {
+  /** 건물명, 또는 addressSnapshot에서 건물명을 추출하지 못한 배송건을 모은 "기타". */
+  name: string;
+  count: number;
+}
+
+/** STEP2-D(§10): 그룹 카드 안의 배송건수 소계 — total은 이 그룹 안에서
+ *  지금 화면에 보이는 전체 건수, 나머지 셋은 그 안의 상태별 분해다. */
+export interface GroupStatusSubtotal {
+  total: number;
+  needsDriver: number;
+  inProgress: number;
+  done: number;
+}
+
 /**
- * S2-A: 배송그룹 카드/필터에 쓰는 최종 표시 라벨 — "망월동 · ○○아파트" 또는
- * (건물명이 확실하지 않으면) "망월동 · 1구역". 그룹 자체는 건물명을 저장하지
- * 않으므로(100m 반경 클러스터일 뿐), 그 그룹에 실제로 속한 배송건들의
- * address_snapshot에서 extractComplexName/isApartmentName으로 이미 뽑아낸
- * 이름 중 가장 많이 겹치는 것을 그 그룹의 대표 건물명으로 쓴다 — 새로운
- * 추정 로직이 아니라 기존 P14-B 판정을 그룹 구성원 전체에 적용해 다수결로
- * 대표값 하나를 고르는 것뿐이다. 겹치는 아파트명이 하나도 없으면(기타 건물,
- * 판별 불가 등) 억지로 만들지 않고 "지역 · N구역" fallback을 그대로 쓴다.
+ * P4C STEP2-C(2026-08 CPO 작업지시 §9/§11): 그룹 하나에 속한 배송건들의
+ * 실제 건물명별 소계 — "이 그룹 안에 뭐가 들어있는지"를 그룹을 열지 않고도
+ * 볼 수 있게 한다. 100m 반경 클러스터링이 서로 다른 단지를 하나로 묶은
+ * 경우(실측: 미사역 파라곤 + 미사강변 호반 써밋이 한 그룹에 섞인 사례)를
+ * 숨기지 않고 그대로 드러내는 것이 목적이다 — extractComplexName은 여기서도
+ * "아파트" 키워드 필터 없이(isApartmentName은 다른 용도) 괄호 안 건물명을
+ * 있는 그대로 센다.
+ */
+export function buildGroupBuildingCounts(memberAddresses: (string | null)[]): GroupBuildingCount[] {
+  const counts = new Map<string, number>();
+  for (const addr of memberAddresses) {
+    const name = extractComplexName(addr) ?? "기타";
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+}
+
+/**
+ * P4C STEP2-C(2026-08 CPO 작업지시 §8): 배송그룹 표시명 우선순위.
+ * 1순위: 그룹 안에서 가장 많이 겹치는 실제 건물명(예: "미사역 파라곤").
+ *        예전엔 "아파트"/"APT" 키워드가 있어야만 건물명으로 인정했지만,
+ *        실측 결과 55개 그룹 중 42개(76%)가 이 키워드 필터 때문에 "N구역"
+ *        기술 라벨로 폴백해 CPO가 지적한 문제의 핵심 원인이었다 — 라벨
+ *        용도로는 키워드 유무와 무관하게 괄호 안 건물명이면 충분하다
+ *        (아파트/오피스�트 구분이 실제로 필요한 곳은 isApartmentName을
+ *        여전히 쓰는 다른 호출부뿐, 이 함수는 그걸 쓰지 않는다).
+ * 2순위: 건물명이 여러 개면 "대표명 외 N곳"(실제로 서로 다른 건물이 한
+ *        그룹에 섞였다는 사실을 그대로 보여준다 — §9).
+ * 3순위: 건물명을 하나도 추출 못하면(단독주택 등) 지역명 단독 사용.
+ * 최후 fallback: 지역명조차 없으면(이론상만 존재) "N구역".
  */
 export function buildGroupBuildingLabels(
   groups: Pick<DeliveryGroup, "id" | "group_no" | "representative_sido" | "representative_sigungu" | "representative_eupmyeondong">[],
@@ -87,16 +124,19 @@ export function buildGroupBuildingLabels(
   const labelById = new Map<string, GroupBuildingLabel>();
   for (const list of byRegion.values()) {
     const sorted = [...list].sort((a, b) => a.group_no - b.group_no);
-    const region = groupRegionLabel(sorted[0]);
     sorted.forEach((g, idx) => {
+      const region = groupRegionLabel(g);
       const addresses = memberAddressesByGroupId.get(g.id) ?? [];
-      const nameCounts = new Map<string, number>();
-      for (const addr of addresses) {
-        const name = extractComplexName(addr);
-        if (name && isApartmentName(name)) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+      const buildingCounts = buildGroupBuildingCounts(addresses).filter((c) => c.name !== "기타");
+
+      if (buildingCounts.length === 0) {
+        // 3순위: 건물명 특정 불가 — 지역명을 그대로 기본 표시명으로 쓴다(§8, "N구역"을 기본값으로 하지 않는다).
+        const fallback = region !== "지역 미상" ? region : `${idx + 1}구역`;
+        labelById.set(g.id, { suffix: fallback, full: fallback });
+        return;
       }
-      const topName = [...nameCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-      const suffix = topName ?? `${idx + 1}구역`;
+      const topName = buildingCounts[0].name;
+      const suffix = buildingCounts.length > 1 ? `${topName} 외 ${buildingCounts.length - 1}곳` : topName;
       labelById.set(g.id, { suffix, full: `${region} · ${suffix}` });
     });
   }

@@ -11,7 +11,8 @@ import { OrderColumnSelector } from "@/components/orders/order-column-selector";
 import { PaginationControls } from "@/components/common/pagination-controls";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { searchOrdersAction } from "@/actions/orders";
 import { getColumnViewAction, getAvailableExtraColumnsAction } from "@/actions/column-view";
 import { ORDER_TABLE_TOGGLEABLE_COLUMN_IDS } from "@/lib/constants/order-table-columns";
@@ -130,10 +131,17 @@ export default async function OrdersPage({
     ...DELIVERY_STATUS_OPTIONS.map((status) => searchOrdersAction({ pageSize: 1, deliveryStatus: status, ...commonDateFilter })),
   ]);
 
+  // P4C STEP2-A(2026-08 CPO 작업지시): 배송일 필터가 걸려 있으면(기본값이
+  // "오늘"이라 사실상 항상) 이 칩들은 실제로 "배송건" 단위로 집계된
+  // 숫자다(searchByShipmentDate) — "완료 96"처럼 단위 없이 보여주면 배송관리의
+  // "완료 배송건"과 헷갈리므로, 단위(주문/배송)를 라벨에 항상 명시한다.
+  const isShipmentMode = deliveryDateFilter !== "all";
+  const countUnitLabel = isShipmentMode ? "배송" : "주문";
   const chipCounts: OrderStatusChipCount[] = [
-    { status: "all", label: "전체", count: statusCounts[0].total },
-    ...DELIVERY_STATUS_OPTIONS.map((status, i) => ({ status, label: status, count: statusCounts[i + 1].total })),
+    { status: "all", label: `전체 ${countUnitLabel}`, count: statusCounts[0].total },
+    ...DELIVERY_STATUS_OPTIONS.map((status, i) => ({ status, label: `${status} ${countUnitLabel}`, count: statusCounts[i + 1].total })),
   ];
+  const distinctOrderCountForFilter = statusCounts[0].distinctOrderCount;
 
   function buildStatusHref(status: DeliveryStatus | "all") {
     const search = new URLSearchParams();
@@ -206,6 +214,29 @@ export default async function OrdersPage({
           </div>
         }
       />
+
+      {isShipmentMode && distinctOrderCountForFilter !== undefined ? (
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <span>
+            주문 <span className="font-semibold text-text-strong">{distinctOrderCountForFilter.toLocaleString()}건</span> · 배송{" "}
+            <span className="font-semibold text-text-strong">{statusCounts[0].total.toLocaleString()}건</span>
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" aria-label="주문/배송 건수 차이 안내" className="text-muted-foreground/70 hover:text-foreground">
+                <Info className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <div className="space-y-0.5">
+                <p>주문: 고객의 주문 건수</p>
+                <p>배송: 실제 배송해야 하는 건수</p>
+                <p>한 주문이 여러 날짜로 나뉘면 배송이 여러 건으로 생성됩니다.</p>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      ) : null}
 
       <OrderStatusChips counts={chipCounts} active={activeStatus} buildHref={buildStatusHref} />
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition, type RefObject } from "react";
+import { Fragment, useMemo, useState, useTransition, type RefObject } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,7 +9,7 @@ import { assignDriverAction, reorderShipmentsAction, setFulfillmentMethodAction 
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
-import type { GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import type { GroupBuildingLabel, GroupBuildingCount, GroupStatusSubtotal } from "@/lib/utils/delivery-group";
 import { DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
 import { useShipmentRowActions } from "@/lib/hooks/use-shipment-row-actions";
@@ -34,6 +34,9 @@ export function DeliveryBoard({
   drivers,
   driverNames,
   groupLabels,
+  showGroupCards = false,
+  groupBuildingCounts,
+  groupStatusSubtotals,
   itemSummaries,
   bagManagementEnabled = false,
   driverCounts,
@@ -52,6 +55,13 @@ export function DeliveryBoard({
   driverNames: Record<string, string>;
   /** §7/§13: 그룹 대표 건물명(delivery-group.ts) — 카드 배지에 그대로 쓴다. */
   groupLabels: Map<string, GroupBuildingLabel>;
+  /** STEP2-D: 그룹 카드(위치+소계) 렌더링 여부 — 그룹이 목록에서 연속으로
+   *  붙어 있다고 보장되는 화면(배정필요/전체)에서만 상위가 true로 내려준다. */
+  showGroupCards?: boolean;
+  /** STEP2-D(§11): 그룹별 건물명 소계 — 여러 건물이 섞인 그룹을 카드에서 드러낸다. */
+  groupBuildingCounts?: Map<string, GroupBuildingCount[]>;
+  /** STEP2-D(§10): 그룹별 배정필요/배송중/완료 소계. */
+  groupStatusSubtotals?: Map<string, GroupStatusSubtotal>;
   itemSummaries: Record<string, OrderItemSummary>;
   bagManagementEnabled?: boolean;
   /** 기사별 "오늘 N건" 표시용 — 배송그룹/검색 필터와 무관하게 그날 전체 기준(page.tsx에서 계산). */
@@ -227,6 +237,34 @@ export function DeliveryBoard({
     );
   }
 
+  /** STEP2-D(§10/§11): 그룹 카드 — 위치(건물명)/소계/건물별 소계를 그룹을
+   *  열지 않고도 보여준다. 건물명이 2곳 이상이면(100m 반경 클러스터링이
+   *  서로 다른 단지를 묶은 경우) 그 사실을 그대로 드러낸다(§9, 숨기지 않는다). */
+  function renderGroupHeader(groupId: string) {
+    const label = groupLabels.get(groupId)?.full ?? "배송그룹";
+    const subtotal = groupStatusSubtotals?.get(groupId);
+    const buildings = (groupBuildingCounts?.get(groupId) ?? []).filter((b) => b.name !== "기타");
+    return (
+      <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <span className="text-sm font-semibold text-text-strong">
+            {label} · {subtotal?.total ?? 0}건
+          </span>
+          {subtotal ? (
+            <span className="text-xs text-muted-foreground">
+              배정필요 {subtotal.needsDriver} · 배송중 {subtotal.inProgress} · 완료 {subtotal.done}
+            </span>
+          ) : null}
+        </div>
+        {buildings.length > 1 ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {buildings.map((b) => `🏢 ${b.name} ${b.count}건`).join("  ·  ")}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <BulkAssignBar
@@ -257,55 +295,63 @@ export function DeliveryBoard({
         {currentlyDisplayedOrders.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">해당 조건의 배송건이 없습니다.</p>
         ) : null}
-        {currentlyDisplayedOrders.map((o, idx) =>
-          showReorderControls ? (
-            <div key={o.rowKey} className="flex items-start gap-2">
-              <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
-                <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
-                  {idx + 1}
-                </span>
-                <div className="flex flex-col gap-0.5">
-                  <button
-                    type="button"
-                    disabled={idx === 0}
-                    onClick={() => handleMoveRow(idx, -1)}
-                    aria-label="위로 이동"
-                    className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                  >
-                    <ChevronUp className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={idx === currentlyDisplayedOrders.length - 1}
-                    onClick={() => handleMoveRow(idx, 1)}
-                    aria-label="아래로 이동"
-                    className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                  >
-                    <ChevronDown className="size-3.5" />
-                  </button>
+        {currentlyDisplayedOrders.map((o, idx) => {
+          const prevGroupId = idx > 0 ? currentlyDisplayedOrders[idx - 1].delivery_group_id : null;
+          const isNewGroup =
+            showGroupCards && !showReorderControls && !!o.delivery_group_id && o.delivery_group_id !== prevGroupId;
+          return (
+            <Fragment key={o.rowKey}>
+              {isNewGroup ? renderGroupHeader(o.delivery_group_id!) : null}
+              {showReorderControls ? (
+                <div className="flex items-start gap-2">
+                  <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
+                    <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
+                      {idx + 1}
+                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => handleMoveRow(idx, -1)}
+                        aria-label="위로 이동"
+                        className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                      >
+                        <ChevronUp className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === currentlyDisplayedOrders.length - 1}
+                        onClick={() => handleMoveRow(idx, 1)}
+                        aria-label="아래로 이동"
+                        className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                      >
+                        <ChevronDown className="size-3.5" />
+                      </button>
+                    </div>
+                    {/* PART 12: ↑/↓는 한 칸 미세조정, 이 Select는 원하는 순서로 바로 이동 — 배송이 많을 때 ↑/↓만으로는 너무 느리다. */}
+                    {currentlyDisplayedOrders.length > 2 ? (
+                      <Select value={String(idx + 1)} onValueChange={(v) => handleJumpToPosition(idx, Number(v) - 1)}>
+                        <SelectTrigger size="sm" className="h-7 w-14 px-1.5 text-xs" aria-label="배송순서 바로 변경">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {currentlyDisplayedOrders.map((_, i) => (
+                            <SelectItem key={i} value={String(i + 1)}>
+                              {i + 1}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 flex-1">{renderRowWithRef(o)}</div>
                 </div>
-                {/* PART 12: ↑/↓는 한 칸 미세조정, 이 Select는 원하는 순서로 바로 이동 — 배송이 많을 때 ↑/↓만으로는 너무 느리다. */}
-                {currentlyDisplayedOrders.length > 2 ? (
-                  <Select value={String(idx + 1)} onValueChange={(v) => handleJumpToPosition(idx, Number(v) - 1)}>
-                    <SelectTrigger size="sm" className="h-7 w-14 px-1.5 text-xs" aria-label="배송순서 바로 변경">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currentlyDisplayedOrders.map((_, i) => (
-                        <SelectItem key={i} value={String(i + 1)}>
-                          {i + 1}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-              </div>
-              <div className="min-w-0 flex-1">{renderRowWithRef(o)}</div>
-            </div>
-          ) : (
-            renderRowWithRef(o)
-          )
-        )}
+              ) : (
+                renderRowWithRef(o)
+              )}
+            </Fragment>
+          );
+        })}
       </div>
     </div>
   );

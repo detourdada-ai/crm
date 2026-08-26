@@ -6,7 +6,13 @@ import { DeliveryRegionMultiFilter } from "@/components/delivery/delivery-region
 import { DeliveryBoard } from "@/components/delivery/delivery-board";
 import { DeliveryMapView } from "@/components/delivery/delivery-map-view";
 import { DeliveryRoutePanel } from "@/components/delivery/delivery-route-panel";
-import { buildGroupBuildingLabels, type GroupBuildingLabel } from "@/lib/utils/delivery-group";
+import {
+  buildGroupBuildingLabels,
+  buildGroupBuildingCounts,
+  type GroupBuildingLabel,
+  type GroupBuildingCount,
+  type GroupStatusSubtotal,
+} from "@/lib/utils/delivery-group";
 import { filterOrdersByRegionOrBuilding, buildRegionBuildingCounts, UNKNOWN_REGION_LABEL } from "@/lib/utils/delivery-region-filter";
 import { filterOrdersByDriver, DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { buildDriverColorMap } from "@/lib/utils/driver-colors";
@@ -127,23 +133,62 @@ export function DeliveryFilterStack({
     () => (applyDriverFilter ? filterOrdersByDriver(regionFilteredOrders, activeDriverId) : regionFilteredOrders),
     [regionFilteredOrders, activeDriverId, applyDriverFilter]
   );
-  // PART 6: 배정필요 목록 기본 정렬 — 1순위 배송그룹, 2순위 미그룹(주소순).
+  // PART 6 + STEP2-D: 배송그룹을 목록에서 연속으로 붙여 보여줘야 그룹
+  // 카드(§10/§11)를 그 앞에 한 번만 꽂을 수 있다 — assign(배정필요)뿐 아니라
+  // default(전체/완료) 탭에서도 그룹 카드가 필요하므로(전체 탭이라야 그룹
+  // 안의 배정필요/배송중/완료가 섞여 보이는, CPO 목업이 실제로 의미를 갖는
+  // 화면이다) 두 모드 모두 그룹 우선 정렬을 적용한다. progress/pickup은
+  // 기존 정렬(경로순/등록순)을 그대로 둔다.
+  const showGroupCards = mode === "assign" || mode === "default";
   const filteredOrders = useMemo(
-    () => (mode === "assign" ? sortForAssignment(driverFilteredOrders, groups) : driverFilteredOrders),
-    [driverFilteredOrders, mode, groups]
+    () => (showGroupCards ? sortByGroup(driverFilteredOrders, groups) : driverFilteredOrders),
+    [driverFilteredOrders, showGroupCards, groups]
   );
+
+  const groupMemberAddresses = useMemo(() => {
+    const map = new Map<string, (string | null)[]>();
+    for (const o of orders) {
+      if (!o.delivery_group_id) continue;
+      const list = map.get(o.delivery_group_id) ?? [];
+      list.push(o.address_snapshot);
+      map.set(o.delivery_group_id, list);
+    }
+    return map;
+  }, [orders]);
 
   const groupLabels = useMemo(() => {
     if (groups.length === 0) return new Map<string, GroupBuildingLabel>();
-    const memberAddresses = new Map<string, (string | null)[]>();
-    for (const o of orders) {
-      if (!o.delivery_group_id) continue;
-      const list = memberAddresses.get(o.delivery_group_id) ?? [];
-      list.push(o.address_snapshot);
-      memberAddresses.set(o.delivery_group_id, list);
+    return buildGroupBuildingLabels(groups, groupMemberAddresses);
+  }, [groups, groupMemberAddresses]);
+
+  // STEP2-D(§11): 그룹 카드 안의 건물별 소계 — 100m 반경 클러스터링이 서로
+  // 다른 단지를 한 그룹으로 묶은 경우를 카드에서 그대로 드러낸다.
+  const groupBuildingCounts = useMemo(() => {
+    const result = new Map<string, GroupBuildingCount[]>();
+    for (const [groupId, addrs] of groupMemberAddresses) {
+      result.set(groupId, buildGroupBuildingCounts(addrs));
     }
-    return buildGroupBuildingLabels(groups, memberAddresses);
-  }, [groups, orders]);
+    return result;
+  }, [groupMemberAddresses]);
+
+  // STEP2-D(§10): 그룹 카드 안의 상태 소계 — page.tsx의 flowCounts와 동일한
+  // 판정 기준(배정필요=배송대기&&미배정&&직접수령아님)을 그대로 재사용해,
+  // "배정필요"라는 말의 의미가 화면마다 달라지지 않게 한다. filteredOrders
+  // 기준(지금 탭에 실제로 보이는 건)으로 세므로, 예를 들어 배정필요 탭에서는
+  // 이 그룹의 배정필요 건수만(다른 상태는 이미 이 탭에서 안 보이므로 0) 나온다.
+  const groupStatusSubtotals = useMemo(() => {
+    const map = new Map<string, GroupStatusSubtotal>();
+    for (const o of filteredOrders) {
+      if (!o.delivery_group_id) continue;
+      const cur = map.get(o.delivery_group_id) ?? { total: 0, needsDriver: 0, inProgress: 0, done: 0 };
+      cur.total += 1;
+      if (o.delivery_status === "배송중") cur.inProgress += 1;
+      else if (o.delivery_status === "완료") cur.done += 1;
+      else if (o.delivery_status === "배송대기" && !o.driver_id && o.fulfillment_method !== "direct_pickup") cur.needsDriver += 1;
+      map.set(o.delivery_group_id, cur);
+    }
+    return map;
+  }, [filteredOrders]);
 
   // 배송관리 목록/지도 완전 동일화: 목록 카드(DeliveryOrderRow)가 배송건의
   // 유일한 표준 UI다. 기사 색상도 지도·Route 패널이 각자 계산하지 않도록
@@ -265,6 +310,9 @@ export function DeliveryFilterStack({
         drivers={drivers}
         driverNames={driverNames}
         groupLabels={groupLabels}
+        showGroupCards={showGroupCards}
+        groupBuildingCounts={groupBuildingCounts}
+        groupStatusSubtotals={groupStatusSubtotals}
         itemSummaries={itemSummaries}
         bagManagementEnabled={bagManagementEnabled}
         driverCounts={driverCounts}
@@ -279,9 +327,11 @@ export function DeliveryFilterStack({
   );
 }
 
-/** PART 6: 배정필요 목록 기본 정렬 — 배송그룹 우선(그룹 순번대로), 그 안에서는
- *  원래 순서 유지, 미그룹은 도로명주소 가나다순으로 뒤에 붙인다. */
-function sortForAssignment(orders: OrderShipmentBoardRow[], groups: DeliveryGroup[]): OrderShipmentBoardRow[] {
+/** PART 6 + STEP2-D: 배송그룹 우선(그룹 순번대로) 정렬 — 그룹 안에서는
+ *  원래 순서 유지, 미그룹은 도로명주소 가나다순으로 뒤에 붙인다. 원래
+ *  "배정필요" 탭 전용이었지만(sortForAssignment), STEP2-D에서 default(전체)
+ *  탭에도 그룹 카드를 붙이며 이름을 그 용도에 맞게 바꿨다 — 로직은 그대로다. */
+function sortByGroup(orders: OrderShipmentBoardRow[], groups: DeliveryGroup[]): OrderShipmentBoardRow[] {
   const groupOrderIndex = new Map(groups.map((g, i) => [g.id, i]));
   const grouped = orders.filter((o) => o.delivery_group_id);
   const ungrouped = orders.filter((o) => !o.delivery_group_id);

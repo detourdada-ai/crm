@@ -508,10 +508,15 @@ export const ordersRepository = {
    * 조인하려면 임베디드 필터 문법에 의존해야 하는데, 이 방식이 훨씬 검증하기
    * 쉽고 이 프로젝트 실제 데이터 규모(수백~수천 건)에서 충분히 빠르다.
    *
-   * 상태(delivery_status)는 아직 orders 컬럼을 기준으로 필터링한다 —
-   * order_shipments.delivery_status는 Phase 5에서 배송관리/기사배정/완료가
-   * 배송건 기준으로 전환되기 전까지는 라이브로 갱신되지 않는 스냅샷이라
-   * 신뢰할 수 없다(S1-1 조사 결과 명시).
+   * P4C STEP2-A(2026-08 CPO 작업지시): 상태(delivery_status) 필터/표시는
+   * order_shipments.delivery_status(이 배송건 자신의 실제 상태)를 기준으로
+   * 한다 — S1-1 당시엔 배송관리가 배송건 기준으로 전환되기 전이라 이 컬럼이
+   * 신뢰 불가였지만, Phase 5 이후 배정/시작/완료가 전부 배송건 단위로
+   * 실시간 갱신되므로 이제는 이 컬럼이 진실이다. orders.delivery_status(부모
+   * 롤업)를 계속 쓰면 "한 주문이 여러 배송일로 나뉜 경우, 오늘 배송은 이미
+   * 완료됐는데도 다른 날짜 배송이 안 끝나 주문 전체가 '배송중'으로 보여
+   * 배송관리(완료)와 어긋나는" 실제 Production 사고(97개 배송건 실측 확인)를
+   * 낳았다.
    */
   async searchByShipmentDate({
     page = 1,
@@ -529,17 +534,18 @@ export const ordersRepository = {
     sortBy = "delivery_date",
     sortAscending = false,
     productShipmentIds,
-  }: OrderSearchParams): Promise<{ rows: OrderShipmentRow[]; total: number; allShipmentIds: string[] }> {
-    if (productShipmentIds && productShipmentIds.length === 0) return { rows: [], total: 0, allShipmentIds: [] };
+  }: OrderSearchParams): Promise<{ rows: OrderShipmentRow[]; total: number; allShipmentIds: string[]; distinctOrderCount: number }> {
+    if (productShipmentIds && productShipmentIds.length === 0)
+      return { rows: [], total: 0, allShipmentIds: [], distinctOrderCount: 0 };
     const productShipmentIdSet = productShipmentIds ? new Set(productShipmentIds) : null;
-    let sq = getSupabaseAdmin().from("order_shipments").select("id, order_id, delivery_date");
+    let sq = getSupabaseAdmin().from("order_shipments").select("id, order_id, delivery_date, delivery_status");
     if (ownerUsername) sq = sq.eq("owner_username", ownerUsername);
     if (deliveryDateFrom) sq = sq.gte("delivery_date", kstDayStartIso(deliveryDateFrom));
     if (deliveryDateTo) sq = sq.lte("delivery_date", kstDayEndIso(deliveryDateTo));
     const { data: shipmentRows, error: shipmentError } = await sq;
     if (shipmentError) throw shipmentError;
     const shipments = shipmentRows ?? [];
-    if (shipments.length === 0) return { rows: [], total: 0, allShipmentIds: [] };
+    if (shipments.length === 0) return { rows: [], total: 0, allShipmentIds: [], distinctOrderCount: 0 };
 
     const orderIds = Array.from(new Set(shipments.map((s) => s.order_id)));
     const { data: orderRows, error: orderError } = await getSupabaseAdmin().from("orders").select("*").in("id", orderIds);
@@ -560,7 +566,7 @@ export const ordersRepository = {
     for (const s of shipments) {
       const order = orderById.get(s.order_id);
       if (!order) continue; // 방어적: 삭제된 주문의 배송건이 FK cascade 반영 전에 조회된 경우
-      if (deliveryStatus && order.delivery_status !== deliveryStatus) continue;
+      if (deliveryStatus && s.delivery_status !== deliveryStatus) continue;
       if (paymentStatus === "unknown" && order.payment_status !== null) continue;
       else if (paymentStatus && paymentStatus !== "unknown" && order.payment_status !== paymentStatus) continue;
       if (bagReturned !== undefined && order.bag_returned !== bagReturned) continue;
@@ -578,7 +584,16 @@ export const ordersRepository = {
       }
       allShipmentIdsExcludingProduct.push(s.id);
       if (productShipmentIdSet && !productShipmentIdSet.has(s.id)) continue;
-      rows.push({ ...order, shipmentId: s.id, rowKey: s.id, delivery_date: s.delivery_date });
+      // P4C STEP2-A: delivery_status도 이 배송건 자신의 실제 상태로 덮어쓴다 —
+      // delivery_date와 마찬가지로 order 스프레드 그대로 두면 부모 주문 롤업
+      // 상태가 노출돼 배송관리와 어긋나 보인다(위 함수 doc 참고).
+      rows.push({
+        ...order,
+        shipmentId: s.id,
+        rowKey: s.id,
+        delivery_date: s.delivery_date,
+        delivery_status: s.delivery_status as DeliveryStatus,
+      });
     }
 
     // sortBy가 "delivery_date"면 배송건 자신의 날짜(위에서 이미 order.delivery_date
@@ -596,9 +611,14 @@ export const ordersRepository = {
       return b.order_date < a.order_date ? -1 : 1;
     });
     const total = rows.length;
+    // P4C STEP2-A: "주문 N건 · 배송 M건" 이중 표기를 위해, 페이지네이션으로
+    // 잘리기 전 이 필터에 걸리는 전체 배송건이 실제로 서로 다른 주문 몇 건에
+    // 속하는지도 함께 센다(§2 — 배송건 수를 주문 수로 강제 통일하지 않되,
+    // 둘 다 보여주기 위함).
+    const distinctOrderCount = new Set(rows.map((r) => r.id)).size;
     const from = (page - 1) * pageSize;
     rows = rows.slice(from, from + pageSize);
-    return { rows, total, allShipmentIds: allShipmentIdsExcludingProduct };
+    return { rows, total, allShipmentIds: allShipmentIdsExcludingProduct, distinctOrderCount };
   },
 
   async findByImportId(importId: string): Promise<Order[]> {

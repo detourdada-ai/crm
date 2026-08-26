@@ -76,6 +76,15 @@ export interface SearchOrdersResult {
   driverNames: Record<string, string>;
   /** STD-5: 현재 필터(productName 제외)에 걸리는 전체 목록 기준 상품별 수량 집계. */
   productSummary: ProductSummaryEntry[];
+  /**
+   * P4C STEP2-A(2026-08 CPO 작업지시): "주문 N건 · 배송 M건" 이중 표기용.
+   * 배송일 필터가 걸려 배송건 단위로 조회한 경우에만 값이 있다 — 이 경우
+   * `total`은 배송건 수, `distinctOrderCount`는 그 배송건들이 속한 서로
+   * 다른 주문 수다(한 주문이 여러 날짜로 나뉘면 total > distinctOrderCount).
+   * 배송일 필터가 없는(주문 단위) 조회에서는 undefined — `total` 자체가
+   * 이미 주문 수이므로 별도 표기가 필요 없다.
+   */
+  distinctOrderCount?: number;
 }
 
 function summarize(items: OrderItem[]): OrderItemSummary {
@@ -153,7 +162,7 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
     const productShipmentIds = params.productName
       ? await ordersRepository.findShipmentIdsByProductName(params.productName)
       : undefined;
-    const { rows, total, allShipmentIds } = await ordersRepository.searchByShipmentDate({
+    const { rows, total, allShipmentIds, distinctOrderCount } = await ordersRepository.searchByShipmentDate({
       ...params,
       ownerUsername,
       productShipmentIds,
@@ -173,7 +182,7 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
       ? aggregateProductSummary(await ordersRepository.findItemsByShipmentIds(allShipmentIds), "shipment_id")
       : [];
 
-    return { orders, total, itemSummaries, driverNames, productSummary };
+    return { orders, total, itemSummaries, driverNames, productSummary, distinctOrderCount };
   }
 
   const productOrderIds = params.productName
