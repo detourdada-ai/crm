@@ -23,6 +23,14 @@ import type { Customer, ImportRowError, ImportSummary, Order, OrderItem, OrderSh
 // 정확히 대응되므로 export한다.
 export const NO_ORDER_NUMBER_PREFIX = "__no_order_number_";
 
+/**
+ * Phase 2(2026-08 CPO 작업지시) §2: "10건은 이미 너무 늦습니다" — 같은 고객이
+ * 같은 order_number를 반복 사용하면 2건째부터 바로 병합 여부를 사용자에게
+ * 확인받는다. import-dedup.service.ts(Analyze)도 동일한 값을 써야 하므로
+ * NO_ORDER_NUMBER_PREFIX와 같은 이유로 여기서 export한다.
+ */
+export const REPEAT_ORDER_NUMBER_CONFIRM_THRESHOLD = 2;
+
 export interface RunImportInput {
   fileName: string;
   parsed: ParsedSheet;
@@ -35,6 +43,11 @@ export interface RunImportInput {
    * 판단을 신뢰하지 않음), 이 목록은 "그때 후보였던 걸 지금도 후보이거나
    * 신규라면 등록해도 된다"는 승인 의사만 전달한다 — 재검증 결과 확정
    * 중복으로 바뀌었다면 승인 여부와 무관하게 등록하지 않는다.
+   * Phase 2 §2: 같은 order_number 반복(동일 고객) 그룹을 "하나의 주문으로
+   * 등록"하기로 사용자가 승인한 groupKey도 이 같은 목록에 포함된다 — 후보
+   * 승인과 반복확인 승인은 groupKey가 서로 겹치지 않으므로(한 groupKey는
+   * Confirm 시점에 둘 중 하나의 상태로만 재계산된다) 하나의 Set으로 안전하게
+   * 같이 쓸 수 있다.
    */
   approvedCandidateGroupKeys?: string[];
 }
@@ -286,6 +299,11 @@ export async function runImport({
   // 투명성 — successRows/alreadyImportedRows와 분리해서 별도로 센다).
   let candidateSkippedRows = 0;
   let candidateSkippedOrders = 0;
+  // Phase 2(2026-08 CPO 작업지시) §2: 같은 order_number 반복(동일 고객)인데
+  // 병합 여부를 사용자가 아직 승인하지 않아 건너뛴 건수 — candidateSkipped*와
+  // 마찬가지로 successRows/alreadyImportedRows와 분리해서 별도로 센다.
+  let repeatConfirmSkippedRows = 0;
+  let repeatConfirmSkippedOrders = 0;
   let failedRowCount = 0;
   // CPO 정책(2026-08): 업로드 결과 화면에 "배송일 미지정 N건 → 일괄 지정"을
   // 보여주기 위한 카운터 — 주문(그룹) 단위로 센다(행 단위 아님).
@@ -488,6 +506,23 @@ export async function runImport({
             raw: rows[0],
           });
           failedRowCount += rows.length;
+          continue;
+        }
+        // Phase 2(2026-08 CPO 작업지시) §2: 고객은 같지만 같은 order_number를
+        // 2건 이상 반복 사용 — "하나의 다상품 주문"인지 "실수로 번호를 반복
+        // 입력한 별개 주문"인지 시스템이 임의로 정하지 않는다. Analyze에서
+        // 사용자가 "하나의 주문으로 등록"을 승인한 groupKey만 여기서 통과시켜
+        // 아래 기존 등록 로직(병합)을 그대로 태운다 — 승인하지 않았다면 이
+        // 그룹은 등록하지 않는다(§14/§15 원칙대로 Confirm 시점에 다시 계산).
+        if (rows.length >= REPEAT_ORDER_NUMBER_CONFIRM_THRESHOLD && !approvedGroupKeys.has(groupKey)) {
+          errors.push({
+            row: firstIndex + 2,
+            code: "repeat_confirm_needed",
+            reason: `[${orderNumber}] 같은 주문번호가 ${rows.length}개 행에서 사용되었습니다 — 하나의 주문인지 확인이 필요해 등록하지 않았습니다.`,
+            raw: rows[0],
+          });
+          repeatConfirmSkippedRows += rows.length;
+          repeatConfirmSkippedOrders += 1;
           continue;
         }
       }
@@ -1037,6 +1072,8 @@ export async function runImport({
       missingDeliveryDateOrders: missingDeliveryDateOrderCount,
       candidateSkippedRows,
       candidateSkippedOrders,
+      repeatConfirmSkippedRows,
+      repeatConfirmSkippedOrders,
     },
     errors,
   };

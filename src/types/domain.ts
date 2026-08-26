@@ -370,6 +370,10 @@ export interface ImportSummary {
   candidateSkippedRows: number;
   /** 위와 동일한 개념의 주문(그룹) 수. */
   candidateSkippedOrders: number;
+  /** Phase 2(2026-08 CPO 작업지시) §2: 같은 order_number를 반복 사용한 동일 고객 그룹인데 병합 여부를 사용자가 승인하지 않아 등록되지 않은 상품주문(행) 수. */
+  repeatConfirmSkippedRows: number;
+  /** 위와 동일한 개념의 주문(그룹) 수. */
+  repeatConfirmSkippedOrders: number;
 }
 
 export interface ImportRecord {
@@ -391,7 +395,13 @@ export interface ImportRecord {
   created_at: ISODateString;
 }
 
-export type ImportErrorCode = "missing_order_number" | "missing_contact_info" | "processing_error" | "order_number_conflict" | "identity_conflict";
+export type ImportErrorCode =
+  | "missing_order_number"
+  | "missing_contact_info"
+  | "processing_error"
+  | "order_number_conflict"
+  | "identity_conflict"
+  | "repeat_confirm_needed";
 
 export interface ImportRowError {
   row: number;

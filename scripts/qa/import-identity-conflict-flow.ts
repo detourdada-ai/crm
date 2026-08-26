@@ -101,11 +101,35 @@ async function main() {
     ]);
     await uploadAndGoToReview(page, csvQ2, "q2.csv");
     let text = await reviewText(page);
-    record("Q2/Q8. 동일 고객 다상품(같은 order_number) — identity_conflict 아님(오류 섹션 없음)", !text.includes("🚫") && !text.includes("등록 차단"));
+    record(
+      "Q2/Q8. 동일 고객 다상품(같은 order_number) — identity_conflict 아님(차단 문구 없음), 반복확인 UI 노출",
+      !text.includes("🚫") && !text.includes("등록 차단") && text.includes("같은 주문번호가 여러 행에서 사용된 주문")
+    );
+    // Phase 2(2026-08 CPO 작업지시) §2: 같은 고객이 같은 order_number를 반복
+    // 사용해도 자동 병합되지 않는다 — "하나의 주문으로 등록"을 명시적으로
+    // 눌러야 등록된다(기본값은 미등록).
+    await page.getByRole("button", { name: "하나의 주문으로 등록", exact: true }).click();
     await confirmRegister(page);
     const { data: q2Orders } = await admin.from("orders").select("id").eq("owner_username", OWNER).eq("order_number", orderQ2);
     const { data: q2Items } = await admin.from("order_items").select("id").eq("order_id", q2Orders?.[0]?.id ?? "");
     record("Q2/Q8. 실제로 주문 1건 + 상품 3건으로 등록됨", (q2Orders?.length ?? 0) === 1 && (q2Items?.length ?? 0) === 3, JSON.stringify({ orders: q2Orders?.length, items: q2Items?.length }));
+
+    // ============================================================
+    // Q-repeat-default: 반복확인 UI에서 승인하지 않으면 기본값은 미등록
+    // (같은 오전/오후 주문번호 실수 입력 시나리오 — CPO 작업지시 §2)
+    // ============================================================
+    const orderQRD = `${QA_PREFIX}QRD-${RUN_TAG}`;
+    const nameQRD = `${QA_PREFIX}미승인반복QRD`;
+    const phoneQRD = "010-9299-0001";
+    const addrQRD = "서울 강남구 QRD로 1";
+    const csvQRD = csvOf([
+      { orderNumber: orderQRD, name: nameQRD, phone: phoneQRD, address: addrQRD, deliveryDate: inDays(1), product: "오전주문", quantity: 1 },
+      { orderNumber: orderQRD, name: nameQRD, phone: phoneQRD, address: addrQRD, deliveryDate: inDays(1), product: "오후주문", quantity: 1 },
+    ]);
+    await uploadAndGoToReview(page, csvQRD, "qrd.csv");
+    await confirmRegister(page); // "하나의 주문으로 등록" 승인 없이 바로 Confirm
+    const { data: qrdOrders } = await admin.from("orders").select("id").eq("owner_username", OWNER).eq("order_number", orderQRD);
+    record("Q-repeat-default. 반복확인 미승인 시 기본값은 미등록(0건)", (qrdOrders?.length ?? 0) === 0, JSON.stringify(qrdOrders?.length));
 
     // ============================================================
     // Q3: 서로 다른 고객 2명 + 같은 order_number → 등록 차단

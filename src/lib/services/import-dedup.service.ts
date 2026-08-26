@@ -6,7 +6,15 @@ import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress, normalizeAddressForCompare } from "@/lib/utils/address";
 import { parseDeliveryDateFromOption } from "@/lib/utils/delivery-date";
 import { kstDayDateStrOf } from "@/lib/utils/kst-date";
-import { getMapped, cellToString, parseNumber, parseOptionalDate, parseOrderDate, NO_ORDER_NUMBER_PREFIX } from "@/lib/services/import.service";
+import {
+  getMapped,
+  cellToString,
+  parseNumber,
+  parseOptionalDate,
+  parseOrderDate,
+  NO_ORDER_NUMBER_PREFIX,
+  REPEAT_ORDER_NUMBER_CONFIRM_THRESHOLD,
+} from "@/lib/services/import.service";
 import type {
   ParsedSheet,
   ColumnMapping,
@@ -15,10 +23,9 @@ import type {
   DedupOrderSnapshot,
   DedupProductOrderItem,
   DedupIdentityConflictEntry,
+  DedupRepeatRowEntry,
 } from "@/types/excel";
 
-/** §5 "추가 UX 제안": 이 이상 한 주문번호로 반복되면(고객정보 일치 여부와 무관) 사전 경고를 띄운다 — 등록을 막지는 않는다. */
-const SUSPICIOUS_ORDER_NUMBER_REPEAT_THRESHOLD = 10;
 import type { Order } from "@/types/domain";
 
 export interface ClassifyDuplicatesInput {
@@ -226,6 +233,25 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
           });
           continue;
         }
+        // Phase 2(2026-08 CPO 작업지시) §2: 고객은 같지만(distinctKeys.size===1)
+        // 같은 order_number를 2건 이상 반복 사용한 경우 — "진짜 하나의 다상품
+        // 주문"일 수도, "같은 고객이 서로 다른 시점에 주문하며 번호를 실수로
+        // 반복 입력"한 것일 수도 있다. 시스템이 임의로 병합을 확정하지 않고
+        // 사용자가 상품/배송일을 보고 병합/분리를 직접 고른다(기본값은 미등록).
+        if (rows.length >= REPEAT_ORDER_NUMBER_CONFIRM_THRESHOLD) {
+          const repeatRows: DedupRepeatRowEntry[] = items.map((item, i) => ({
+            productSummary: productSummaryOf([item]),
+            deliveryDate: itemDeliveryDates[i] ?? explicitDeliveryDate ?? null,
+          }));
+          results.push({
+            groupKey,
+            status: "repeat_confirm_needed",
+            reason: `[${orderNumber}] 같은 주문번호가 ${rows.length}개 행에서 사용되었습니다. 하나의 주문인지 확인해주세요.`,
+            upload,
+            repeatRows,
+          });
+          continue;
+        }
       }
 
       const existingParent = existingParentOrders.get(orderNumber!);
@@ -373,6 +399,11 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
   // 불변식을 유지하면서, 화면에서 "왜 오류인지"를 구분해 보여줄 수 있도록
   // identityConflictCount로 별도 추적한다.
   let identityConflictCount = 0;
+  // Phase 2 §2: repeat_confirm_needed는 candidateCount와 같은 성격의 별도
+  // 버킷이다(오류가 아니라, 사용자가 병합/분리를 직접 골라야 미등록 상태를
+  // 벗어난다) — newCount+confirmedDuplicateCount+candidateCount+errorCount+
+  // repeatConfirmCount === totalProductOrders 불변식을 이룬다.
+  let repeatConfirmCount = 0;
   const resultByGroupKey = new Map(results.map((r) => [r.groupKey, r]));
   for (const [groupKey, entries] of groups) {
     const result = resultByGroupKey.get(groupKey)!;
@@ -388,22 +419,11 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
     if (result.status === "identity_conflict") {
       identityConflictCount += rowCount;
       errorCount += rowCount;
-    } else if (result.status === "new") newCount += rowCount;
+    } else if (result.status === "repeat_confirm_needed") repeatConfirmCount += rowCount;
+    else if (result.status === "new") newCount += rowCount;
     else if (result.status === "confirmed_duplicate") confirmedDuplicateCount += rowCount;
     else if (result.status === "candidate") candidateCount += rowCount;
     else if (result.status === "error") errorCount += rowCount;
-  }
-
-  // §5 "추가 UX 제안": product_order_number가 없는 파일에서만 유효한 경고 —
-  // 있는 파일(스마트스토어 등)은 하나의 order_number에 여러 상품주문이 묶이는
-  // 게 정상 구조이므로 대상에서 제외한다.
-  const suspiciousOrderNumberRepeats: { orderNumber: string; rowCount: number }[] = [];
-  if (!hasProductOrderNumberColumn) {
-    for (const [groupKey, entries] of groups) {
-      if (entries.length >= SUSPICIOUS_ORDER_NUMBER_REPEAT_THRESHOLD) {
-        suspiciousOrderNumberRepeats.push({ orderNumber: groupKey, rowCount: entries.length });
-      }
-    }
   }
 
   return {
@@ -414,7 +434,7 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
     candidateCount,
     errorCount,
     identityConflictCount,
-    suspiciousOrderNumberRepeats,
+    repeatConfirmCount,
     groups: results,
   };
 }

@@ -122,6 +122,12 @@ export function ImportResultCards({
             중복 가능성이 있어 등록하지 않은 주문 {summary.candidateSkippedOrders.toLocaleString()}건이 있습니다(검토 화면에서 승인하지 않은 후보).
           </p>
         ) : null}
+        {summary.repeatConfirmSkippedOrders > 0 ? (
+          <p className="text-xs text-warning">
+            같은 주문번호가 반복 사용되어 확인이 필요했지만 승인하지 않은 주문 {summary.repeatConfirmSkippedOrders.toLocaleString()}건이
+            있습니다(검토 화면에서 &ldquo;하나의 주문으로 등록&rdquo;을 누르지 않은 경우).
+          </p>
+        ) : null}
 
         {missingCount > 0 ? (
           <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3">

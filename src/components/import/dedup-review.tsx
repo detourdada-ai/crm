@@ -37,6 +37,43 @@ function IdentityConflictCard({ group }: { group: DedupGroupResult }) {
   );
 }
 
+/**
+ * Phase 2(2026-08 CPO 작업지시) §2: 같은 고객이 같은 order_number를 반복
+ * 사용한 그룹 — identity_conflict와 달리 등록을 아예 막지는 않지만, 시스템이
+ * 임의로 "하나의 다상품 주문"이라고 확정하지 않고 상품/배송일을 그대로
+ * 보여준 뒤 사장님이 직접 하나의 주문인지 확인하게 한다. 승인하지 않으면
+ * 등록되지 않는다(안전한 방향 우선 — candidate와 동일 원칙).
+ */
+function RepeatConfirmCard({ group, approved, onToggle }: { group: DedupGroupResult; approved: boolean; onToggle: () => void }) {
+  const rows = group.repeatRows ?? [];
+  return (
+    <div className={`rounded-md border p-3 transition-colors ${approved ? "border-primary bg-primary-soft/30" : "border-warning/40 bg-card"}`}>
+      <p className="text-sm font-medium text-text-strong">
+        {group.upload.recipientName} · 주문번호 {group.upload.orderNumber} — {rows.length}개 행에서 반복 사용
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        고객 정보가 같아 하나의 주문으로 묶을 수 있습니다. 상품/배송일이 다르면 별도 주문일 수 있으니 아래 목록을 확인해주세요.
+      </p>
+      <div className="mt-2 space-y-1">
+        {rows.map((r, i) => (
+          <p key={i} className="rounded-md bg-card/60 px-2 py-1.5 text-xs text-text-strong">
+            {r.productSummary}
+            <span className="text-muted-foreground"> · {formatDeliveryDate(r.deliveryDate)}</span>
+          </p>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button size="sm" variant={approved ? "default" : "outline"} onClick={onToggle} className="gap-1.5">
+          {approved ? "✓ 하나의 주문으로 등록" : "하나의 주문으로 등록"}
+        </Button>
+        {!approved ? (
+          <span className="text-xs text-muted-foreground">등록하지 않음(기본값) — 별도 주문이면 엑셀에서 주문번호를 다르게 입력해 다시 업로드해주세요.</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function formatDeliveryDate(iso: string | null): string {
   if (!iso) return "배송일 미지정";
   const d = new Date(iso);
@@ -159,6 +196,7 @@ export function DedupReview({
   const errorGroups = analysis.groups.filter((g) => g.status === "error");
   const partialGroups = analysis.groups.filter((g) => g.status === "partial");
   const identityConflictGroups = analysis.groups.filter((g) => g.status === "identity_conflict");
+  const repeatConfirmGroups = analysis.groups.filter((g) => g.status === "repeat_confirm_needed");
 
   function toggle(key: string) {
     setApproved((prev) => {
@@ -213,6 +251,12 @@ export function DedupReview({
               <dd className="font-medium text-destructive">{analysis.identityConflictCount.toLocaleString()}건</dd>
             </div>
           ) : null}
+          {analysis.repeatConfirmCount > 0 ? (
+            <div className="flex items-baseline justify-between">
+              <dt className="text-warning">확인이 필요한 상품주문(주문번호 반복)</dt>
+              <dd className="font-medium text-warning">{analysis.repeatConfirmCount.toLocaleString()}건</dd>
+            </div>
+          ) : null}
           {analysis.errorCount - analysis.identityConflictCount > 0 ? (
             <div className="flex items-baseline justify-between">
               <dt className="text-destructive">오류</dt>
@@ -220,20 +264,6 @@ export function DedupReview({
             </div>
           ) : null}
         </dl>
-        {analysis.suspiciousOrderNumberRepeats.length > 0 ? (
-          <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-muted-foreground">
-            <p className="font-medium text-text-strong">
-              ℹ️ 하나의 주문번호가 비정상적으로 많은 행에 반복됩니다 — 등록은 진행되지만 한 번 확인해보세요.
-            </p>
-            <ul className="mt-1 space-y-0.5">
-              {analysis.suspiciousOrderNumberRepeats.map((r) => (
-                <li key={r.orderNumber}>
-                  주문번호 {r.orderNumber} — {r.rowCount.toLocaleString()}행
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
         {partialGroups.length > 0 ? (
           <p className="text-xs text-muted-foreground">
             이 중 {partialGroups.length.toLocaleString()}개 주문 묶음은 같은 주문번호 안에 신규/기존 상품주문이 섞여 있어, 신규
@@ -249,6 +279,17 @@ export function DedupReview({
             <div className="space-y-2">
               {identityConflictGroups.map((g) => (
                 <IdentityConflictCard key={g.groupKey} group={g} />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {repeatConfirmGroups.length > 0 ? (
+          <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3">
+            <p className="text-sm font-medium text-text-strong">⚠️ 같은 주문번호가 여러 행에서 사용된 주문 {repeatConfirmGroups.length}건 — 확인해주세요</p>
+            <div className="space-y-2">
+              {repeatConfirmGroups.map((g) => (
+                <RepeatConfirmCard key={g.groupKey} group={g} approved={approved.has(g.groupKey)} onToggle={() => toggle(g.groupKey)} />
               ))}
             </div>
           </div>

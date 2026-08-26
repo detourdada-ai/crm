@@ -112,8 +112,15 @@ export interface ColumnMappingResult {
  * 같은 order_number 그룹 안에 서로 다른 고객(이름/전화/주소)이 섞여 있는 경우다.
  * 등록하면 첫 번째 고객만 남고 나머지 고객정보가 사라지므로, 절대 자동
  * 병합하지 않고 등록 자체를 차단한다(§3-2/§4).
+ * "repeat_confirm_needed"는 Phase 2(2026-08 CPO 작업지시)에서 추가된 상태 —
+ * product_order_number가 없는 파일에서 같은 order_number를 쓰는 행이 2건
+ * 이상이고 고객 정보(이름/전화/주소)는 전부 같은 경우다. identity_conflict와
+ * 달리 고객이 같으므로 "하나의 주문(다상품)"일 수도 있지만, "같은 고객이
+ * 서로 다른 시점에 주문하며 같은 번호를 실수로 반복 입력"했을 수도 있다 —
+ * 시스템이 임의로 판단하지 않고 사용자가 상품/배송일을 보고 병합/분리를
+ * 직접 선택해야 한다(기본값은 미등록 — 선택 전엔 등록되지 않음).
  */
-export type DedupStatus = "new" | "confirmed_duplicate" | "candidate" | "error" | "partial" | "identity_conflict";
+export type DedupStatus = "new" | "confirmed_duplicate" | "candidate" | "error" | "partial" | "identity_conflict" | "repeat_confirm_needed";
 
 export interface DedupOrderSnapshot {
   orderNumber: string | null;
@@ -153,6 +160,16 @@ export interface DedupIdentityConflictEntry {
   productSummary: string;
 }
 
+/**
+ * Phase 2(2026-08 CPO 작업지시) §2 "같은 주문번호 반복" 확인 UI: "repeat_confirm_needed"
+ * 그룹에 속한 각 행(상품)을 그대로 보여줘 사장님이 "상품/배송일이 다르면
+ * 별도 주문"이라는 CPO 지정 기준으로 직접 판단할 수 있게 한다.
+ */
+export interface DedupRepeatRowEntry {
+  productSummary: string;
+  deliveryDate: string | null; // ISO
+}
+
 export interface DedupGroupResult {
   /** import.service.ts의 groupKey와 동일한 값(주문번호, 또는 "__no_order_number_{index}") — Confirm 시 승인 목록과 연결하는 키. */
   groupKey: string;
@@ -165,6 +182,8 @@ export interface DedupGroupResult {
   productOrderItems?: DedupProductOrderItem[];
   /** status가 "identity_conflict"일 때만 존재 — 그룹 안에서 실제로 발견된 서로 다른 고객 목록(전부, 중복 제거). */
   conflictingIdentities?: DedupIdentityConflictEntry[];
+  /** status가 "repeat_confirm_needed"일 때만 존재 — 이 order_number를 공유하는 행(상품)별 정보. */
+  repeatRows?: DedupRepeatRowEntry[];
 }
 
 export interface DedupAnalysis {
@@ -180,11 +199,7 @@ export interface DedupAnalysis {
   errorCount: number;
   /** §3-2/§4: 서로 다른 고객이 같은 주문번호를 써서 자동 등록이 차단된 상품주문(행) 수. */
   identityConflictCount: number;
-  /**
-   * §5 "추가 UX 제안": product_order_number가 없는 파일에서 하나의 주문번호가
-   * 비정상적으로 많은 행에 반복되는 경우(고객정보 일치 여부와 무관하게) 사전
-   * 경고용으로 노출한다 — 등록을 막지는 않는다(정보성 안내).
-   */
-  suspiciousOrderNumberRepeats: { orderNumber: string; rowCount: number }[];
+  /** Phase 2 §2: 같은 고객이 같은 주문번호를 반복 사용해 병합/분리 확인이 필요한 상품주문(행) 수 — 사용자가 선택하기 전엔 등록되지 않는다. */
+  repeatConfirmCount: number;
   groups: DedupGroupResult[];
 }
