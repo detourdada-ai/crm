@@ -104,4 +104,36 @@ export const settlementsRepository = {
     if (error) throw error;
     return data;
   },
+
+  /**
+   * 실제 지급 처리(CPO 지시, 2026-08) — 정산일(paidAt)과 금액(amount)을
+   * 관리자가 직접 입력해 확정한다. status를 'paid'로 바꾸는 순간부터
+   * actions/settlements.ts는 이 delivery_count/amount를 더 이상 재계산하지
+   * 않고 그대로 고정해서 보여준다(지급 후 배송 데이터가 바뀌어도 이미
+   * 지급된 장부가 조용히 달라지지 않도록).
+   */
+  async markPaid(id: string, input: { paidAt: string; amount: number }, ownerUsername?: string): Promise<Settlement> {
+    const admin = getSupabaseAdmin();
+    if (ownerUsername) {
+      const { data: settlement, error: settlementError } = await admin.from("settlements").select("driver_id").eq("id", id).maybeSingle();
+      if (settlementError) throw settlementError;
+      if (!settlement) throw new Error("정산 건을 찾을 수 없습니다.");
+      const { data: driver, error: driverError } = await admin
+        .from("drivers")
+        .select("id")
+        .eq("id", settlement.driver_id)
+        .eq("owner_username", ownerUsername)
+        .maybeSingle();
+      if (driverError) throw driverError;
+      if (!driver) throw new Error("이 정산 건을 처리할 권한이 없습니다.");
+    }
+    const { data, error } = await admin
+      .from("settlements")
+      .update({ status: "paid" as SettlementStatus, paid_at: input.paidAt, amount: input.amount })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return data;
+  },
 };

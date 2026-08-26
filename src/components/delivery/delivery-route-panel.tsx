@@ -7,7 +7,7 @@ import type { Driver } from "@/types/domain";
 
 /**
  * 배송관리 1차 마무리 UI/UX: 이 영역은 배차 편집 영역이다 — "기사별
- * 배송순서"는 배송현황 모니터링(DriverLocationsDialog, 기사위치)과
+ * 배송순서"는 배송현황 모니터링(DriverLocationsView, 기사위치)과
  * 완전히 다른 기능이므로 혼동되지 않게 역할을 명확히 한다(기사 선택 →
  * 지도/목록 필터, CPO work order §1~5). 선택은 탭 이동이 아니라 상단
  * 칩 한 줄로 하고, 그 아래에는 항상 "지금 선택된 범위"의 배차 목록만

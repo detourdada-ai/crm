@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
 import { SummaryFlow, type SummaryFlowItem } from "@/components/common/summary-flow";
 import { Wallet } from "lucide-react";
-import { getSettlementBoardAction } from "@/actions/settlements";
+import { getSettlementBoardAction, listSettlementDriverOptionsAction } from "@/actions/settlements";
 import { requireSession } from "@/lib/auth/current-session";
 import { listAccounts } from "@/lib/auth/credentials";
 import { isValidDateString } from "@/lib/utils/date";
@@ -21,21 +21,27 @@ type SettlementFilter = "all" | "unpaid" | "paid";
 export default async function SettlementsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; date?: string; owner?: string; status?: string }>;
+  searchParams: Promise<{ period?: string; date?: string; dateFrom?: string; dateTo?: string; owner?: string; driver?: string; status?: string }>;
 }) {
   const session = await requireSession();
   const isAdmin = session.role === "admin";
 
-  const { period, date, owner, status } = await searchParams;
+  const { period, date, dateFrom, dateTo, owner, driver, status } = await searchParams;
   const periodType: SettlementPeriodType =
-    period === "daily" || period === "weekly" || period === "monthly" ? period : "monthly";
-  const referenceDate = isValidDateString(date) ? date : kstTodayIso();
+    period === "daily" || period === "weekly" || period === "monthly" || period === "custom" ? period : "monthly";
+  const today = kstTodayIso();
+  const referenceDate = isValidDateString(date) ? date : today;
+  const customFrom = isValidDateString(dateFrom) ? dateFrom : today;
+  const customTo = isValidDateString(dateTo) ? dateTo : today;
+  const customRange = periodType === "custom" ? { start: customFrom, end: customTo } : undefined;
   const ownerFilter = isAdmin ? owner : undefined;
+  const driverFilter = driver || undefined;
   const statusFilter: SettlementFilter = status === "unpaid" || status === "paid" ? status : "all";
 
-  const [{ periodStart, periodEnd, rows }, accountUsernames, monthly] = await Promise.all([
-    getSettlementBoardAction(periodType, referenceDate, ownerFilter),
+  const [{ periodStart, periodEnd, rows }, accountUsernames, driverOptions, monthly] = await Promise.all([
+    getSettlementBoardAction(periodType, referenceDate, ownerFilter, driverFilter, customRange),
     isAdmin ? listAccounts().then((accounts) => accounts.filter((a) => a.role !== "driver").map((a) => a.username)) : Promise.resolve(undefined),
+    listSettlementDriverOptionsAction(ownerFilter),
     getSettlementBoardAction("monthly", kstTodayIso(), ownerFilter),
   ]);
 
@@ -60,7 +66,10 @@ export default async function SettlementsPage({
     const search = new URLSearchParams();
     if (period) search.set("period", period);
     if (date) search.set("date", date);
+    if (dateFrom) search.set("dateFrom", dateFrom);
+    if (dateTo) search.set("dateTo", dateTo);
     if (owner) search.set("owner", owner);
+    if (driver) search.set("driver", driver);
     if (next !== "all") search.set("status", next);
     const qs = search.toString();
     return qs ? `/settlements?${qs}` : "/settlements";
@@ -104,8 +113,12 @@ export default async function SettlementsPage({
       <SettlementPeriodPicker
         periodType={periodType}
         date={referenceDate}
+        dateFrom={customFrom}
+        dateTo={customTo}
         ownerFilter={ownerFilter}
         accountUsernames={accountUsernames}
+        driverFilter={driverFilter}
+        driverOptions={driverOptions}
       />
 
       <Card id="list">
@@ -125,7 +138,7 @@ export default async function SettlementsPage({
               }
             />
           ) : (
-            <SettlementTable rows={visibleRows} showOwner={isAdmin && !ownerFilter} />
+            <SettlementTable rows={visibleRows} periodStart={periodStart} periodEnd={periodEnd} showOwner={isAdmin && !ownerFilter} />
           )}
         </CardContent>
       </Card>

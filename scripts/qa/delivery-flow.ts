@@ -86,18 +86,6 @@ async function settleAfterMutation(page: Page, beforeText: string, timeoutMs = 1
   return text;
 }
 
-/** [role="dialog"] 안 텍스트가 아직 로딩 중인 헤더/버튼 뿐이 아니라 실제
- *  데이터(예: 특정 문자열)를 포함할 때까지 폴링한다. */
-async function waitForDialogText(page: Page, includes: string, timeoutMs = 10000): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
-  let text = (await page.locator('[role="dialog"]').innerText().catch(() => "")) ?? "";
-  while (!text.includes(includes) && Date.now() < deadline) {
-    await page.waitForTimeout(400);
-    text = (await page.locator('[role="dialog"]').innerText().catch(() => "")) ?? "";
-  }
-  return text;
-}
-
 async function run() {
   console.log(`QA target: ${BASE_URL}`);
   const driver = await findTestDriver();
@@ -295,24 +283,27 @@ async function run() {
     record("14. 운행시작 클릭 → 운행 중 표시", text.includes("운행 중"));
 
     // ---- 15: 관리자 화면에서 운행상태/현재·다음 동기화 확인 ----
+    // 기사위치는 더 이상 배송관리 안의 팝업이 아니라 별도 페이지(/delivery/drivers)다
+    // (CPO 지시, 2026-08: 화면 전환 없이 고정해두고 볼 수 있도록 분리) — 링크가
+    // 그 경로를 가리키는지 확인한 뒤 직접 이동해 같은 데이터 동기화를 검증한다.
     await setSession(context, OWNER, "user");
     await page.goto(`${BASE_URL}/delivery`, { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "기사 위치", exact: false }).click({ timeout: 5000 });
-    const dialogText = await waitForDialogText(page, driver.name);
+    const driverLocationHref = await page.getByRole("link", { name: "기사 위치", exact: false }).getAttribute("href");
+    record("15a. 배송관리의 '기사 위치'가 전용 페이지(/delivery/drivers) 링크로 노출", driverLocationHref === "/delivery/drivers", `href=${driverLocationHref}`);
+
+    await page.goto(`${BASE_URL}/delivery/drivers`, { waitUntil: "networkidle" });
+    let dialogText = await mainText(page);
+    const page15Deadline = Date.now() + 10000;
+    while (!dialogText.includes(driver.name) && Date.now() < page15Deadline) {
+      await page.waitForTimeout(400);
+      dialogText = await mainText(page);
+    }
     record(
-      "15. 사장님 기사위치 팝업에서 운행중 + 현재 배송(C) 동기화(B/D/F는 완료 3/4)",
+      "15. 기사위치 화면에서 운행중 + 현재 배송(C) 동기화(B/D/F는 완료 3/4)",
       dialogText.includes("운행중") && dialogText.includes("QA-CPO-C") && dialogText.includes("완료 3/4"),
       dialogText
     );
-
-    const dialogBox = await page.locator('[role="dialog"]').boundingBox();
-    const viewportSize = page.viewportSize();
-    const dialogAreaRatio =
-      dialogBox && viewportSize ? (dialogBox.width * dialogBox.height) / (viewportSize.width * viewportSize.height) : 0;
-    record("15b. 기사위치 팝업이 뷰포트 전체를 사용(완전 전체화면)", dialogAreaRatio > 0.95, `ratio=${dialogAreaRatio.toFixed(2)}`);
-    record("15c. 기사위치 팝업에 전체/개별 기사 선택 칩 노출(배차편집과 분리된 별도 선택)", dialogText.includes("전체") && dialogText.includes(driver.name));
-
-    await page.keyboard.press("Escape").catch(() => {});
+    record("15c. 기사위치 화면에 전체/개별 기사 선택 칩 노출(배차편집과 분리된 별도 선택)", dialogText.includes("전체") && dialogText.includes(driver.name));
 
     // ---- 16~19: 마지막 남은 배송(C) 완료 + 운행종료 + 관리자 반영 ----
     await setSession(context, driver.username, "driver");
@@ -339,21 +330,21 @@ async function run() {
       text.slice(0, 200)
     );
 
-    await page.getByRole("button", { name: "기사 위치", exact: false }).click({ timeout: 5000 });
-    let dialogText2 = await waitForDialogText(page, driver.name);
-    const dialogDeadline = Date.now() + 8000;
-    while (!dialogText2.includes("운행 종료") && dialogText2.includes("운행중") && Date.now() < dialogDeadline) {
+    await page.goto(`${BASE_URL}/delivery/drivers`, { waitUntil: "networkidle" });
+    let dialogText2 = await mainText(page);
+    const dialogDeadline = Date.now() + 10000;
+    while (!dialogText2.includes(driver.name) || (dialogText2.includes("운행중") && !dialogText2.includes("운행 종료"))) {
+      if (Date.now() > dialogDeadline) break;
       await page.waitForTimeout(500);
-      dialogText2 = (await page.locator('[role="dialog"]').innerText().catch(() => "")) ?? dialogText2;
+      dialogText2 = await mainText(page);
     }
     record(
-      "19. 관리자 기사위치 팝업에서 운행종료 반영",
+      "19. 기사위치 화면에서 운행종료 반영",
       dialogText2.includes("운행 종료") || !dialogText2.includes("운행중"),
       dialogText2.slice(0, 150)
     );
 
     // ---- 20: 직접수령 여전히 정상 분리 확인 ----
-    await page.keyboard.press("Escape").catch(() => {});
     await page.goto(`${BASE_URL}/delivery?filter=pickup`, { waitUntil: "networkidle" });
     text = await mainText(page);
     record("20. 직접수령 대기 데이터 끝까지 보존(사라지지 않음)", text.includes("QA-CPO-E"));

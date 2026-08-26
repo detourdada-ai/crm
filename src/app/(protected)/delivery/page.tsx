@@ -3,12 +3,11 @@ import { AutoRefresh } from "@/components/common/auto-refresh";
 import { DeliveryFilterBar } from "@/components/delivery/delivery-filter-bar";
 import { DeliveryFilterStack } from "@/components/delivery/delivery-filter-stack";
 import { DriverManagementDialog } from "@/components/delivery/driver-management-dialog";
-import { DriverLocationsDialog } from "@/components/delivery/driver-locations-dialog";
 import { DeliveryStatusFlow, type DeliveryFilter, type DeliveryFlowCount } from "@/components/delivery/delivery-status-flow";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
-import { Truck, Download } from "lucide-react";
+import { Truck, Download, Navigation } from "lucide-react";
 import Link from "next/link";
 import { getDeliveryBoardAction } from "@/actions/delivery";
 import { listDeliveryGroupsAction } from "@/actions/delivery-groups";
@@ -240,7 +239,12 @@ export default async function DeliveryPage({
               accountUsernames={accountUsernames}
               knownRegions={knownRegions}
             />
-            <DriverLocationsDialog />
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <a href="/delivery/drivers" target="_blank" rel="noopener noreferrer">
+                <Navigation className="size-4" />
+                기사 위치
+              </a>
+            </Button>
           </div>
         }
       />

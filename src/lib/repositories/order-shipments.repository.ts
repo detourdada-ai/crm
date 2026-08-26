@@ -519,10 +519,14 @@ export const orderShipmentsRepository = {
   },
 
   /**
-   * S1-1 Phase 6: 정산 카운트 기준 — 완료된 배송건(배송건 자신의 delivery_status/completed_at) 수.
-   * 이미 settlements 행이 존재하는(=한 번이라도 계산된 적 있는) 기간은 CPO 지시에 따라
-   * 계속 orders 기준(ordersRepository.countCompletedByDriverInPeriod)으로 재계산해야
-   * 소급 변경이 없다 — 이 메서드는 새로 처음 계산되는 기간에만 쓴다(actions/settlements.ts 참고).
+   * 정산 카운트 기준 — 완료된 배송건(배송건 자신의 delivery_status/completed_at) 수.
+   * CPO 지시(2026-08, 정산 집계 불일치 수정): 지급완료(status='paid') 처리되지
+   * 않은 기간은 조회할 때마다 이 메서드로 라이브 재계산한다(과거의 "이미
+   * settlements 행이 있으면 orders 기준으로 고정" 방식은 실제 배송건과
+   * 어긋나는(legacy orders.delivery_status가 갱신 안 되는) 버그의 원인이었다
+   * — actions/settlements.ts의 resolveSettlement 참고). 이제 소급 변경 방지는
+   * "행이 존재하는지"가 아니라 "실제로 지급 처리됐는지(status='paid')"로
+   * 판단한다 — 지급 완료된 정산만 그 시점 금액/건수로 고정한다.
    */
   async countCompletedByDriverInPeriod(driverId: string, periodStartIso: string, periodEndIso: string): Promise<number> {
     const { count, error } = await getSupabaseAdmin()
@@ -534,6 +538,23 @@ export const orderShipmentsRepository = {
       .lte("completed_at", periodEndIso);
     if (error) throw error;
     return count ?? 0;
+  },
+
+  /**
+   * 정산 일별 이력(CPO 지시, 2026-08) — 선택한 기간 내 완료된 배송건들의
+   * completed_at만 뽑아 액션 계층에서 KST 달력일로 묶는다(건수가 한 기사의
+   * 한 달치라 몇십~몇백 건 수준이라 그룹은 SQL이 아니라 in-memory로 처리).
+   */
+  async listCompletedAtByDriverInPeriod(driverId: string, periodStartIso: string, periodEndIso: string): Promise<string[]> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("order_shipments")
+      .select("completed_at")
+      .eq("driver_id", driverId)
+      .eq("delivery_status", "완료")
+      .gte("completed_at", periodStartIso)
+      .lte("completed_at", periodEndIso);
+    if (error) throw error;
+    return (data ?? []).map((r) => r.completed_at).filter((v): v is string => v != null);
   },
 
   /**
