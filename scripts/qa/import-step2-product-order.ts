@@ -3,7 +3,8 @@
  * product_order_number(상품주문번호) 단위 재설계 전용 QA. import-dedup-flow.ts는
  * order_number 단위(구 로직/폴백 로직 회귀) 커버리지이고, 이 스크립트는 STEP2에서
  * 새로 생긴 Case A/B/C/D 분기, 배송건 재사용/분리, 정보차이 표시, tenant 격리,
- * Confirm 시점 재검증, 실제 421건 파일 검증, 컬럼매핑 오염 방지를 다룬다.
+ * Confirm 시점 재검증, 대량(다건) 부모주문 존재 케이스(§13, QA-FIX1로 user3
+ * 자체 fixture 기반 재작성), 컬럼매핑 오염 방지를 다룬다.
  *
  * runImport/classifyDuplicates를 브라우저 없이 직접 호출한다 — 이 스크립트가
  * 검증할 대상은 서버측 판정/등록 로직 자체이지 화면 렌더링이 아니고, Playwright를
@@ -12,12 +13,10 @@
  *
  * 실행: npx tsx --env-file=.env.local scripts/qa/import-step2-product-order.ts
  */
-import path from "node:path";
 import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { runImport } from "../../src/lib/services/import.service";
 import { classifyDuplicates } from "../../src/lib/services/import-dedup.service";
 import { autoMapColumns } from "../../src/lib/services/column-mapping.service";
-import { parseSpreadsheet } from "../../src/lib/services/excel-parser.service";
 import type { ColumnMapping, ParsedSheet } from "../../src/types/excel";
 import { QA_DEFAULT_OWNER, QA_SECONDARY_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner } from "./lib/qa-guard";
@@ -106,7 +105,7 @@ async function main() {
   const admin = getSupabaseAdmin();
   const { data: tenant } = await admin.from("tenants").select("id").eq("slug", OWNER).maybeSingle();
   const { data: tenantB } = await admin.from("tenants").select("id").eq("slug", OWNER_B).maybeSingle();
-  if (!tenant || !tenantB) throw new Error("tenant user2/user3 not found");
+  if (!tenant || !tenantB) throw new Error(`tenant ${OWNER}/${OWNER_B} not found`);
 
   try {
     // ============================================================
@@ -318,34 +317,87 @@ async function main() {
     );
 
     // ============================================================
-    // STEP2-K: 실제 421건 파일 검증(§13) — 읽기 전용(classifyDuplicates는 DB에 쓰지 않음).
-    // user2에는 이미 이 파일의 과거 재현 테스트 데이터(173 orders/338 items)가 있어
-    // "8/26 배송분이 부모 주문 존재만으로 막히지 않는지"를 실제 데이터로 확인 가능하다.
+    // STEP2-K: 대량(다건) 부모주문 존재 케이스(§13, 2026-08-27 QA-FIX1 재작성) —
+    // 원래는 user2에 실제로 쌓여있던 과거 421건 파일의 재현 데이터(173
+    // orders/338 items)에 기대어 "8/26 배송분이 부모 주문 존재만으로 통째로
+    // 막히지 않는지"를 검증했다. STEP8에서 QA tenant를 user2→user3로
+    // 전환하면서 이 케이스가 깨졌는데, 원인은 "부모 주문 존재" 로직과
+    // 무관했다 — orders.order_number는 tenant 간에도 전역 UNIQUE라, 그
+    // 실제 파일의 주문번호가 이미 (QA 쓰기 금지 대상인) user2에 실존하는
+    // 상태에서 user3로 같은 파일을 분석하면 거의 전부가 crossTenantConflicts
+    // "이미 다른 계정에 등록됨" error로 잡혔을 뿐이다(이 자체는 올바른
+    // 동작). 즉 이 케이스는 애초에 "부모 주문 존재+새 배송일" 시나리오를
+    // 검증한 게 아니라 외부 파일과 특정 tenant의 우연한 상태에 결합되어
+    // 있었다 — user3 안에서 자체적으로 재현 가능한 합성 fixture로 대체한다.
+    //
+    // 3가지 그룹을 만든다: PARTIAL(부모 있음, 상품주문 일부만 기존 — 검증
+    // 대상), DUP(부모+상품주문 전부 기존 — allExisting 대조군), NEW(부모
+    // 자체가 없음 — 대조군). 전부 QA_PREFIX+RUN_TAG로 유일해 다른 tenant의
+    // 실제 주문번호와 절대 충돌하지 않는다.
     // ============================================================
-    const realFilePath = "C:\\Users\\김성길\\Documents\\카카오톡 받은 파일\\스마트스토어_전체주문발주발송관리_20260826_0735.xlsx";
-    try {
-      const fs = await import("node:fs");
-      const buf = fs.readFileSync(realFilePath);
-      const parsedReal = parseSpreadsheet(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), path.basename(realFilePath));
-      const { mapping: realMapping } = autoMapColumns(parsedReal.headers);
-      const analysisReal = await classifyDuplicates({ parsed: parsedReal, mapping: realMapping, ownerUsername: OWNER });
-      const aug26Groups = analysisReal.groups.filter((g) => g.upload.deliveryDate && g.upload.deliveryDate.slice(0, 10) === "2026-08-26");
-      const aug26BlockedByParentOnly = aug26Groups.filter((g) => g.status === "error");
-      record("STEP2-K1. 실제 421건 파일 — 총 상품주문 421건, 부모 그룹 220건 재확인", analysisReal.totalProductOrders === 421 && analysisReal.totalGroups === 220, {
-        totalProductOrders: analysisReal.totalProductOrders,
-        totalGroups: analysisReal.totalGroups,
-      });
-      record(
-        "STEP2-K2. 8/26 배송분이 '부모 주문 이미 존재'라는 이유만으로 통째로 막히지 않음(error 0건)",
-        aug26BlockedByParentOnly.length === 0,
-        { aug26GroupCount: aug26Groups.length, blockedCount: aug26BlockedByParentOnly.length }
-      );
-      console.log(
-        `STEP2-K 참고 수치: new=${analysisReal.newCount}, confirmed_duplicate=${analysisReal.confirmedDuplicateCount}, candidate=${analysisReal.candidateCount}, error=${analysisReal.errorCount}, partial groups=${analysisReal.groups.filter((g) => g.status === "partial").length}`
-      );
-    } catch (e) {
-      record("STEP2-K. 실제 421건 파일 검증", false, `파일 접근 실패: ${e instanceof Error ? e.message : String(e)}`);
+    const PARTIAL_COUNT = 15;
+    const NEW_COUNT = 5;
+    const DUP_COUNT = 5;
+    const dateOld = inDays(-5);
+    const dateOlder = inDays(-3);
+    const dateToday = inDays(0);
+
+    const wave1Rows: Record<string, unknown>[] = [];
+    const wave2Rows: Record<string, unknown>[] = [];
+
+    for (let i = 0; i < PARTIAL_COUNT; i++) {
+      const on = `${QA_PREFIX}K-PARTIAL-${i}-${RUN_TAG}`;
+      const name = `${QA_PREFIX}K부분고객${i}`;
+      const phone = `010-92${String(i).padStart(2, "0")}-1${String(i).padStart(3, "0")}`;
+      const address = `서울 강동구 K부분${i}`;
+      wave1Rows.push(row({ orderNumber: on, productOrderNumber: `${on}-P1`, name, phone, address, deliveryDate: dateOld, product: "K기존상품", perItemDate: true }));
+      wave2Rows.push(row({ orderNumber: on, productOrderNumber: `${on}-P1`, name, phone, address, deliveryDate: dateOld, product: "K기존상품", perItemDate: true }));
+      wave2Rows.push(row({ orderNumber: on, productOrderNumber: `${on}-P2`, name, phone, address, deliveryDate: dateToday, product: "K신규상품", perItemDate: true }));
     }
+    for (let i = 0; i < NEW_COUNT; i++) {
+      const on = `${QA_PREFIX}K-NEW-${i}-${RUN_TAG}`;
+      const name = `${QA_PREFIX}K신규고객${i}`;
+      const phone = `010-93${String(i).padStart(2, "0")}-1${String(i).padStart(3, "0")}`;
+      wave2Rows.push(row({ orderNumber: on, productOrderNumber: `${on}-P1`, name, phone, address: `서울 강동구 K신규${i}`, deliveryDate: dateToday, product: "K완전신규상품", perItemDate: true }));
+    }
+    for (let i = 0; i < DUP_COUNT; i++) {
+      const on = `${QA_PREFIX}K-DUP-${i}-${RUN_TAG}`;
+      const name = `${QA_PREFIX}K중복고객${i}`;
+      const phone = `010-94${String(i).padStart(2, "0")}-1${String(i).padStart(3, "0")}`;
+      const address = `서울 강동구 K중복${i}`;
+      const r1 = row({ orderNumber: on, productOrderNumber: `${on}-P1`, name, phone, address, deliveryDate: dateOld, product: "K기존상품A", perItemDate: true });
+      const r2 = row({ orderNumber: on, productOrderNumber: `${on}-P2`, name, phone, address, deliveryDate: dateOlder, product: "K기존상품B", perItemDate: true });
+      wave1Rows.push(r1, r2);
+      wave2Rows.push(r1, r2);
+    }
+
+    await runImport({ fileName: "step2-k-wave1.xlsx", parsed: sheetOf(wave1Rows), mapping: MAPPING, ownerUsername: OWNER });
+    const analysisK = await classifyDuplicates({ parsed: sheetOf(wave2Rows), mapping: MAPPING, ownerUsername: OWNER });
+
+    const partialGroups = analysisK.groups.filter((g) => g.groupKey.includes("K-PARTIAL-"));
+    const newGroups = analysisK.groups.filter((g) => g.groupKey.includes("K-NEW-"));
+    const dupGroups = analysisK.groups.filter((g) => g.groupKey.includes("K-DUP-"));
+    const partialBlockedByParentOnly = partialGroups.filter((g) => g.status === "error");
+
+    record(
+      "STEP2-K1. 합성 fixture — 그룹/상품주문 총량 재확인(PARTIAL 15+NEW 5+DUP 5=25 그룹, 45 상품주문)",
+      analysisK.totalGroups === PARTIAL_COUNT + NEW_COUNT + DUP_COUNT &&
+        analysisK.totalProductOrders === PARTIAL_COUNT * 2 + NEW_COUNT * 1 + DUP_COUNT * 2,
+      { totalGroups: analysisK.totalGroups, totalProductOrders: analysisK.totalProductOrders }
+    );
+    record(
+      "STEP2-K2. 부모 주문이 있고 상품주문 일부만 기존인 그룹이 '부모 존재'만으로 통째로 막히지 않음(error 0건, 전부 partial)",
+      partialBlockedByParentOnly.length === 0 && partialGroups.length === PARTIAL_COUNT && partialGroups.every((g) => g.status === "partial"),
+      { partialGroupCount: partialGroups.length, blockedCount: partialBlockedByParentOnly.length, statuses: partialGroups.map((g) => g.status) }
+    );
+    record("STEP2-K3. 부모 자체가 없는 그룹은 new로 분류됨(대조군)", newGroups.length === NEW_COUNT && newGroups.every((g) => g.status === "new"), {
+      statuses: newGroups.map((g) => g.status),
+    });
+    record(
+      "STEP2-K4. 부모+상품주문 전부 기존인 그룹은 confirmed_duplicate로 분류됨(대조군)",
+      dupGroups.length === DUP_COUNT && dupGroups.every((g) => g.status === "confirmed_duplicate"),
+      { statuses: dupGroups.map((g) => g.status) }
+    );
   } finally {
     // ============================================================
     // Cleanup — QA_PREFIX로 만든 모든 데이터 삭제(cascade로 order_items/order_shipments도 함께 삭제됨)

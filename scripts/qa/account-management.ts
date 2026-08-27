@@ -159,35 +159,52 @@ async function main() {
     const visibleToOther = await page.getByText("QA-CPO-기사").count();
     record("C1. user3 화면에는 user2의 QA-CPO-기사가 보이지 않음(tenant 격리)", visibleToOther === 0, `count=${visibleToOther}`);
 
-    // ---- Scenario D: Admin이 같은 계정의 아이디를 다시 변경(Admin CS 경로) ----
+    // ---- Scenario D(2026-08-27 QA-FIX2 재작성): Admin이 기사관리 탭에서 다른
+    // 테넌트(user3) 기사의 로그인 계정을 재변경(Admin CS 경로) ----
+    // C1(배송기사 전체 계정 목록에서 완전 분리)/C2(사장님 계정은 아이디 수정
+    // 불가)로 "전체 계정 목록"에는 이제 그 어떤 행에도 "아이디 변경" 버튼이
+    // 없다 — 예전 D0/D1이 검증하던 그 버튼 자체가 존재하지 않는 UI를 계속
+    // 클릭 시도해 FATAL이 나던 stale 시나리오였다. 아이디 변경이 가능한
+    // 유일한 경로는 기사관리 탭의 "기사 정보 수정" 다이얼로그이고, admin은
+    // 그 안에서 자기 소유가 아닌 기사(owner_username 무관)도 수정할 수
+    // 있어야 한다(assertOwnsDriver의 admin 예외).
     await setSession(context, "admin", "admin");
     await page.goto(`${BASE_URL}/settings`, { waitUntil: "networkidle" });
     await page.getByRole("tab", { name: "기본정보" }).click();
     await page.waitForTimeout(500);
 
-    // D0: admin 본인 행에는 아이디변경 버튼 자체가 없어야 한다.
-    const adminRow = page.getByRole("row", { name: new RegExp(`^admin `) });
-    const adminEditBtnCount = await adminRow.getByRole("button", { name: /아이디 변경/ }).count();
-    record("D0. Admin 본인 계정 행에는 아이디 변경 버튼이 노출되지 않음", adminEditBtnCount === 0, `count=${adminEditBtnCount}`);
+    // D0: 전체 계정 목록에는 아이디 변경 버튼이 아예 없다(사장님=수정불가, 기사=목록에서 분리됨).
+    const idChangeButtonCount = await page.getByRole("button", { name: /아이디 변경/ }).count();
+    record("D0. 전체 계정 목록에는 아이디 변경 버튼이 더 이상 없음(사장님 수정불가 + 기사 목록 분리)", idChangeButtonCount === 0, `count=${idChangeButtonCount}`);
 
-    const targetRow = page.getByRole("row", { name: new RegExp(renamedUsername) });
-    await targetRow.getByRole("button", { name: /아이디 변경/ }).click();
-    const renameDialog = page.getByRole("dialog");
-    await renameDialog.waitFor({ state: "visible" });
-    await renameDialog.locator('input[name="newUsername"]').fill(adminRenamedUsername);
-    await renameDialog.getByRole("button", { name: "변경" }).click();
-    const d1Closed = await waitForDialogClose(renameDialog);
-    record("D1. Admin이 기사 계정 아이디 재변경 성공", d1Closed);
+    await page.getByRole("tab", { name: "기사관리" }).click();
+    await page.waitForTimeout(500);
+    const adminDriverRow = page.getByRole("row", { name: /QA-CPO-기사/ });
+    await adminDriverRow.getByRole("button", { name: "수정" }).click();
+    const adminDialog = page.getByRole("dialog");
+    await adminDialog.waitFor({ state: "visible" });
+    const adminUsernameInput = adminDialog.locator('input[name="username"]');
+    const prefillForAdmin = await adminUsernameInput.inputValue();
+    record(
+      "D1. Admin도 기사관리 탭에서 다른 테넌트(user3) 기사의 로그인 계정을 열람 가능(아이디 prefill)",
+      prefillForAdmin === renamedUsername,
+      `got="${prefillForAdmin}"`
+    );
+
+    await adminUsernameInput.fill(adminRenamedUsername);
+    await adminDialog.getByRole("button", { name: "저장" }).click();
+    const d2Closed = await waitForDialogClose(adminDialog);
+    record("D2. Admin이 기사관리 탭에서 기사 계정 아이디 재변경 성공", d2Closed);
     currentDriverUsername = adminRenamedUsername;
 
-    // 재변경된 아이디로 여전히 로그인되는지(= owner_username/데이터 연결이 끊기지 않았는지)
+    // 재변경된 아이디로 여전히 로그인되는지(= owner_username/데이터 연결이 끊기지 않았는지, 비밀번호는 Scenario A값 유지)
     await context.clearCookies();
     await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle" });
     await page.locator('input[name="username"]').fill(adminRenamedUsername);
     await page.locator('input[name="password"]').fill(newPassword);
     await page.getByRole("button", { name: "로그인" }).click();
-    const d2Ok = await waitForDriverLanding(page);
-    record("D2. Admin이 재변경한 아이디로도 로그인 성공(비밀번호는 이전 값 유지)", d2Ok, `url=${page.url()}`);
+    const d3Ok = await waitForDriverLanding(page);
+    record("D3. Admin이 재변경한 아이디로도 로그인 성공(비밀번호는 이전 값 유지, tenant 연결 안 끊김)", d3Ok, `url=${page.url()}`);
 
     // ---- Scenario E: 사장님(user2) 내 프로필(이름/연락처) 저장 ----
     await setSession(context, OWNER, "user");
