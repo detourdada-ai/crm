@@ -23,6 +23,8 @@ import type {
   AccessKeyStatus,
   InquiryStatus,
   InquiryCategory,
+  AnnouncementCategory,
+  AnnouncementStatus,
   RecruitApplicationStatus,
   ProblemCategory,
 } from "./domain";
@@ -569,6 +571,52 @@ export interface Database {
           category?: InquiryCategory;
         };
         Update: Partial<Database["public"]["Tables"]["inquiries"]["Insert"]>;
+        Relationships: [];
+      };
+      announcements: {
+        Row: {
+          id: string;
+          title: string;
+          summary: string;
+          body: string;
+          category: AnnouncementCategory;
+          status: AnnouncementStatus;
+          show_popup: boolean;
+          published_at: string;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          summary: string;
+          body: string;
+          category?: AnnouncementCategory;
+          status?: AnnouncementStatus;
+          show_popup?: boolean;
+          published_at?: string;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["announcements"]["Insert"]>;
+        Relationships: [];
+      };
+      announcement_dismissals: {
+        Row: {
+          username: string;
+          announcement_id: string;
+          dismissed_date: string;
+          created_at: string;
+        };
+        Insert: {
+          username: string;
+          announcement_id: string;
+          dismissed_date?: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["announcement_dismissals"]["Insert"]>;
         Relationships: [];
       };
       order_items: {

@@ -17,7 +17,8 @@
     "qa:driver-shift": "tsx scripts/qa/driver-shift-completion-flow.ts",
     "qa:import-dedup": "tsx scripts/qa/import-dedup-flow.ts",
     "qa:import-step2": "tsx scripts/qa/import-step2-product-order.ts",
-    "qa:import-identity-conflict": "tsx scripts/qa/import-identity-conflict-flow.ts"
+    "qa:import-identity-conflict": "tsx scripts/qa/import-identity-conflict-flow.ts",
+    "qa:announcements": "tsx scripts/qa/announcements-flow.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

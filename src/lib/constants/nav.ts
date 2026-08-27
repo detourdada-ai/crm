@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, ShoppingCart, Truck, Wallet, Users, BarChart3, Settings, HelpCircle } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Truck, Wallet, Users, BarChart3, Settings, HelpCircle, Megaphone } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -41,7 +41,10 @@ export const NAV_ENTRIES: NavEntry[] = [
 
 export const NAV_HELP_ENTRY: NavSection = {
   section: "도움말",
-  items: [{ href: "/contact", label: "문의하기", icon: HelpCircle }],
+  items: [
+    { href: "/announcements", label: "공지사항", icon: Megaphone },
+    { href: "/contact", label: "문의하기", icon: HelpCircle },
+  ],
 };
 
 /** Flat form of NAV_ENTRIES (+ 설정), for places that need a plain list (e.g. active-path matching, mobile search) rather than the sectioned rendering. */

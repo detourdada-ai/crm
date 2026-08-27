@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { AnnouncementLoginPopup } from "@/components/announcements/announcement-login-popup";
 import { requireSession } from "@/lib/auth/current-session";
 import { requireActiveAccess } from "@/lib/auth/access-control";
 
@@ -33,6 +34,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         <Header />
         <main className="min-w-0 flex-1 overflow-y-auto bg-background p-4 md:p-6">{children}</main>
       </div>
+      {/* 공지는 사장님(user) 대상 안내다 — 기사는 배송 전용 화면이라 제외하고,
+          admin은 공지를 직접 작성하는 운영자라 본인이 쓴 공지 팝업을 볼 필요가 없다. */}
+      {session.role === "user" ? <AnnouncementLoginPopup /> : null}
     </div>
   );
 }

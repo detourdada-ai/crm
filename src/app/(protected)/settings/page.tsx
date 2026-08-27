@@ -22,16 +22,19 @@ import { TenantResetButton } from "@/components/settings/tenant-reset-button";
 import { GeocodeBackfillButton } from "@/components/settings/geocode-backfill-button";
 import { RecruitApplicationsTable } from "@/components/settings/recruit-applications-table";
 import { InquiryAdminList } from "@/components/settings/inquiry-admin-list";
+import { AnnouncementCreateForm } from "@/components/settings/announcement-create-form";
+import { AnnouncementAdminList } from "@/components/settings/announcement-admin-list";
 import { PageHeader } from "@/components/common/page-header";
 import { listDriversAction } from "@/actions/drivers";
 import { listKnownRegionsAction } from "@/actions/driver-regions";
 import { listProductsAction } from "@/actions/products";
 import { listBetaRecruitApplicationsAction } from "@/actions/beta-recruit";
 import { listInquiriesAction } from "@/actions/inquiries";
+import { listAnnouncementsForAdminAction } from "@/actions/announcements";
 import { ROLE_LABELS } from "@/lib/constants/role-labels";
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { computeAccessStatus } from "@/lib/auth/access-control";
-import { formatKstDateDotted } from "@/lib/utils/kst-date";
+import { formatKstDateDotted, kstTodayIso } from "@/lib/utils/kst-date";
 import type { EffectiveAccessStatus, Tenant } from "@/types/domain";
 import type { Role } from "@/lib/auth/credentials";
 
@@ -57,9 +60,9 @@ export default async function SettingsPage({
     listKnownRegionsAction(),
     listProductsAction(),
   ]);
-  const [recruitApplications, inquiries] = isAdmin
-    ? await Promise.all([listBetaRecruitApplicationsAction(), listInquiriesAction()])
-    : [[], []];
+  const [recruitApplications, inquiries, announcements] = isAdmin
+    ? await Promise.all([listBetaRecruitApplicationsAction(), listInquiriesAction(), listAnnouncementsForAdminAction()])
+    : [[], [], []];
 
   if (!isAdmin) {
     const [vipCriteria, tenant] = await Promise.all([
@@ -194,6 +197,7 @@ export default async function SettingsPage({
             운영관리
             {pendingApprovalCount > 0 ? <Badge variant="destructive">{pendingApprovalCount}</Badge> : null}
           </TabsTrigger>
+          <TabsTrigger value="announcements">공지관리</TabsTrigger>
         </TabsList>
 
         <TabsContent value="basic" className="space-y-6 pt-4">
@@ -425,6 +429,34 @@ export default async function SettingsPage({
                 <li>문자 발송 연동 설정</li>
                 <li>알림/자동화 규칙 설정</li>
               </ul>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="announcements" className="space-y-6 pt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>공지 등록</CardTitle>
+              <CardDescription>
+                등록한 공지는 사장님 계정의 공지 목록에 노출됩니다. &ldquo;로그인 팝업으로 표시&rdquo;를 켜면 게시일 이후
+                처음 로그인하는 계정에게 팝업으로도 안내됩니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AnnouncementCreateForm defaultPublishedAt={kstTodayIso()} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>공지 목록</CardTitle>
+              <CardDescription>
+                공지는 삭제하지 않고 게시중 ↔ 종료 상태로만 관리합니다. 종료된 공지는 사장님 목록에서 빠지지만 팝업 노출
+                이력은 유지됩니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AnnouncementAdminList announcements={announcements} />
             </CardContent>
           </Card>
         </TabsContent>

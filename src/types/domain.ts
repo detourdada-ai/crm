@@ -547,3 +547,27 @@ export interface Inquiry {
   updated_at: ISODateString;
   category: InquiryCategory;
 }
+
+export type AnnouncementCategory = "기능개선" | "일반공지";
+export type AnnouncementStatus = "게시중" | "종료";
+
+export interface Announcement {
+  id: UUID;
+  title: string;
+  summary: string;
+  body: string;
+  category: AnnouncementCategory;
+  status: AnnouncementStatus;
+  show_popup: boolean;
+  published_at: string; // date (YYYY-MM-DD), not a timestamp
+  created_by: string;
+  created_at: ISODateString;
+  updated_at: ISODateString;
+}
+
+export interface AnnouncementDismissal {
+  username: string;
+  announcement_id: UUID;
+  dismissed_date: string; // date (YYYY-MM-DD)
+  created_at: ISODateString;
+}
