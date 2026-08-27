@@ -1,10 +1,36 @@
 import "server-only";
+import { randomUUID } from "crypto";
 import { orderShipmentsRepository, type OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
-import { deliveryGroupsRepository, type DeliveryGroupInsert } from "@/lib/repositories/delivery-groups.repository";
+import {
+  deliveryGroupsRepository,
+  type DeliveryGroupInsert,
+  type DeliveryGroupRecomputeRow,
+} from "@/lib/repositories/delivery-groups.repository";
 import { clusterPointsByDistance, computeCentroid, representativeRegion } from "@/lib/services/spatial-grouping.service";
 
 /** 배송 그룹화 기본 반경 — CPO 승인: "격자"가 아니라 "주문 간 실거리 N m 이내"가 연결 기준(그룹이 너무 잘게 쪼개진다는 CEO 피드백으로 50m→100m 확대). */
 export const GROUP_RADIUS_METERS = 100;
+
+/**
+ * STEP7-C(2026-08 CPO 작업지시): assignShipmentsToGroup을 클러스터마다
+ * 순차 await하던 것을 안전한 동시성 제한 병렬로 바꾼다 — 각 클러스터는
+ * 서로 겹치지 않는 배송건 집합을 갱신하므로(같은 행을 두 클러스터가
+ * 동시에 건드릴 일이 없음) 병렬화해도 경합이 없다. 다만 CPO 지시대로
+ * 무제한 Promise.all은 금지 — 커넥션 풀 부담을 고려해 동시 실행 수를
+ * 제한한다.
+ */
+const REGEN_CONCURRENCY_LIMIT = 8;
+
+async function runWithConcurrencyLimit<T>(items: T[], limit: number, fn: (item: T, index: number) => Promise<void>): Promise<void> {
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      await fn(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
 
 /**
  * Phase 4: 하나의 (tenant, 배송일)에 대한 그룹 재계산 orchestration —
@@ -81,11 +107,20 @@ export async function regenerateDeliveryGroupsForTenant(
 
   const groupsToDelete = existingGroups.filter((g) => !matchedGroupIds.has(g.id)).map((g) => g.id);
   let nextGroupNo = existingGroups.reduce((max, g) => Math.max(max, g.group_no), 0) + 1;
+  const existingGroupById = new Map(existingGroups.map((g) => [g.id, g]));
 
   // 4) 실제 반영: 삭제 → 매칭된 그룹 재계산 → 신규 그룹 생성 → 배송건 소속 초기화 → 재배정.
+  // STEP7-C: 그룹마다 순차 DB 왕복하던 것을(recompute/create 각 1회씩,
+  // N개 그룹이면 N회 왕복) 먼저 in-memory로 대상 행을 전부 계산한 뒤
+  // recomputeMany(벌크 upsert 1회) + createMany(벌크 insert 1회)로 묶는다.
+  // 매칭/overlap 판단(위 3번)은 그대로이고, "결정된 값을 어떻게 쓰는지"만
+  // 바뀐다 — group_no/driver_id 유지 규칙, idempotent 결과는 동일하다.
   await deliveryGroupsRepository.deleteByIds(groupsToDelete);
 
   const finalGroupIdByCluster = new Map<number, string>();
+  const recomputeRows: DeliveryGroupRecomputeRow[] = [];
+  const createRows: (DeliveryGroupInsert & { id: string })[] = [];
+
   for (let i = 0; i < clusters.length; i++) {
     const cluster = clusters[i];
     const members = cluster.map((id) => shipmentById.get(id)!).filter(Boolean);
@@ -94,7 +129,13 @@ export async function regenerateDeliveryGroupsForTenant(
 
     const matchedId = clusterToGroupId.get(i);
     if (matchedId) {
-      await deliveryGroupsRepository.recompute(matchedId, {
+      const existing = existingGroupById.get(matchedId)!;
+      recomputeRows.push({
+        id: matchedId,
+        tenant_id: existing.tenant_id,
+        owner_username: existing.owner_username,
+        delivery_date: existing.delivery_date,
+        group_no: existing.group_no,
         center_latitude: centroid.lat,
         center_longitude: centroid.lng,
         order_count: members.length,
@@ -105,7 +146,9 @@ export async function regenerateDeliveryGroupsForTenant(
       finalGroupIdByCluster.set(i, matchedId);
     } else {
       const ownerUsername = members[0]?.owner_username ?? ownerUsernameFallback;
-      const insert: DeliveryGroupInsert = {
+      const newId = randomUUID();
+      createRows.push({
+        id: newId,
         tenant_id: tenantId,
         owner_username: ownerUsername,
         delivery_date: dateStr,
@@ -116,17 +159,24 @@ export async function regenerateDeliveryGroupsForTenant(
         representative_sido: region.sido,
         representative_sigungu: region.sigungu,
         representative_eupmyeondong: region.eupmyeondong,
-      };
-      const created = await deliveryGroupsRepository.create(insert);
-      finalGroupIdByCluster.set(i, created.id);
+      });
+      finalGroupIdByCluster.set(i, newId);
     }
   }
 
+  await deliveryGroupsRepository.recomputeMany(recomputeRows);
+  await deliveryGroupsRepository.createMany(createRows);
+
   await orderShipmentsRepository.clearDeliveryGroupsForDate(tenantId, dateStr);
-  for (let i = 0; i < clusters.length; i++) {
+
+  // STEP7-C: assignShipmentsToGroup도 클러스터마다 순차 호출하면 그룹 수만큼
+  // 왕복이 생긴다 — 각 클러스터가 서로 다른 배송건 집합을 갱신해 경합이 없으므로
+  // 동시성 제한(REGEN_CONCURRENCY_LIMIT)을 둔 병렬 처리로 바꾼다(무제한
+  // Promise.all 금지 — CPO 지시).
+  await runWithConcurrencyLimit(clusters, REGEN_CONCURRENCY_LIMIT, async (cluster, i) => {
     const groupId = finalGroupIdByCluster.get(i);
-    if (groupId) await orderShipmentsRepository.assignShipmentsToGroup(clusters[i], groupId);
-  }
+    if (groupId) await orderShipmentsRepository.assignShipmentsToGroup(cluster, groupId);
+  });
 }
 
 /**
@@ -143,12 +193,21 @@ export async function regenerateDeliveryGroupsForTenant(
 export async function triggerDeliveryGroupRegeneration(
   tenantId: string,
   dateStr: string,
-  ownerUsername: string
+  ownerUsername: string,
+  operation?: string
 ): Promise<void> {
   try {
     const shipments = await orderShipmentsRepository.findEligibleForGrouping(dateStr, ownerUsername);
     await regenerateDeliveryGroupsForTenant(tenantId, dateStr, shipments, ownerUsername);
   } catch (e) {
-    console.warn(`[delivery-group] regeneration trigger failed (tenant=${tenantId}, date=${dateStr})`, e);
+    // STEP7-E(2026-08 CPO 작업지시): 실패를 여전히 삼키지만(P15-A 방침 유지 —
+    // 그룹 재계산 실패가 주문 저장 자체를 실패로 보이게 하면 안 됨), 어떤
+    // 작업에서 어느 tenant/배송일이 실패했는지는 최소한 로그로 식별 가능해야
+    // 한다. 개인정보(고객명/전화번호/상세주소)는 이 스코프에 아예 존재하지
+    // 않는다 — tenantId(uuid)/날짜/호출자가 넘긴 operation 라벨/에러 메시지뿐.
+    const message = e instanceof Error ? e.message : String(e);
+    console.warn(
+      `[delivery-group-regen-failed] operation=${operation ?? "unknown"} tenant_id=${tenantId} delivery_date=${dateStr} error=${message}`
+    );
   }
 }

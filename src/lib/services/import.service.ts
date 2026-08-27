@@ -1022,7 +1022,7 @@ export async function runImport({
           .map((s) => kstDayDateStrOf(s.delivery_date))
       );
       for (const dateStr of distinctDateStrs) {
-        await triggerDeliveryGroupRegeneration(tenant.id, dateStr, ownerUsername);
+        await triggerDeliveryGroupRegeneration(tenant.id, dateStr, ownerUsername, "excel_import");
       }
     }
     if (newItemInserts.length > 0) {
@@ -1139,7 +1139,7 @@ export async function deleteImport(importId: string, ownerUsername?: string): Pr
   }
   for (const [key, { tenantId, ownerUsername: owner }] of affected) {
     const dateStr = key.split("|")[1];
-    await triggerDeliveryGroupRegeneration(tenantId, dateStr, owner);
+    await triggerDeliveryGroupRegeneration(tenantId, dateStr, owner, "excel_import_delete");
   }
 
   // 배송관리 UX 회귀 복구 + 엑셀 안정화 PART 2 현상 A: 이전엔 후보 고객

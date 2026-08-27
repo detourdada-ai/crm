@@ -412,7 +412,7 @@ export async function createManualOrderAction(
 
     // P15-A: 신규 주문은 배송그룹에 새로 편입될 수 있으므로 그 배송일 하나만
     // 재계산한다 — 실패해도 주문 저장 자체는 이미 성공했으므로 무시(로그만).
-    await triggerDeliveryGroupRegeneration(tenantId, kstDayDateStrOf(deliveryDate), session.username);
+    await triggerDeliveryGroupRegeneration(tenantId, kstDayDateStrOf(deliveryDate), session.username, "order_create");
 
     revalidatePath("/orders");
     revalidatePath("/customers");
@@ -572,9 +572,9 @@ export async function updateManualOrderAction(
     }
 
     if (addressChanged || deliveryDateChanged) {
-      if (oldDateStr) await triggerDeliveryGroupRegeneration(order.tenant_id, oldDateStr, order.owner_username);
+      if (oldDateStr) await triggerDeliveryGroupRegeneration(order.tenant_id, oldDateStr, order.owner_username, "order_update");
       if (newDateStr && newDateStr !== oldDateStr) {
-        await triggerDeliveryGroupRegeneration(order.tenant_id, newDateStr, order.owner_username);
+        await triggerDeliveryGroupRegeneration(order.tenant_id, newDateStr, order.owner_username, "order_update");
       }
     }
 
@@ -617,7 +617,7 @@ export async function deleteManualOrderAction(orderId: string): Promise<DeleteMa
     await ordersRepository.deleteOne(orderId, session.role === "admin" ? undefined : session.username);
     // P15-A: 삭제된 주문이 그룹에 속해 있었을 수 있으므로 그 배송일만 재계산.
     if (order.delivery_date) {
-      await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username);
+      await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username, "order_delete");
     }
     revalidatePath("/orders");
     revalidatePath("/customers");
@@ -651,7 +651,7 @@ export async function cancelOrderAction(orderId: string): Promise<OrderCancelAct
     await ordersRepository.cancelOrder(orderId, session.role === "admin" ? undefined : session.username);
     // P15-A: 취소된 주문은 배송그룹 대상에서 빠져야 하므로 그 배송일만 재계산.
     if (order.delivery_date) {
-      await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username);
+      await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username, "order_cancel");
     }
     revalidatePath("/orders");
     revalidatePath(`/orders/${orderId}`);
@@ -676,7 +676,7 @@ export async function uncancelOrderAction(orderId: string): Promise<OrderCancelA
     await ordersRepository.uncancelOrder(orderId, session.role === "admin" ? undefined : session.username);
     // P15-A: 취소 해제된 주문은 다시 배송그룹 대상이 될 수 있으므로 그 배송일만 재계산.
     if (order.delivery_date) {
-      await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username);
+      await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username, "order_uncancel");
     }
     revalidatePath("/orders");
     revalidatePath(`/orders/${orderId}`);

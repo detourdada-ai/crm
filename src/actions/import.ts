@@ -148,7 +148,7 @@ export async function bulkAssignDeliveryDateAction(
 
     const tenant = await tenantsRepository.findByUsername(record.owner_username);
     if (tenant) {
-      await triggerDeliveryGroupRegeneration(tenant.id, deliveryDate, record.owner_username);
+      await triggerDeliveryGroupRegeneration(tenant.id, deliveryDate, record.owner_username, "excel_assign_missing_date");
     }
 
     revalidatePath("/orders");

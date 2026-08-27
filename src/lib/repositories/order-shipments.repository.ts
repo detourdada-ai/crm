@@ -56,12 +56,27 @@ function toBoardRows(shipments: OrderShipment[], orders: Order[]): OrderShipment
   return rows;
 }
 
+/**
+ * STEP7-A(2026-08 CPO 작업지시): PostgREST의 `.in()`은 GET 쿼리스트링으로
+ * 전송되므로, orderIds가 많으면(실측: 350건 성공/400건부터 Node undici
+ * HeadersOverflowError로 하드 실패) URL/HTTP 헤더 크기 제한(~16KB)에 걸린다.
+ * orders.repository.ts의 findExistingOrderNumbers 등과 동일한 관례(청크
+ * 분할)를 따르되, UUID는 주문번호보다 길어 청크 크기를 더 보수적으로 잡는다
+ * (실측 임계값 400 대비 안전마진 확보).
+ */
+const ORDER_ID_CHUNK_SIZE = 150;
+
 async function fetchBoardRowsForShipments(shipments: OrderShipment[]): Promise<OrderShipmentBoardRow[]> {
   if (shipments.length === 0) return [];
   const orderIds = Array.from(new Set(shipments.map((s) => s.order_id)));
-  const { data: orderRows, error } = await getSupabaseAdmin().from("orders").select("*").in("id", orderIds);
-  if (error) throw error;
-  return toBoardRows(shipments, (orderRows as Order[]) ?? []);
+  const orderRows: Order[] = [];
+  for (let i = 0; i < orderIds.length; i += ORDER_ID_CHUNK_SIZE) {
+    const chunk = orderIds.slice(i, i + ORDER_ID_CHUNK_SIZE);
+    const { data, error } = await getSupabaseAdmin().from("orders").select("*").in("id", chunk);
+    if (error) throw error;
+    orderRows.push(...((data as Order[]) ?? []));
+  }
+  return toBoardRows(shipments, orderRows);
 }
 
 /** findByDeliveryDate/findEligibleForGrouping이 공유하는 배송건 범위 조회 — 취소 제외 + 소유권 스코프. */

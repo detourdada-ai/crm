@@ -111,7 +111,7 @@ export async function separateShipmentFromGroupAction(shipmentId: string): Promi
     const session = await requireSession();
     const ownerScope = ownerScopeFor(session);
     const { tenantId, ownerUsername, deliveryDate } = await orderShipmentsRepository.setGroupLocked(shipmentId, true, ownerScope);
-    if (deliveryDate) await triggerDeliveryGroupRegeneration(tenantId, deliveryDate, ownerUsername);
+    if (deliveryDate) await triggerDeliveryGroupRegeneration(tenantId, deliveryDate, ownerUsername, "manual_separate");
     revalidatePath("/delivery");
     return { ok: true, error: null };
   } catch (e) {
@@ -125,7 +125,7 @@ export async function restoreShipmentToGroupingAction(shipmentId: string): Promi
     const session = await requireSession();
     const ownerScope = ownerScopeFor(session);
     const { tenantId, ownerUsername, deliveryDate } = await orderShipmentsRepository.setGroupLocked(shipmentId, false, ownerScope);
-    if (deliveryDate) await triggerDeliveryGroupRegeneration(tenantId, deliveryDate, ownerUsername);
+    if (deliveryDate) await triggerDeliveryGroupRegeneration(tenantId, deliveryDate, ownerUsername, "manual_restore");
     revalidatePath("/delivery");
     return { ok: true, error: null };
   } catch (e) {
