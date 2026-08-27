@@ -19,6 +19,7 @@ import { GoogleEmailCell } from "@/components/settings/google-email-cell";
 import { IssueBetaKeyButton } from "@/components/settings/issue-beta-key-button";
 import { TenantAccessControls } from "@/components/settings/tenant-access-controls";
 import { TenantResetButton } from "@/components/settings/tenant-reset-button";
+import { GeocodeBackfillButton } from "@/components/settings/geocode-backfill-button";
 import { RecruitApplicationsTable } from "@/components/settings/recruit-applications-table";
 import { InquiryAdminList } from "@/components/settings/inquiry-admin-list";
 import { PageHeader } from "@/components/common/page-header";
@@ -377,6 +378,19 @@ export default async function SettingsPage({
                   })}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>지오코딩 재시도</CardTitle>
+              <CardDescription>
+                주소는 있지만 좌표 확보에 실패했던 주문/고객을 도로명주소만 다시 뽑아 재시도합니다(전체 테넌트 대상,
+                다른 주문의 좌표를 복사하지 않고 실제로 다시 조회한 결과만 반영합니다).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <GeocodeBackfillButton />
             </CardContent>
           </Card>
 

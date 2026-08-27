@@ -68,6 +68,19 @@ export interface GroupBuildingCount {
   count: number;
 }
 
+/**
+ * P4C STEP3-F(2026-08 CPO 작업지시): 같은 건물의 표기 차이("고덕그라시움아파트"
+ * / "고덕그라시움" / "고덕 그라시움 아파트" / "고덕그라시움 APT")를 하나로
+ * 묶기 위한 비교 전용 키 — 공백을 전부 없애고 "아파트"/"APT"/"apt" 접미사를
+ * 지운 뒤 소문자로 비교한다. **표시에는 절대 쓰지 않는다**(그룹 카드에는
+ * 원본 표기 중 하나를 그대로 보여준다 — buildGroupBuildingCounts 참고).
+ * 유사도 추정이 아니라 정확히 같은 정규화 키만 묶으므로 "미사역 파라곤"과
+ * "미사강변 호반 써밋"처럼 실제 다른 건물은 절대 합쳐지지 않는다.
+ */
+function buildingNormalizationKey(name: string): string {
+  return name.replace(/\s+/g, "").replace(/아파트|apt/gi, "").toLowerCase();
+}
+
 /** STEP2-D(§10): 그룹 카드 안의 배송건수 소계 — total은 이 그룹 안에서
  *  지금 화면에 보이는 전체 건수, 나머지 셋은 그 안의 상태별 분해다. */
 export interface GroupStatusSubtotal {
@@ -87,12 +100,38 @@ export interface GroupStatusSubtotal {
  * 있는 그대로 센다.
  */
 export function buildGroupBuildingCounts(memberAddresses: (string | null)[]): GroupBuildingCount[] {
-  const counts = new Map<string, number>();
+  const rawCounts = new Map<string, number>();
   for (const addr of memberAddresses) {
     const name = extractComplexName(addr) ?? "기타";
-    counts.set(name, (counts.get(name) ?? 0) + 1);
+    rawCounts.set(name, (rawCounts.get(name) ?? 0) + 1);
   }
-  return [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+
+  // STEP3-F: 정규화 키가 같은 원본 표기들을 하나로 묶는다 — 이 그룹(이미
+  // 100m 좌표로 확정된 배송건 집합) 내부에서만 적용하는 표시명 통합이다.
+  // 대표 표시명은 "아파트/APT가 포함된, 더 완전한 표기"를 우선하고(정보량이
+  // 많음), 그것도 동률이면 더 많이 등장한 원문을 쓴다.
+  const clusters = new Map<string, { display: string; count: number; displayHasSuffix: boolean; displayRawCount: number }>();
+  for (const [name, count] of rawCounts) {
+    const key = name === "기타" ? "기타" : buildingNormalizationKey(name);
+    const hasSuffix = name !== "기타" && /아파트|apt/i.test(name);
+    const existing = clusters.get(key);
+    if (!existing) {
+      clusters.set(key, { display: name, count, displayHasSuffix: hasSuffix, displayRawCount: count });
+      continue;
+    }
+    existing.count += count;
+    const shouldReplaceDisplay =
+      (hasSuffix && !existing.displayHasSuffix) || (hasSuffix === existing.displayHasSuffix && count > existing.displayRawCount);
+    if (shouldReplaceDisplay) {
+      existing.display = name;
+      existing.displayHasSuffix = hasSuffix;
+      existing.displayRawCount = count;
+    }
+  }
+
+  return [...clusters.values()]
+    .map(({ display, count }) => ({ name: display, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 /**

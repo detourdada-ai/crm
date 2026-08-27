@@ -197,6 +197,21 @@ export const ordersRepository = {
     return (data as Order[]) ?? [];
   },
 
+  /**
+   * P4C STEP3-C(2026-08 CPO 작업지시): 도로명주소 추출 정정(geocoding.service.ts)
+   * 이후 재지오코딩 백필 대상 — 이전에 실패로 남은 주문만, 주소 원문이 있는
+   * 것만 대상으로 한다("pending"은 애초에 시도한 적이 없어 대상이 아니다).
+   */
+  async findFailedGeocode(): Promise<Pick<Order, "id" | "address_snapshot" | "owner_username">[]> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("orders")
+      .select("id, address_snapshot, owner_username")
+      .eq("geocode_status", "failed")
+      .not("address_snapshot", "is", null);
+    if (error) throw error;
+    return (data as Pick<Order, "id" | "address_snapshot" | "owner_username">[]) ?? [];
+  },
+
   async findByOrderNumber(orderNumber: string): Promise<Order | null> {
     const { data, error } = await getSupabaseAdmin()
       .from("orders")

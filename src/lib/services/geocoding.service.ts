@@ -1,5 +1,6 @@
 import "server-only";
 import { normalizeSido } from "@/lib/constants/region";
+import { extractRoadAddress } from "@/lib/utils/address";
 
 /**
  * Phase 1: 서버 전용 카카오 로컬 API(주소 검색) 클라이언트. 이 함수는 절대
@@ -82,7 +83,12 @@ function logFailure(reason: GeocodeFailureReason, detail?: string) {
 
 export async function geocodeAddress(roadAddress: string): Promise<GeocodeFields> {
   const apiKey = process.env.KAKAO_REST_API_KEY;
-  const query = roadAddress.trim();
+  // P4C STEP3-A(2026-08 CPO 작업지시): 호출부가 상세주소까지 합쳐서 넘기더라도
+  // 여기서 한 번 더 도로명주소만 추려 검색한다 — 실측(꿈동산신안아파트)에서
+  // 완전히 같은 도로명주소가 상세주소 표기 차이만으로 카카오 검색에 실패한
+  // 사례가 확인됐다. 모든 호출부(수동주문/고객/엑셀 임포트)를 한 곳에서
+  // 커버하기 위해 caller가 아니라 이 함수 안에서 처리한다.
+  const query = extractRoadAddress(roadAddress) ?? "";
   if (!apiKey) {
     logFailure("no_api_key");
     return { ...FAILED_RESULT };

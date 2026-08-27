@@ -44,6 +44,53 @@ export function regionBuildingKey(sigungu: string, building: string): string {
 }
 
 /**
+ * P4C STEP3-E(2026-08 CPO 작업지시): 지오코딩 실패(sigungu=null)로 같은
+ * 건물이 "지역 미확인"에 중복 노출되는 문제 — 1차 대응은 지오코딩 자체를
+ * 도로명주소 기준으로 정정하는 것(geocoding.service.ts)이지만, 그래도
+ * 실패가 남는 경우를 위한 안전망이다. 전체 주문 집합을 한 번 훑어 "같은
+ * 건물명이 실제 지역 버킷 정확히 하나에만 있는" 경우만 찾아 그 건물명을
+ * 그 지역으로 귀속시킨다. "기타"(건물명 자체가 없음)는 대상이 아니고,
+ * 같은 건물명이 서로 다른 실제 지역 2곳 이상에 이미 있으면(동명 건물일
+ * 수 있으므로) 어느 쪽인지 판단할 수 없어 절대 합치지 않는다(오병합보다
+ * 미확인 우선). buildRegionBuildingCounts(집계)와 filterOrdersByRegionOrBuilding
+ * (선택 필터링)이 같은 병합 판단을 공유해야 "지역 미확인 건이 합산된
+ * 지역 항목을 체크했는데 정작 그 주문은 안 보이는" 불일치가 생기지 않는다.
+ */
+function buildRealRegionByBuilding<T extends { sigungu: string | null; address_snapshot: string | null }>(
+  orders: T[]
+): Map<string, string> {
+  const regionsByBuilding = new Map<string, Set<string>>();
+  for (const o of orders) {
+    const sigungu = o.sigungu;
+    if (!sigungu) continue; // 실제 지역이 확인된 주문만 후보로 쓴다.
+    const complexName = extractComplexName(o.address_snapshot);
+    if (!complexName || !isApartmentName(complexName)) continue;
+    const regions = regionsByBuilding.get(complexName) ?? new Set<string>();
+    regions.add(sigungu);
+    regionsByBuilding.set(complexName, regions);
+  }
+  const result = new Map<string, string>();
+  for (const [building, regions] of regionsByBuilding) {
+    if (regions.size === 1) result.set(building, [...regions][0]);
+  }
+  return result;
+}
+
+/** 주문 하나의 (지역, 건물) — 지역 미확인이면서 다른 곳에서 이미 지역이 확인된 같은 건물이면 그 지역으로 귀속시킨다. */
+function effectiveRegionBuildingOf<T extends { sigungu: string | null; address_snapshot: string | null }>(
+  o: T,
+  realRegionByBuilding: Map<string, string>
+): { sigungu: string; building: string } {
+  const complexName = extractComplexName(o.address_snapshot);
+  const building = complexName && isApartmentName(complexName) ? complexName : OTHER_BUILDING_LABEL;
+  if (!o.sigungu && building !== OTHER_BUILDING_LABEL) {
+    const mergedRegion = realRegionByBuilding.get(building);
+    if (mergedRegion) return { sigungu: mergedRegion, building };
+  }
+  return { sigungu: regionLabelOf(o.sigungu), building };
+}
+
+/**
  * CPO 요청(2026-08, 지역 필터 2단계): "지역명 + 건물(아파트1/아파트2/기타)"
  * 형태로 지역 필터 안에 건물 단위 하위 그룹을 보여준다. delivery-group.ts의
  * extractComplexName/isApartmentName을 그대로 재사용한다 — 새로운 문자열
@@ -58,11 +105,10 @@ export function regionBuildingKey(sigungu: string, building: string): string {
 export function buildRegionBuildingCounts<T extends { sigungu: string | null; address_snapshot: string | null }>(
   orders: T[]
 ): RegionBuildingCount[] {
+  const realRegionByBuilding = buildRealRegionByBuilding(orders);
   const counts = new Map<string, number>();
   for (const o of orders) {
-    const sigungu = regionLabelOf(o.sigungu);
-    const complexName = extractComplexName(o.address_snapshot);
-    const building = complexName && isApartmentName(complexName) ? complexName : OTHER_BUILDING_LABEL;
+    const { sigungu, building } = effectiveRegionBuildingOf(o, realRegionByBuilding);
     const key = regionBuildingKey(sigungu, building);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
@@ -80,6 +126,9 @@ export function buildRegionBuildingCounts<T extends { sigungu: string | null; ad
  * 주문은 UNKNOWN_REGION_LABEL로 취급되어, 그 라벨이 activeRegions/
  * activeBuildingKeys에 명시적으로 포함된 경우에만(=사용자가 "지역 미확인"을
  * 직접 선택한 경우에만) 노출된다 — 그 외에는 기존과 동일하게 제외된다.
+ * buildRegionBuildingCounts와 동일한 지역 미확인→실제 지역 귀속 판단을
+ * 공유해, 집계 화면에 합산되어 보이는 건은 그 지역 체크박스로도 그대로
+ * 걸러진다.
  */
 export function filterOrdersByRegionOrBuilding<T extends { sigungu: string | null; address_snapshot: string | null }>(
   orders: T[],
@@ -89,12 +138,11 @@ export function filterOrdersByRegionOrBuilding<T extends { sigungu: string | nul
   if (activeRegions.length === 0 && activeBuildingKeys.length === 0) return orders;
   const regionSet = new Set(activeRegions);
   const buildingSet = new Set(activeBuildingKeys);
+  const realRegionByBuilding = buildRealRegionByBuilding(orders);
   return orders.filter((o) => {
-    const sigungu = regionLabelOf(o.sigungu);
+    const { sigungu, building } = effectiveRegionBuildingOf(o, realRegionByBuilding);
     if (regionSet.has(sigungu)) return true;
     if (buildingSet.size === 0) return false;
-    const complexName = extractComplexName(o.address_snapshot);
-    const building = complexName && isApartmentName(complexName) ? complexName : OTHER_BUILDING_LABEL;
     return buildingSet.has(regionBuildingKey(sigungu, building));
   });
 }

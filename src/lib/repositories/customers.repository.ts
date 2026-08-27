@@ -90,6 +90,21 @@ export const customersRepository = {
   },
 
   /**
+   * P4C STEP3-C(2026-08 CPO 작업지시): 도로명주소 추출 정정(geocoding.service.ts)
+   * 이후 재지오코딩 백필 대상 — 이전에 실패로 남은 고객만, road_address가
+   * 있는 것만 대상으로 한다("pending"은 애초에 시도한 적이 없어 대상이 아니다).
+   */
+  async findFailedGeocode(): Promise<Pick<Customer, "id" | "road_address" | "owner_username">[]> {
+    const { data, error } = await getSupabaseAdmin()
+      .from("customers")
+      .select("id, road_address, owner_username")
+      .eq("geocode_status", "failed")
+      .not("road_address", "is", null);
+    if (error) throw error;
+    return (data as Pick<Customer, "id" | "road_address" | "owner_username">[]) ?? [];
+  },
+
+  /**
    * Phase 1: 기사 담당지역 등록 UI의 시군구/읍면동 자동완성용 — 지역
    * 마스터 테이블 없이, 이미 지오코딩에 성공한 고객 주소에서 뽑은
    * distinct 조합을 그대로 후보로 쓴다(작업지시서 8번).
