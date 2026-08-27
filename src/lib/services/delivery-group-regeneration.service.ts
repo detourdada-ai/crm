@@ -44,8 +44,12 @@ export async function regenerateDeliveryGroupsForTenant(
   }
 
   // 2) 새 클러스터 계산 — 크기 2 이상만 "그룹" 후보(1개짜리는 미그룹으로 처리).
+  // P4C Phase3 STEP5: 수동분리(delivery_group_locked=true)된 배송건은 클러스터링
+  // 입력 자체에서 제외한다 — 100m 반경/알고리즘은 그대로이고, "재계산 전에
+  // 무엇을 넣을지"만 사전 필터링한다(운영자가 분리한 배송건이 다음 재계산
+  // 때 조용히 원래 그룹으로 되돌아가지 않도록).
   const points = shipments
-    .filter((s) => s.latitude !== null && s.longitude !== null)
+    .filter((s) => s.latitude !== null && s.longitude !== null && !s.delivery_group_locked)
     .map((s) => ({ id: s.shipmentId, lat: s.latitude as number, lng: s.longitude as number }));
   const clusters = clusterPointsByDistance(points, GROUP_RADIUS_METERS).filter((c) => c.length >= 2);
   const shipmentById = new Map(shipments.map((s) => [s.shipmentId, s]));

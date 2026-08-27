@@ -55,11 +55,42 @@ export function isApartmentName(complexName: string): boolean {
   return /아파트|APT/i.test(complexName);
 }
 
+/**
+ * P4C Phase3 STEP3-E에서 지역필터 전용으로 만들었던 로직을 여기로 옮긴다
+ * (STEP5-G) — delivery-region-filter.ts가 이미 이 파일의 extractComplexName/
+ * isApartmentName을 가져다 쓰므로, 반대 방향 import를 두면 순환참조가
+ * 생긴다. 전체 활성 주문을 한 번 훑어 "같은 건물명이 실제 지역(sigungu)
+ * 정확히 하나에만 있는" 경우만 그 건물→지역 매핑으로 인정한다("기타"는
+ * 대상이 아니고, 같은 건물명이 서로 다른 실제 지역 2곳 이상에 있으면
+ * 동명 건물일 수 있으므로 합치지 않는다 — 오병합보다 미확인 우선).
+ */
+export function buildRealRegionByBuilding<T extends { sigungu: string | null; address_snapshot: string | null }>(
+  orders: T[]
+): Map<string, string> {
+  const regionsByBuilding = new Map<string, Set<string>>();
+  for (const o of orders) {
+    const sigungu = o.sigungu;
+    if (!sigungu) continue;
+    const complexName = extractComplexName(o.address_snapshot);
+    if (!complexName || !isApartmentName(complexName)) continue;
+    const regions = regionsByBuilding.get(complexName) ?? new Set<string>();
+    regions.add(sigungu);
+    regionsByBuilding.set(complexName, regions);
+  }
+  const result = new Map<string, string>();
+  for (const [building, regions] of regionsByBuilding) {
+    if (regions.size === 1) result.set(building, [...regions][0]);
+  }
+  return result;
+}
+
 export interface GroupBuildingLabel {
   /** 카드/select 안에 쓰는 짧은 부분 표시명 — 우선순위(§8)에 따라 건물명 / "건물명 외 N곳" / 지역명 / "N구역" 중 하나. */
   suffix: string;
   /** 지역 헤딩과 합친 전체 라벨(건물명이 확정된 경우만 "지역 · 건물명" 형태, 지역명 단독일 땐 suffix와 동일). */
   full: string;
+  /** STEP5-B: 건물이 2곳 이상 섞인 그룹은 카드에 "지역 · 건물명 외 N곳" 대신 지역명만 쓰고 ⚠ 경고를 별도로 보여준다. */
+  region: string;
 }
 
 export interface GroupBuildingCount {
@@ -150,7 +181,9 @@ export function buildGroupBuildingCounts(memberAddresses: (string | null)[]): Gr
  */
 export function buildGroupBuildingLabels(
   groups: Pick<DeliveryGroup, "id" | "group_no" | "representative_sido" | "representative_sigungu" | "representative_eupmyeondong">[],
-  memberAddressesByGroupId: Map<string, (string | null)[]>
+  memberAddressesByGroupId: Map<string, (string | null)[]>,
+  /** STEP5-G: 지역 미확인→실제 지역 병합 판단을 지역필터와 공유하기 위한 전체 활성 주문(그룹 소속 무관). */
+  allActiveOrdersForRegionMerge: { sigungu: string | null; address_snapshot: string | null }[] = []
 ): Map<string, GroupBuildingLabel> {
   const byRegion = new Map<string, typeof groups>();
   for (const g of groups) {
@@ -159,24 +192,34 @@ export function buildGroupBuildingLabels(
     list.push(g);
     byRegion.set(key, list);
   }
+  const realRegionByBuilding = buildRealRegionByBuilding(allActiveOrdersForRegionMerge);
 
   const labelById = new Map<string, GroupBuildingLabel>();
   for (const list of byRegion.values()) {
     const sorted = [...list].sort((a, b) => a.group_no - b.group_no);
     sorted.forEach((g, idx) => {
-      const region = groupRegionLabel(g);
+      let region = groupRegionLabel(g);
       const addresses = memberAddressesByGroupId.get(g.id) ?? [];
       const buildingCounts = buildGroupBuildingCounts(addresses).filter((c) => c.name !== "기타");
+
+      // STEP5-G: 대표 행정구역이 전혀 없어("지역 미상") 이 그룹의 대표
+      // 건물명이 지역필터에서는 이미 실제 지역 하나로 확정돼 있는데 그룹
+      // 카드만 "지역 미상"으로 따로 노는 상황을 막는다 — 지역필터와 동일한
+      // 병합 판단(buildRealRegionByBuilding)을 그대로 재사용.
+      if (region === "지역 미상" && buildingCounts.length > 0) {
+        const merged = realRegionByBuilding.get(buildingCounts[0].name);
+        if (merged) region = merged;
+      }
 
       if (buildingCounts.length === 0) {
         // 3순위: 건물명 특정 불가 — 지역명을 그대로 기본 표시명으로 쓴다(§8, "N구역"을 기본값으로 하지 않는다).
         const fallback = region !== "지역 미상" ? region : `${idx + 1}구역`;
-        labelById.set(g.id, { suffix: fallback, full: fallback });
+        labelById.set(g.id, { suffix: fallback, full: fallback, region: fallback });
         return;
       }
       const topName = buildingCounts[0].name;
       const suffix = buildingCounts.length > 1 ? `${topName} 외 ${buildingCounts.length - 1}곳` : topName;
-      labelById.set(g.id, { suffix, full: `${region} · ${suffix}` });
+      labelById.set(g.id, { suffix, full: `${region} · ${suffix}`, region });
     });
   }
   return labelById;

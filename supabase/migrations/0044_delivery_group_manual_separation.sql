@@ -1,0 +1,11 @@
+-- Phase 3 STEP5: 운영자가 100m 공간 클러스터링 결과를 확인한 뒤, 실제로는
+-- 서로 다른 건물이 묶였다고 판단한 배송건을 "수동분리"할 수 있게 한다.
+--
+-- 단순히 delivery_group_id를 null로만 두면 다음 regeneration(주문수정/주소
+-- 변경/배송일변경/Excel재등록/취소해제 등)이 100m 기준으로 그대로 재계산해
+-- 조용히 원래 그룹으로 되돌린다 — 그래서 "재계산 클러스터링 입력 자체에서
+-- 제외"하는 잠금 플래그가 필요하다(CPO 지시, 권장 이름 그대로 사용).
+--
+-- 100m 반경/클러스터링 알고리즘 자체는 변경하지 않는다 — 재계산 서비스가
+-- 클러스터링 대상 목록을 만들기 전에 이 컬럼으로 사전 필터링만 추가한다.
+alter table order_shipments add column if not exists delivery_group_locked boolean not null default false;

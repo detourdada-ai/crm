@@ -3,18 +3,29 @@
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
+import { AlertTriangle, Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 import { formatCurrency, formatDate } from "@/lib/constants/order-status";
 import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import { DriverAssignInline } from "@/components/delivery/driver-assign-inline";
 import { updateShipmentBagAction } from "@/actions/delivery";
+import { separateShipmentFromGroupAction, restoreShipmentToGroupingAction } from "@/actions/delivery-groups";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import type { Driver, DeliveryStatus } from "@/types/domain";
@@ -76,7 +87,22 @@ export function DeliveryOrderRow({
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{groupLabel ?? "미그룹"}</Badge>
+            {/* STEP5-C: route_order는 그대로 표시만 한다 — 값이 없으면(미배정 등) 임의로 번호를 만들지 않는다. */}
+            {order.route_order !== null ? (
+              <span
+                className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+                title={`배송순서 ${order.route_order}번`}
+              >
+                {order.route_order}
+              </span>
+            ) : null}
+            {order.delivery_group_locked ? (
+              <Badge variant="outline" className="gap-1" title="자동 배송그룹 계산에서 제외된 배송건입니다.">
+                수동분리
+              </Badge>
+            ) : (
+              <Badge variant="secondary">{groupLabel ?? "미그룹"}</Badge>
+            )}
             <span className="font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</span>
           </div>
           <DeliveryStatusControl
@@ -107,6 +133,12 @@ export function DeliveryOrderRow({
               기사를 배정하면서 같은 자리에서 가방번호도 등록할 수 있게. */}
           {bagManagementEnabled ? (
             <ShipmentBagCell shipmentId={order.rowKey} bagNumber={order.bag_number} bagReturned={order.bag_returned} />
+          ) : null}
+          {/* STEP5-D/E: 수동분리/분리해제는 그룹 소속 여부로만 노출한다 — 배송상태/기사배정과 무관하게 항상 가능하다. */}
+          {order.delivery_group_locked ? (
+            <RestoreFromSeparationControl shipmentId={order.rowKey} />
+          ) : order.delivery_group_id ? (
+            <SeparateFromGroupControl shipmentId={order.rowKey} />
           ) : null}
         </div>
 
@@ -199,6 +231,90 @@ export function ShipmentBagCell({
         </Badge>
       </button>
     </span>
+  );
+}
+
+/**
+ * STEP5-D/E: 운영자가 100m 클러스터링 결과를 확인하고 실제로는 다른
+ * 건물이라고 판단했을 때 배송건 하나를 그룹에서 영구 분리한다 — 확인
+ * 문구는 CPO가 지정한 문구 그대로 쓴다("분리 후 자동 배송그룹 재계산에서도
+ * 이 배송건은 다시 묶이지 않습니다").
+ */
+function SeparateFromGroupControl({ shipmentId }: { shipmentId: string }) {
+  const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function confirmSeparate() {
+    startTransition(async () => {
+      const result = await separateShipmentFromGroupAction(shipmentId);
+      if (!result.ok) {
+        toast.error(result.error ?? "배송건을 그룹에서 분리하는 중 오류가 발생했습니다.");
+        return;
+      }
+      toast.success("배송건을 그룹에서 분리했습니다.");
+      setOpen(false);
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline">
+          그룹에서 분리
+        </button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="size-4 text-warning" />
+            배송그룹 분리
+          </DialogTitle>
+          <DialogDescription asChild>
+            <div className="space-y-1.5 text-sm text-muted-foreground">
+              <p>이 배송건을 현재 배송그룹에서 분리하시겠습니까?</p>
+              <p>분리 후 자동 배송그룹 재계산에서도 이 배송건은 다시 묶이지 않습니다.</p>
+            </div>
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" disabled={isPending}>
+              취소
+            </Button>
+          </DialogClose>
+          <Button disabled={isPending} onClick={confirmSeparate}>
+            {isPending ? "분리하는 중..." : "분리하기"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** STEP5-D §"분리 해제": 수동분리 해제는 되돌릴 수 있는 가벼운 조작이라 별도 확인 없이 바로 실행한다. */
+function RestoreFromSeparationControl({ shipmentId }: { shipmentId: string }) {
+  const [isPending, startTransition] = useTransition();
+
+  function restore() {
+    startTransition(async () => {
+      const result = await restoreShipmentToGroupingAction(shipmentId);
+      if (!result.ok) {
+        toast.error(result.error ?? "그룹 자동계산 대상으로 되돌리는 중 오류가 발생했습니다.");
+        return;
+      }
+      toast.success("다음 배송그룹 계산부터 다시 포함됩니다.");
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={isPending}
+      onClick={restore}
+      className="text-xs text-muted-foreground underline-offset-2 hover:underline disabled:opacity-60"
+    >
+      {isPending ? "되돌리는 중..." : "분리 해제"}
+    </button>
   );
 }
 

@@ -26,6 +26,8 @@ export interface OrderShipmentBoardRow extends Order {
   rowKey: string;
   /** S2-B: 기사별·배송일별 방문 순서(1부터). 미지정이면 null. */
   route_order: number | null;
+  /** P4C Phase3 STEP5: 수동분리(그룹 재계산 대상 제외) 여부. */
+  delivery_group_locked: boolean;
 }
 
 function toBoardRows(shipments: OrderShipment[], orders: Order[]): OrderShipmentBoardRow[] {
@@ -48,6 +50,7 @@ function toBoardRows(shipments: OrderShipment[], orders: Order[]): OrderShipment
       fulfillment_method: s.fulfillment_method,
       delivery_group_id: s.delivery_group_id,
       route_order: s.route_order,
+      delivery_group_locked: s.delivery_group_locked,
     });
   }
   return rows;
@@ -262,6 +265,39 @@ export const orderShipmentsRepository = {
     if (shipmentIds.length === 0) return;
     const { error } = await getSupabaseAdmin().from("order_shipments").update({ delivery_group_id: groupId }).in("id", shipmentIds);
     if (error) throw error;
+  },
+
+  /**
+   * P4C Phase3 STEP5: 배송건을 그룹 재계산(클러스터링) 대상에서 수동으로
+   * 빼거나(locked=true) 다시 포함시킨다(locked=false). 잠글 때는
+   * delivery_group_id도 함께 비운다 — 그대로 두면 이 배송건이 빠진 그룹의
+   * order_count/건물 소계가 재계산 전까지 어긋나 보인다. 잠금 해제 시에는
+   * group_id를 건드리지 않는다(다음 재계산이 실제로 이웃과 묶이는지 계산해서
+   * 채워야 하므로) — 반환하는 tenantId/deliveryDate로 호출자가 즉시
+   * triggerDeliveryGroupRegeneration을 불러 화면에 바로 반영한다.
+   */
+  async setGroupLocked(
+    shipmentId: string,
+    locked: boolean,
+    ownerUsername?: string
+  ): Promise<{ tenantId: string; ownerUsername: string; deliveryDate: string | null }> {
+    const admin = getSupabaseAdmin();
+    let q = admin.from("order_shipments").select("id, tenant_id, owner_username, delivery_date").eq("id", shipmentId);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data: row, error: selectError } = await q.maybeSingle();
+    if (selectError) throw selectError;
+    if (!row) throw new Error("배송건을 찾을 수 없거나 권한이 없습니다.");
+
+    const update: { delivery_group_locked: boolean; delivery_group_id?: null } = { delivery_group_locked: locked };
+    if (locked) update.delivery_group_id = null;
+    const { error } = await admin.from("order_shipments").update(update).eq("id", shipmentId);
+    if (error) throw error;
+
+    return {
+      tenantId: row.tenant_id,
+      ownerUsername: row.owner_username,
+      deliveryDate: row.delivery_date ? kstDayDateStrOf(row.delivery_date) : null,
+    };
   },
 
   /**

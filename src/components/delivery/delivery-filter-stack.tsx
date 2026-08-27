@@ -158,8 +158,8 @@ export function DeliveryFilterStack({
 
   const groupLabels = useMemo(() => {
     if (groups.length === 0) return new Map<string, GroupBuildingLabel>();
-    return buildGroupBuildingLabels(groups, groupMemberAddresses);
-  }, [groups, groupMemberAddresses]);
+    return buildGroupBuildingLabels(groups, groupMemberAddresses, orders);
+  }, [groups, groupMemberAddresses, orders]);
 
   // STEP2-D(§11): 그룹 카드 안의 건물별 소계 — 100m 반경 클러스터링이 서로
   // 다른 단지를 한 그룹으로 묶은 경우를 카드에서 그대로 드러낸다.

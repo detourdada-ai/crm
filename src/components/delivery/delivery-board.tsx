@@ -241,22 +241,37 @@ export function DeliveryBoard({
    *  열지 않고도 보여준다. 건물명이 2곳 이상이면(100m 반경 클러스터링이
    *  서로 다른 단지를 묶은 경우) 그 사실을 그대로 드러낸다(§9, 숨기지 않는다). */
   function renderGroupHeader(groupId: string) {
-    const label = groupLabels.get(groupId)?.full ?? "배송그룹";
+    const groupLabel = groupLabels.get(groupId);
     const subtotal = groupStatusSubtotals?.get(groupId);
     const buildings = (groupBuildingCounts?.get(groupId) ?? []).filter((b) => b.name !== "기타");
+    const isMixed = buildings.length > 1;
+    // STEP5-B: 건물이 섞였으면 "지역 · 건물명 외 N곳" 대신 지역명만 쓰고
+    // ⚠ 경고를 별도 신호로 보여준다(라벨 문구에 억지로 요약해 넣지 않는다).
+    const label = (isMixed ? groupLabel?.region : groupLabel?.full) ?? "배송그룹";
     return (
       <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <span className="text-sm font-semibold text-text-strong">
-            {label} · {subtotal?.total ?? 0}건
-          </span>
+          <span className="text-sm font-semibold text-text-strong">{label}</span>
           {subtotal ? (
             <span className="text-xs text-muted-foreground">
               배정필요 {subtotal.needsDriver} · 배송중 {subtotal.inProgress} · 완료 {subtotal.done}
             </span>
           ) : null}
         </div>
-        {buildings.length > 1 ? (
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-xs text-muted-foreground">{subtotal?.total ?? 0}건</span>
+          {/*
+            STEP5-B: "경고"는 오류가 아니라 확인 신호다 — 100m 클러스터링이
+            서로 다른 건물(아파트뿐 아니라 빌라/상가 포함)을 하나의 공간
+            그룹으로 묶는 것은 현재 알고리즘상 정상적으로 발생할 수 있다.
+          */}
+          {isMixed ? (
+            <span className="rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">
+              ⚠ 건물 {buildings.length}곳 포함
+            </span>
+          ) : null}
+        </div>
+        {isMixed ? (
           <p className="mt-1 text-xs text-muted-foreground">
             {buildings.map((b) => `🏢 ${b.name} ${b.count}건`).join("  ·  ")}
           </p>

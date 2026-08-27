@@ -3,12 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { orderShipmentsRepository, type OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import { deliveryGroupsRepository } from "@/lib/repositories/delivery-groups.repository";
-import { regenerateDeliveryGroupsForTenant } from "@/lib/services/delivery-group-regeneration.service";
+import { regenerateDeliveryGroupsForTenant, triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { DeliveryGroup } from "@/types/domain";
 
-export type UngroupedReason = "no_coordinates" | "no_nearby_orders";
+export type UngroupedReason = "no_coordinates" | "no_nearby_orders" | "manually_separated";
 
 /** S1-1 Phase 5: "주문"이 아니라 "배송건"이 미그룹 판정 단위다 — 같은 주문이라도 배송일이 다른 배송건은 서로 독립적으로 그룹/미그룹이 갈릴 수 있다. */
 export interface UngroupedOrder {
@@ -88,10 +88,47 @@ export async function listDeliveryGroupsAction(dateStr: string): Promise<Deliver
     .filter((s) => !s.delivery_group_id)
     .map((shipment) => ({
       order: shipment,
-      reason: (shipment.geocode_status !== "success" || shipment.latitude === null || shipment.longitude === null
-        ? "no_coordinates"
-        : "no_nearby_orders") as UngroupedReason,
+      reason: (shipment.delivery_group_locked
+        ? "manually_separated"
+        : shipment.geocode_status !== "success" || shipment.latitude === null || shipment.longitude === null
+          ? "no_coordinates"
+          : "no_nearby_orders") as UngroupedReason,
     }));
 
   return { groups, ungrouped };
+}
+
+/**
+ * P4C Phase3 STEP5: 운영자가 100m 클러스터링 결과를 확인하고 실제로는 다른
+ * 건물이 묶였다고 판단했을 때, 배송건 하나를 그룹 재계산 대상에서 영구적으로
+ * 뺀다(수동분리) — delivery_group_id만 null로 두면 다음 재계산 때 조용히
+ * 원래 그룹으로 되돌아가므로, delivery_group_locked를 함께 세운다. 잠금
+ * 직후 그 (tenant, 배송일)을 즉시 재계산해 남은 그룹의 건수/건물 소계가
+ * 곧바로 갱신되게 한다 — 기사배정/배송상태/route_order는 건드리지 않는다.
+ */
+export async function separateShipmentFromGroupAction(shipmentId: string): Promise<DeliveryGroupActionState> {
+  try {
+    const session = await requireSession();
+    const ownerScope = ownerScopeFor(session);
+    const { tenantId, ownerUsername, deliveryDate } = await orderShipmentsRepository.setGroupLocked(shipmentId, true, ownerScope);
+    if (deliveryDate) await triggerDeliveryGroupRegeneration(tenantId, deliveryDate, ownerUsername);
+    revalidatePath("/delivery");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "배송건을 그룹에서 분리하는 중 오류가 발생했습니다.") };
+  }
+}
+
+/** 수동분리를 해제한다 — 다음 재계산부터 다시 100m 클러스터링 대상에 포함된다. */
+export async function restoreShipmentToGroupingAction(shipmentId: string): Promise<DeliveryGroupActionState> {
+  try {
+    const session = await requireSession();
+    const ownerScope = ownerScopeFor(session);
+    const { tenantId, ownerUsername, deliveryDate } = await orderShipmentsRepository.setGroupLocked(shipmentId, false, ownerScope);
+    if (deliveryDate) await triggerDeliveryGroupRegeneration(tenantId, deliveryDate, ownerUsername);
+    revalidatePath("/delivery");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "배송건을 그룹 자동계산 대상으로 되돌리는 중 오류가 발생했습니다.") };
+  }
 }

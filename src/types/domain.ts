@@ -289,6 +289,8 @@ export interface OrderShipment {
   delivery_group_id: UUID | null;
   /** S2-B: 기사별·배송일별 방문 순서(1부터). 아직 지정되지 않았으면 null. */
   route_order: number | null;
+  /** P4C Phase3 STEP5: true면 배송그룹 재계산(클러스터링) 대상에서 제외된다(수동분리). */
+  delivery_group_locked: boolean;
   created_at: ISODateString;
   updated_at: ISODateString;
 }

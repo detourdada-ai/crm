@@ -1,4 +1,4 @@
-import { extractComplexName, isApartmentName } from "@/lib/utils/delivery-group";
+import { extractComplexName, isApartmentName, buildRealRegionByBuilding } from "@/lib/utils/delivery-group";
 
 /**
  * 배송목록 필터 UX 개편(CPO, 2026-08): 기존 "지역 필터"(배송그룹 단일선택,
@@ -55,26 +55,11 @@ export function regionBuildingKey(sigungu: string, building: string): string {
  * 미확인 우선). buildRegionBuildingCounts(집계)와 filterOrdersByRegionOrBuilding
  * (선택 필터링)이 같은 병합 판단을 공유해야 "지역 미확인 건이 합산된
  * 지역 항목을 체크했는데 정작 그 주문은 안 보이는" 불일치가 생기지 않는다.
+ * STEP5-G: 배송그룹 카드 라벨(delivery-group.ts의 buildGroupBuildingLabels)도
+ * 이제 이 판단 기준(buildRealRegionByBuilding, delivery-group.ts로 이동)을
+ * 그대로 공유한다 — 같은 건물이 지역필터에서는 "하남시", 그룹카드에서는
+ * "지역 미상"으로 따로 노는 불일치를 막는다.
  */
-function buildRealRegionByBuilding<T extends { sigungu: string | null; address_snapshot: string | null }>(
-  orders: T[]
-): Map<string, string> {
-  const regionsByBuilding = new Map<string, Set<string>>();
-  for (const o of orders) {
-    const sigungu = o.sigungu;
-    if (!sigungu) continue; // 실제 지역이 확인된 주문만 후보로 쓴다.
-    const complexName = extractComplexName(o.address_snapshot);
-    if (!complexName || !isApartmentName(complexName)) continue;
-    const regions = regionsByBuilding.get(complexName) ?? new Set<string>();
-    regions.add(sigungu);
-    regionsByBuilding.set(complexName, regions);
-  }
-  const result = new Map<string, string>();
-  for (const [building, regions] of regionsByBuilding) {
-    if (regions.size === 1) result.set(building, [...regions][0]);
-  }
-  return result;
-}
 
 /** 주문 하나의 (지역, 건물) — 지역 미확인이면서 다른 곳에서 이미 지역이 확인된 같은 건물이면 그 지역으로 귀속시킨다. */
 function effectiveRegionBuildingOf<T extends { sigungu: string | null; address_snapshot: string | null }>(

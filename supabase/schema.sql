@@ -478,6 +478,11 @@ create table if not exists order_shipments (
   -- S2-B(0039): 기사별 그날 방문 순서. (driver_id, delivery_date) 단위로만
   -- 의미가 있고 1..N 연속 번호 유지는 애플리케이션 레이어가 보장한다.
   route_order integer,
+  -- P4C Phase3 STEP5(0044): 운영자가 100m 클러스터링 결과를 수동으로
+  -- 분리한 배송건 — true면 그룹 재계산(regeneration)의 클러스터링 입력
+  -- 자체에서 제외되어, 다음 재계산에도 조용히 원래 그룹으로 되돌아가지
+  -- 않는다. 100m 반경/알고리즘 자체는 그대로이고 사전 필터링만 추가된 것.
+  delivery_group_locked boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
