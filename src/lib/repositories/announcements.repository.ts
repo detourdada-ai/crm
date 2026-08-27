@@ -68,16 +68,22 @@ export const announcementsRepository = {
   },
 
   /**
-   * 로그인 팝업용 — 오늘 기준 게시중 + 팝업표시 대상 중, 이 계정이 아직
-   * dismiss하지 않은 가장 최신 공지 1건. 여러 건이 있어도 최신 1건만
+   * 로그인 팝업용 — 오늘 기준 게시중 + 팝업표시 대상 중, 이 계정이 "오늘"
+   * 아직 dismiss하지 않은 가장 최신 공지 1건. 여러 건이 있어도 최신 1건만
    * 표시한다(CPO 지시: "여러 개면 최신 1건만으로 충분").
+   *
+   * STEP9(2026-08-27 CPO 작업지시): "오늘 그만 보기"는 문구 그대로 당일만
+   * 숨긴다 — dismissed_date가 오늘인 공지만 제외 대상이고, 어제 이전 날짜로
+   * 기록된(=날짜가 바뀐) dismissal은 더 이상 걸러내지 않는다. 그 결과
+   * 날짜가 바뀌면 같은 공지가 자연히 다시 노출 대상이 된다.
    */
   async findLatestUndismissedForUser(username: string): Promise<Announcement | null> {
     const today = kstTodayIso();
     const { data: dismissals, error: dismissalError } = await getSupabaseAdmin()
       .from("announcement_dismissals")
       .select("announcement_id")
-      .eq("username", username);
+      .eq("username", username)
+      .eq("dismissed_date", today);
     if (dismissalError) throw dismissalError;
     const dismissedIds = (dismissals ?? []).map((d) => d.announcement_id);
 
@@ -97,7 +103,11 @@ export const announcementsRepository = {
     return data;
   },
 
-  /** "오늘 그만 보기" — 계정+공지 단위로 영구 dismissal 기록(재노출 없음). */
+  /**
+   * "오늘 그만 보기" — 계정+공지 단위로 오늘 날짜를 기록한다(당일만 숨김).
+   * PK가 (username, announcement_id)라 같은 공지를 여러 번 눌러도 행이
+   * 늘어나지 않고 dismissed_date만 최신 날짜로 갱신된다.
+   */
   async dismiss(username: string, announcementId: string): Promise<void> {
     const { error } = await getSupabaseAdmin()
       .from("announcement_dismissals")
