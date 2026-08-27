@@ -19,8 +19,11 @@ import { orderShipmentsRepository } from "../../src/lib/repositories/order-shipm
 import { settlementsRepository } from "../../src/lib/repositories/settlements.repository";
 import { resolvePeriodRange } from "../../src/lib/services/settlement.service";
 import { kstDayStartIso, kstDayEndIso, kstDayDateStrOf, kstTodayIso } from "../../src/lib/utils/kst-date";
+import { QA_DEFAULT_OWNER } from "./lib/qa-config";
+import { assertAllowedQaOwner } from "./lib/qa-guard";
 
-const OWNER = "user2";
+const OWNER = QA_DEFAULT_OWNER;
+assertAllowedQaOwner(OWNER);
 const QA_PREFIX = "QA-CPO-";
 const RUN_TAG = String(Date.now());
 

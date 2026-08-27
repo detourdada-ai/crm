@@ -10,11 +10,15 @@ import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { hashPassword } from "../../src/lib/auth/password";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
+import { QA_DEFAULT_OWNER, QA_SECONDARY_OWNER } from "./lib/qa-config";
+import { assertAllowedQaOwner } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const RUN_TAG = String(Date.now());
-const OWNER = "user2";
-const OTHER_OWNER = "user3";
+const OWNER = QA_DEFAULT_OWNER;
+const OTHER_OWNER = QA_SECONDARY_OWNER;
+assertAllowedQaOwner(OWNER);
+assertAllowedQaOwner(OTHER_OWNER);
 
 interface StepResult {
   step: string;

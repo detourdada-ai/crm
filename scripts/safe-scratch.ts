@@ -28,8 +28,18 @@ import type { Database } from "../src/types/database";
 
 type TableName = keyof Database["public"]["Tables"];
 
-/** Only these owner_username values may be targeted by a mutating scratch script. Add a new test tenant here explicitly (with a comment saying why) rather than picking whichever account happens to have the most rows. */
-export const ALLOWED_TEST_OWNERS = ["user2", "user3"];
+/**
+ * Only these owner_username values may be targeted by a mutating scratch
+ * script. Add a new test tenant here explicitly (with a comment saying why)
+ * rather than picking whichever account happens to have the most rows.
+ *
+ * STEP8(2026-08-27, CPO 지시): `user2`는 실제 사장님이 테스트를 진행 중인
+ * 것으로 확인되어(394건 규모 Excel import 등) 여기서 뺐다 — QA 기본
+ * tenant는 `user3`, 교차 tenant 격리 검증이 필요한 스크립트는 `user4`를
+ * 보조로 쓴다(scripts/qa/lib/qa-config.ts 참고). `user2`가 다시 순수
+ * QA 전용으로 정리되면 CPO 승인 하에 재추가한다.
+ */
+export const ALLOWED_TEST_OWNERS = ["user3", "user4", "user5"];
 
 interface WithSnapshotOptions {
   table: TableName;

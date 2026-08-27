@@ -19,9 +19,13 @@ import { classifyDuplicates } from "../../src/lib/services/import-dedup.service"
 import { autoMapColumns } from "../../src/lib/services/column-mapping.service";
 import { parseSpreadsheet } from "../../src/lib/services/excel-parser.service";
 import type { ColumnMapping, ParsedSheet } from "../../src/types/excel";
+import { QA_DEFAULT_OWNER, QA_SECONDARY_OWNER } from "./lib/qa-config";
+import { assertAllowedQaOwner } from "./lib/qa-guard";
 
-const OWNER = "user2";
-const OWNER_B = "user3";
+const OWNER = QA_DEFAULT_OWNER;
+const OWNER_B = QA_SECONDARY_OWNER;
+assertAllowedQaOwner(OWNER);
+assertAllowedQaOwner(OWNER_B);
 const QA_PREFIX = "QA-CPO-STEP2-";
 const RUN_TAG = String(Date.now());
 

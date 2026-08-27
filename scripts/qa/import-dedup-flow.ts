@@ -1,8 +1,9 @@
 /**
  * §CPO 작업지시(누적 표준 엑셀 중복방지 및 사전 검토, 2026-08) — Import
- * 중복 판정 QA. user2(+tenant 격리 확인용 user3)에 QA-CPO-IMPORT- prefix
- * 디스포저블 고객/주문을 만들어 실제 브라우저(Playwright)로 Analyze→중복
- * 검토→Confirm 전체 흐름을 검증한다. 종료 후 finally에서 전부 삭제한다.
+ * 중복 판정 QA. QA_DEFAULT_OWNER(+tenant 격리 확인용 QA_SECONDARY_OWNER)에
+ * QA-CPO-IMPORT- prefix 디스포저블 고객/주문을 만들어 실제 브라우저
+ * (Playwright)로 Analyze→중복 검토→Confirm 전체 흐름을 검증한다. 종료 후
+ * finally에서 전부 삭제한다.
  *
  * 실행: npx tsx --env-file=.env.local scripts/qa/import-dedup-flow.ts
  * 로컬 dev로 돌리려면: QA_BASE_URL=http://localhost:3104 npx tsx ...
@@ -11,10 +12,14 @@ import { randomUUID } from "node:crypto";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
+import { QA_DEFAULT_OWNER, QA_SECONDARY_OWNER } from "./lib/qa-config";
+import { assertAllowedQaOwner } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
-const OWNER = "user2";
-const OWNER_B = "user3"; // tenant 격리 확인용
+const OWNER = QA_DEFAULT_OWNER;
+const OWNER_B = QA_SECONDARY_OWNER; // tenant 격리 확인용
+assertAllowedQaOwner(OWNER);
+assertAllowedQaOwner(OWNER_B);
 const RUN_TAG = String(Date.now());
 const QA_PREFIX = "QA-CPO-IMPORT-";
 
@@ -89,7 +94,7 @@ async function main() {
   const admin = getSupabaseAdmin();
   const { data: tenant } = await admin.from("tenants").select("id").eq("slug", OWNER).maybeSingle();
   const { data: tenantB } = await admin.from("tenants").select("id").eq("slug", OWNER_B).maybeSingle();
-  if (!tenant || !tenantB) throw new Error("tenant user2/user3 not found");
+  if (!tenant || !tenantB) throw new Error(`tenant ${OWNER}/${OWNER_B} not found`);
 
   const createdOrderIds: string[] = [];
   const createdCustomerIds: string[] = [];
@@ -241,7 +246,7 @@ async function main() {
     );
 
     // ============================================================
-    // QA-9: tenant 격리 — user3의 동일 정보 주문이 user2 업로드에서 신규로 안전하게 분류됨
+    // QA-9: tenant 격리 — OWNER_B의 동일 정보 주문이 OWNER 업로드에서 신규로 안전하게 분류됨
     // ============================================================
     const nameF = `${QA_PREFIX}공통고객F`;
     const phoneF = "010-9101-0007";
@@ -278,12 +283,12 @@ async function main() {
     text = await reviewText(page);
     // "중복 가능성이 있는 주문" 라벨 자체는 요약 통계 줄에 항상 존재한다(건수 0이어도) —
     // 후보가 실제로 있을 때만 렌더되는 "⚠️" 상세 목록 블록의 유무로 판단해야 한다.
-    record("QA-9a. 다른 tenant(user3)의 동일 정보 주문은 신규로 분류(중복/후보 아님)", /신규 상품주문[\s\S]{0,20}1건/.test(text) && !text.includes("⚠️"));
+    record("QA-9a. 다른 tenant(OWNER_B)의 동일 정보 주문은 신규로 분류(중복/후보 아님)", /신규 상품주문[\s\S]{0,20}1건/.test(text) && !text.includes("⚠️"));
     await confirmRegister(page);
     const { data: fCountA } = await admin.from("orders").select("id").eq("owner_username", OWNER).eq("phone_snapshot", phoneF);
     const { data: fCountB } = await admin.from("orders").select("id").eq("owner_username", OWNER_B).eq("phone_snapshot", phoneF);
     record(
-      "QA-9b. user2에 1건 신규 등록 + user3 원본 데이터 무변경(격리)",
+      "QA-9b. OWNER에 1건 신규 등록 + OWNER_B 원본 데이터 무변경(격리)",
       (fCountA?.length ?? 0) === 1 && (fCountB?.length ?? 0) === 1,
       JSON.stringify({ fCountA: fCountA?.length, fCountB: fCountB?.length })
     );
@@ -395,7 +400,7 @@ async function main() {
     if (allOrderIds.length) await admin.from("orders").delete().in("id", allOrderIds);
     if (allCustomerIds.length) await admin.from("customers").delete().in("id", allCustomerIds);
     if (createdImportIds.length) await admin.from("imports").delete().in("id", createdImportIds);
-    // user3 tenant-isolation 테스트 데이터도 정리
+    // OWNER_B(tenant-isolation 테스트) 데이터도 정리
     await admin.from("orders").delete().eq("owner_username", OWNER_B).ilike("recipient_name", `${QA_PREFIX}%`);
     await admin.from("customers").delete().eq("owner_username", OWNER_B).ilike("name", `${QA_PREFIX}%`);
 

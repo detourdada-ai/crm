@@ -10,10 +10,13 @@
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
-import { seedQaOrders, cleanupQaOrders, cleanupDriverShiftIfCreatedByQa, kstTodayIso, type QaSeedResult } from "./lib/qa-data";
+import { seedQaOrders, cleanupQaOrders, type QaSeedResult } from "./lib/qa-data";
+import { QA_DEFAULT_OWNER } from "./lib/qa-config";
+import { assertAllowedQaOwner, createQaDriver, cleanupQaDriver } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
-const OWNER = "user2";
+const OWNER = QA_DEFAULT_OWNER;
+assertAllowedQaOwner(OWNER);
 const RUN_TAG = String(Date.now());
 
 interface StepResult {
@@ -26,23 +29,6 @@ function record(step: string, pass: boolean, detail?: string) {
   const shown = pass ? undefined : detail?.slice(0, 900);
   results.push({ step, pass, detail: shown });
   console.log(`${pass ? "PASS" : "FAIL"} — ${step}${shown ? ` (${shown})` : ""}`);
-}
-
-async function findTestDriver(): Promise<{ driverId: string; username: string; name: string }> {
-  const admin = getSupabaseAdmin();
-  const { data: drivers, error: dErr } = await admin
-    .from("drivers")
-    .select("id, name")
-    .eq("owner_username", OWNER)
-    .eq("status", "active")
-    .limit(5);
-  if (dErr) throw dErr;
-  if (!drivers || drivers.length === 0) throw new Error(`qa: "${OWNER}" 소유의 활성 기사가 없습니다.`);
-  for (const d of drivers) {
-    const { data: acct } = await admin.from("app_accounts").select("username").eq("driver_id", d.id).eq("role", "driver").maybeSingle();
-    if (acct) return { driverId: d.id, username: acct.username, name: d.name };
-  }
-  throw new Error(`qa: "${OWNER}" 소유 기사 중 로그인 계정이 연결된 기사가 없습니다.`);
 }
 
 async function setSession(context: BrowserContext, username: string, role: "user" | "driver") {
@@ -88,17 +74,13 @@ async function settleAfterMutation(page: Page, beforeText: string, timeoutMs = 1
 
 async function run() {
   console.log(`QA target: ${BASE_URL}`);
-  const driver = await findTestDriver();
-  console.log(`Test driver: ${driver.name} (${driver.username})`);
-
   const admin = getSupabaseAdmin();
-  const { data: shiftBefore } = await admin
-    .from("driver_shifts")
-    .select("id")
-    .eq("driver_id", driver.driverId)
-    .eq("shift_date", kstTodayIso())
-    .maybeSingle();
-  const shiftExistedBefore = !!shiftBefore;
+  const { data: tenant, error: tenantErr } = await admin.from("tenants").select("id").eq("slug", OWNER).maybeSingle();
+  if (tenantErr || !tenant) throw new Error(`tenant lookup failed: ${tenantErr?.message}`);
+  // STEP8-A3(2026-08-27 CPO 작업지시): 기존 활성 기사를 조회해 재사용하지
+  // 않는다 — 이번 실행 전용 임시 기사를 만들고 끝나면 정확히 그 기사만 지운다.
+  const driver = await createQaDriver(OWNER, tenant.id, RUN_TAG, "A");
+  console.log(`Test driver: ${driver.name} (${driver.username})`);
 
   let seeded: QaSeedResult | null = null;
   const browser = await chromium.launch();
@@ -354,9 +336,9 @@ async function run() {
     await browser.close();
     if (seeded) {
       await cleanupQaOrders(seeded);
-      await cleanupDriverShiftIfCreatedByQa(driver.driverId, shiftExistedBefore);
       console.log("QA 데이터 정리 완료.");
     }
+    await cleanupQaDriver(driver);
   }
 
   const failed = results.filter((r) => !r.pass);

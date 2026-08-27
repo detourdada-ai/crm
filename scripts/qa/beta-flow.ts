@@ -17,9 +17,12 @@ import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { hashPassword } from "../../src/lib/auth/password";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { kstTodayIso } from "./lib/qa-data";
+import { QA_DEFAULT_OWNER } from "./lib/qa-config";
+import { assertAllowedQaOwner } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
-const OWNER = "user2";
+const OWNER = QA_DEFAULT_OWNER;
+assertAllowedQaOwner(OWNER);
 const RUN_TAG = String(Date.now());
 
 interface StepResult {

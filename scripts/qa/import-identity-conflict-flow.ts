@@ -14,9 +14,12 @@
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
+import { QA_DEFAULT_OWNER } from "./lib/qa-config";
+import { assertAllowedQaOwner } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
-const OWNER = "user3";
+const OWNER = QA_DEFAULT_OWNER;
+assertAllowedQaOwner(OWNER);
 const RUN_TAG = String(Date.now());
 const QA_PREFIX = "QA-CPO-IDCONF-";
 

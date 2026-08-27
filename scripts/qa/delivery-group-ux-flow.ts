@@ -14,9 +14,12 @@ import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { triggerDeliveryGroupRegeneration } from "../../src/lib/services/delivery-group-regeneration.service";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { kstTodayIso } from "./lib/qa-data";
+import { QA_DEFAULT_OWNER } from "./lib/qa-config";
+import { assertAllowedQaOwner, createQaDriver, cleanupQaDriver } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
-const OWNER = "user2";
+const OWNER = QA_DEFAULT_OWNER;
+assertAllowedQaOwner(OWNER);
 const QA_PREFIX = "QA-CPO-";
 const RUN_TAG = String(Date.now());
 
@@ -85,16 +88,10 @@ async function main() {
   const tenantId = tenant.id;
   const today = kstTodayIso();
 
-  const { data: driverRow, error: driverErr } = await admin
-    .from("drivers")
-    .select("id, name")
-    .eq("owner_username", OWNER)
-    .eq("status", "active")
-    .limit(1)
-    .maybeSingle();
-  if (driverErr) throw driverErr;
-  if (!driverRow) throw new Error(`qa: "${OWNER}" 소유의 활성 기사가 없습니다.`);
-  const driverId = driverRow.id;
+  // STEP8-A3(2026-08-27 CPO 작업지시): 기존 활성 기사를 조회해 재사용하지
+  // 않는다 — 이번 실행 전용 임시 기사를 만들고 끝나면 정확히 그 기사만 지운다.
+  const qaDriver = await createQaDriver(OWNER, tenantId, RUN_TAG, "UX");
+  const driverId = qaDriver.driverId;
 
   // 클러스터 간 최소 100m 이상 떨어뜨려(위도 0.01 ≈ 1.1km) 서로 섞이지 않게 한다.
   // 클러스터 내부는 0.0002 이내(≈20m)로 묶어 100m 반경 안에 확실히 들어오게 한다.
@@ -239,18 +236,9 @@ async function main() {
   const orderIds: string[] = [];
   const shipmentIds: string[] = [];
   const shipmentIdByKey = new Map<string, string>();
-  let shiftExistedBefore = false;
 
   const browser = await chromium.launch();
   try {
-    const { data: shiftBefore } = await admin
-      .from("driver_shifts")
-      .select("id")
-      .eq("driver_id", driverId)
-      .eq("shift_date", today)
-      .maybeSingle();
-    shiftExistedBefore = !!shiftBefore;
-
     // ---- seed ----
     const { error: custErr } = await admin.from("customers").insert({
       id: customerId,
@@ -525,9 +513,7 @@ async function main() {
     }
     // 이 QA가 만든 delivery_groups 잔재도 정리(재계산 트리거로 이미 대부분 사라지지만, 방어적으로 한 번 더 정리).
     await triggerDeliveryGroupRegeneration(tenantId, today, OWNER).catch(() => {});
-    if (!shiftExistedBefore) {
-      await admin.from("driver_shifts").delete().eq("driver_id", driverId).eq("shift_date", today);
-    }
+    await cleanupQaDriver(qaDriver);
 
     const { count: remainingOrders } = await admin
       .from("orders")

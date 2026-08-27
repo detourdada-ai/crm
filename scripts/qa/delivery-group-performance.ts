@@ -33,8 +33,11 @@ import {
 import { orderShipmentsRepository, type OrderShipmentBoardRow } from "../../src/lib/repositories/order-shipments.repository";
 import { deliveryGroupsRepository } from "../../src/lib/repositories/delivery-groups.repository";
 import { clusterPointsByDistance } from "../../src/lib/services/spatial-grouping.service";
+import { QA_DEFAULT_OWNER } from "./lib/qa-config";
+import { assertAllowedQaOwner, createQaDriver, cleanupQaDriver, type QaDriverFixture } from "./lib/qa-guard";
 
-const OWNER = "user2";
+const OWNER = QA_DEFAULT_OWNER;
+assertAllowedQaOwner(OWNER);
 const QA_PREFIX = "QA-PERF-";
 const DELETE_CHUNK_SIZE = 150; // STEP7-A와 동일한 안전마진(.in() 삭제도 GET 쿼리스트링이라 같은 제약을 받는다).
 
@@ -295,20 +298,17 @@ async function runLockAndFieldPreservationChecks(admin: ReturnType<typeof getSup
   const dateStr = scenarioDate(900);
   const tag = `LOCK-${Date.now()}`;
   const seed = await seedShipments(admin, tenantId, 20, dateStr, tag);
+  // STEP8-A3(2026-08-27 CPO 작업지시): 기존 활성 기사를 조회해 재사용하지
+  // 않는다 — 이번 실행 전용 임시 기사를 만들고 끝나면 정확히 그 기사만 지운다.
+  let qaDriver: QaDriverFixture | null = null;
 
   try {
-    const { data: driverRow, error: driverErr } = await admin
-      .from("drivers")
-      .select("id")
-      .eq("owner_username", OWNER)
-      .eq("status", "active")
-      .limit(1)
-      .maybeSingle();
-    if (driverErr) throw driverErr;
+    qaDriver = await createQaDriver(OWNER, tenantId, tag, "LOCK");
+    const driverRow = { id: qaDriver.driverId };
 
     // driver_id/route_order를 하나의 shipment에 미리 세팅 — 재계산이 이 필드를 건드리는지 확인.
     const targetShipmentId = seed.shipmentIds[0];
-    if (driverRow) {
+    {
       const { error } = await admin
         .from("order_shipments")
         .update({ driver_id: driverRow.id, route_order: 7 })
@@ -365,12 +365,12 @@ async function runLockAndFieldPreservationChecks(admin: ReturnType<typeof getSup
     const targetGroupNoAfter = targetAfter.delivery_group_id ? afterUnlock.groupNoById.get(targetAfter.delivery_group_id) : null;
     record(
       "LOCK(20건) driver_id 유지 — 반복 재계산 전후 특정 shipment의 driver_id 불변",
-      driverRow ? targetAfter.driver_id === driverRow.id : true,
+      targetAfter.driver_id === driverRow.id,
       `driver_id=${targetAfter.driver_id}`
     );
     record(
       "LOCK(20건) route_order 유지 — 반복 재계산 전후 특정 shipment의 route_order 불변",
-      driverRow ? targetAfter.route_order === 7 : true,
+      targetAfter.route_order === 7,
       `route_order=${targetAfter.route_order}`
     );
     record(
@@ -380,6 +380,7 @@ async function runLockAndFieldPreservationChecks(admin: ReturnType<typeof getSup
     );
   } finally {
     await cleanupScenario(admin, tenantId, dateStr, seed);
+    if (qaDriver) await cleanupQaDriver(qaDriver);
   }
 }
 
