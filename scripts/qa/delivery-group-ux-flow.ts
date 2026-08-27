@@ -339,15 +339,13 @@ async function main() {
     );
 
     // ---- Case 5: 배송순서(route_order) 표시 — C2A2에 route_order=1 지정됨 ----
-    const c2a2Card = page.locator(`[data-testid="delivery-card-${shipmentIdByKey.get("C2A2")}"]`);
-    const c2a2CardExists = (await c2a2Card.count()) > 0;
-    let c2a2Text = "";
-    if (c2a2CardExists) c2a2Text = (await c2a2Card.innerText().catch(() => "")) ?? "";
-    // 배송건 행에는 data-testid가 없을 수 있어(기사앱 전용 규약) 페이지 텍스트에서 직접 확인한다.
+    const c2a2Row = page.locator(`[data-testid="shipment-row-${shipmentIdByKey.get("C2A2")}"]`);
+    const c2a2RowExists = (await c2a2Row.count()) > 0;
+    const c2a2Text = c2a2RowExists ? ((await c2a2Row.innerText().catch(() => "")) ?? "") : "";
     record(
-      "Case5. route_order=1 지정 배송건에 배송순서 배지(①/1) 표시",
-      c2a2CardExists ? /^1$/m.test(c2a2Text) || c2a2Text.includes("1") : text.includes(`${QA_PREFIX}노스타워2`),
-      `cardFound=${c2a2CardExists}`
+      "Case5. route_order=1 지정 배송건에 배송순서 배지(1) 표시",
+      c2a2RowExists && /^1$/m.test(c2a2Text),
+      `rowFound=${c2a2RowExists} text=${c2a2Text.slice(0, 200)}`
     );
 
     // ---- Case 6: 주소 축약 없이 동/호까지 표시 ----
@@ -397,9 +395,11 @@ async function main() {
       .single();
 
     await page.goto(`${BASE_URL}/delivery?filter=all&dateFilter=today`, { waitUntil: "networkidle" });
-    const c2b1Row = page.locator(`text=${QA_PREFIX}웨스트빌1`).first();
+    // 139건 전체 목록에는 다른 그룹의 "그룹에서 분리" 버튼도 다수 존재하므로,
+    // 반드시 C2B1의 행(data-testid로 특정)으로 스코프해서 클릭한다.
+    const c2b1Row = page.locator(`[data-testid="shipment-row-${c2b1Id}"]`);
     await c2b1Row.scrollIntoViewIfNeeded().catch(() => {});
-    const separateBtn = page.getByRole("button", { name: "그룹에서 분리" }).first();
+    const separateBtn = c2b1Row.getByRole("button", { name: "그룹에서 분리" });
     const separateBtnVisible = await separateBtn.isVisible().catch(() => false);
     if (separateBtnVisible) {
       await separateBtn.click();
@@ -447,7 +447,7 @@ async function main() {
 
     // ---- Case 11: 분리 해제 후 재계산하면 다시 100m 클러스터링 대상에 포함된다 ----
     await page.reload({ waitUntil: "networkidle" });
-    const restoreBtn = page.getByRole("button", { name: "분리 해제" }).first();
+    const restoreBtn = page.locator(`[data-testid="shipment-row-${c2b1Id}"]`).getByRole("button", { name: "분리 해제" });
     const restoreBtnVisible = await restoreBtn.isVisible().catch(() => false);
     if (restoreBtnVisible) {
       await restoreBtn.click();

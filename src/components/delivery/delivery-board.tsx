@@ -224,6 +224,7 @@ export function DeliveryBoard({
     return (
       <div
         key={order.rowKey}
+        data-testid={`shipment-row-${order.rowKey}`}
         ref={(el) => {
           if (!rowRefs) return;
           if (el) rowRefs.current.set(order.rowKey, el);
