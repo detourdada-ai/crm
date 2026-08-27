@@ -157,6 +157,13 @@ export function DriverLocationsView() {
     })
     .filter((r) => r.path.length >= 2);
 
+  // STEP8-B(2026-08-27 CPO 작업지시): 전역 요약 — 새 API 없이 이미 받아온
+  // locations/todayOrders를 그대로 집계한다(기사별 상세는 기존 카드가 계속 담당).
+  const runningDriverCount = (locations ?? []).filter(isShiftRunning).length;
+  const waitingOrderCount = todayOrders.filter((o) => o.delivery_status === "배송대기").length;
+  const inProgressOrderCount = todayOrders.filter((o) => o.delivery_status === "배송중").length;
+  const completedOrderCount = todayOrders.filter((o) => o.delivery_status === "완료").length;
+
   return (
     <div className="flex h-[calc(100dvh-8rem)] min-h-[520px] flex-col gap-3">
       <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1">
@@ -184,6 +191,21 @@ export function DriverLocationsView() {
             {l.driver.name}
           </button>
         ))}
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs">
+        <span className="flex items-center gap-1.5">
+          <span className="size-1.5 shrink-0 rounded-full bg-success" />
+          배송중 기사 <span className="font-semibold text-text-strong">{runningDriverCount}명</span>
+        </span>
+        <span className="text-muted-foreground">
+          배송대기 <span className="font-semibold text-text-strong">{waitingOrderCount}건</span>
+        </span>
+        <span className="text-muted-foreground">
+          배송중 <span className="font-semibold text-text-strong">{inProgressOrderCount}건</span>
+        </span>
+        <span className="text-muted-foreground">
+          완료 <span className="font-semibold text-text-strong">{completedOrderCount}건</span>
+        </span>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
         <DeliveryMap
