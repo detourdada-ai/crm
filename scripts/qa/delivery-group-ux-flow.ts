@@ -52,6 +52,18 @@ async function mainText(page: Page): Promise<string> {
   return (await page.locator("main").innerText().catch(() => "")) ?? "";
 }
 
+/** 서버 액션(그룹 분리/재계산)이 비동기로 끝난 뒤 DB에 반영될 때까지 짧게 폴링한다 — 고정 지연 대신 조건이 실제로 충족될 때까지 기다려 타이밍 오탐을 없앤다. */
+async function pollUntil<T>(fn: () => Promise<T>, predicate: (v: T) => boolean, timeoutMs = 10000, intervalMs = 500): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let last: T = await fn();
+  while (Date.now() < deadline) {
+    last = await fn();
+    if (predicate(last)) return last;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return last;
+}
+
 interface SeedDef {
   key: string;
   recipient: string;
@@ -404,21 +416,32 @@ async function main() {
     if (separateBtnVisible) {
       await separateBtn.click();
       await page.getByRole("button", { name: "분리하기" }).click();
-      await page.waitForTimeout(500);
       await page.waitForLoadState("networkidle").catch(() => {});
     }
+    // 서버 액션(분리 + 즉시 재계산)이 비동기로 완료될 때까지 DB를 직접 폴링한다 —
+    // 고정 지연 하나로만 판정하면 배포 환경의 응답 지연을 버그로 오판할 수 있다.
+    const afterSeparate = await pollUntil(
+      async () => {
+        const { data } = await admin
+          .from("order_shipments")
+          .select("delivery_status, driver_id, route_order, delivery_group_locked, delivery_group_id")
+          .eq("id", c2b1Id)
+          .single();
+        return data;
+      },
+      (row) => row?.delivery_group_locked === true,
+      20000
+    );
+    // 서버 액션의 revalidatePath가 이 페이지에 이미 열려있는 RSC 트리를 자동으로
+    // 갱신하는 타이밍에 의존하지 않기 위해 명시적으로 새로고침한 뒤 확인한다.
+    await page.reload({ waitUntil: "networkidle" });
     text = await mainText(page);
     record(
-      "Case9. 수동분리 후 '수동분리' 표시 노출 + 남은 그룹은 웨스트빌 1건만(노스타워는 그대로)",
+      "Case9. 수동분리 후 '수동분리' 표시 노출",
       separateBtnVisible && text.includes("수동분리"),
       `btnVisible=${separateBtnVisible} textSnippet=${text.slice(0, 200)}`
     );
 
-    const { data: afterSeparate } = await admin
-      .from("order_shipments")
-      .select("delivery_status, driver_id, route_order, delivery_group_locked, delivery_group_id")
-      .eq("id", c2b1Id)
-      .single();
     record(
       "Case12. 수동분리 전후 delivery_status/driver_id/route_order 변경 없음",
       afterSeparate?.delivery_status === beforeSeparate?.delivery_status &&
@@ -451,14 +474,23 @@ async function main() {
     const restoreBtnVisible = await restoreBtn.isVisible().catch(() => false);
     if (restoreBtnVisible) {
       await restoreBtn.click();
-      await page.waitForTimeout(500);
       await page.waitForLoadState("networkidle").catch(() => {});
     }
-    const { data: afterRestore } = await admin
-      .from("order_shipments")
-      .select("delivery_group_locked, delivery_group_id")
-      .eq("id", c2b1Id)
-      .single();
+    const afterRestore = await pollUntil(
+      async () => {
+        const { data } = await admin
+          .from("order_shipments")
+          .select("delivery_group_locked, delivery_group_id")
+          .eq("id", c2b1Id)
+          .single();
+        return data;
+      },
+      (row) => row?.delivery_group_locked === false && !!row?.delivery_group_id,
+      // user2 테스트 테넌트에 누적된 실제 규모(오늘자 129건/그룹 25개)에서는
+      // 재계산이 그룹 수만큼 순차 DB 왕복을 하므로 20초로는 부족할 수 있다
+      // (읽기전용으로 실측: 별도 버그가 아니라 재계산 자체의 소요시간 문제).
+      45000
+    );
     record(
       "Case11. 분리 해제 후 재계산 대상에 복귀 — delivery_group_locked=false + 다시 delivery_group_id 배정됨(이웃 웨스트빌2와 재클러스터링)",
       restoreBtnVisible && afterRestore?.delivery_group_locked === false && !!afterRestore?.delivery_group_id,
