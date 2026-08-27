@@ -11,7 +11,7 @@ import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { hashPassword } from "../../src/lib/auth/password";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { QA_DEFAULT_OWNER, QA_SECONDARY_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner } from "./lib/qa-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const RUN_TAG = String(Date.now());
@@ -86,6 +86,9 @@ async function setSession(context: BrowserContext, username: string, role: "admi
 }
 
 async function main() {
+  // STEP10-4(2026-08-27 CPO 작업지시): allowlist 통과 후에도 실데이터 실시간 검사.
+  await assertTenantIsQaSafe(OWNER);
+  await assertTenantIsQaSafe(OTHER_OWNER);
   const admin = getSupabaseAdmin();
 
   // ---- setup: user2 소유 임시 기사 1명 (직접 DB insert — createDriverWithAccount와 동일한 두 테이블) ----

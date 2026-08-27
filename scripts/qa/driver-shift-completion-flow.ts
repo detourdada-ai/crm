@@ -13,7 +13,7 @@ import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { hashPassword } from "../../src/lib/auth/password";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner } from "./lib/qa-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -96,6 +96,8 @@ async function waitForCondition<T>(read: () => Promise<T>, isReady: (value: T) =
 }
 
 async function main() {
+  // STEP10-4(2026-08-27 CPO 작업지시): allowlist 통과 후에도 실데이터 실시간 검사.
+  await assertTenantIsQaSafe(OWNER);
   const admin = getSupabaseAdmin();
   const { data: tenant } = await admin.from("tenants").select("id").eq("slug", OWNER).maybeSingle();
   if (!tenant) throw new Error("tenant user2 not found");

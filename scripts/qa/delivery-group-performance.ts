@@ -34,7 +34,7 @@ import { orderShipmentsRepository, type OrderShipmentBoardRow } from "../../src/
 import { deliveryGroupsRepository } from "../../src/lib/repositories/delivery-groups.repository";
 import { clusterPointsByDistance } from "../../src/lib/services/spatial-grouping.service";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner, createQaDriver, cleanupQaDriver, type QaDriverFixture } from "./lib/qa-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, type QaDriverFixture } from "./lib/qa-guard";
 
 const OWNER = QA_DEFAULT_OWNER;
 assertAllowedQaOwner(OWNER);
@@ -385,6 +385,8 @@ async function runLockAndFieldPreservationChecks(admin: ReturnType<typeof getSup
 }
 
 async function main() {
+  // STEP10-4(2026-08-27 CPO 작업지시): allowlist 통과 후에도 실데이터 실시간 검사.
+  await assertTenantIsQaSafe(OWNER);
   const admin = getSupabaseAdmin();
   const { data: tenant, error: tenantErr } = await admin.from("tenants").select("id").eq("slug", OWNER).maybeSingle();
   if (tenantErr || !tenant) throw new Error(`tenant lookup failed: ${tenantErr?.message}`);

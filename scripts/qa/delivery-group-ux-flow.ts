@@ -15,7 +15,7 @@ import { triggerDeliveryGroupRegeneration } from "../../src/lib/services/deliver
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { kstTodayIso } from "./lib/qa-data";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner, createQaDriver, cleanupQaDriver } from "./lib/qa-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -82,6 +82,8 @@ interface SeedDef {
 }
 
 async function main() {
+  // STEP10-4(2026-08-27 CPO 작업지시): allowlist 통과 후에도 실데이터 실시간 검사.
+  await assertTenantIsQaSafe(OWNER);
   const admin = getSupabaseAdmin();
   const { data: tenant, error: tenantErr } = await admin.from("tenants").select("id").eq("slug", OWNER).maybeSingle();
   if (tenantErr || !tenant) throw new Error(`tenant lookup failed: ${tenantErr?.message}`);

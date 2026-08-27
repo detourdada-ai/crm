@@ -12,7 +12,7 @@ import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { kstTodayIso } from "../../src/lib/utils/kst-date";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { QA_DEFAULT_OWNER, QA_SECONDARY_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner, createQaDriver, cleanupQaDriver, type QaDriverFixture } from "./lib/qa-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, type QaDriverFixture } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -89,6 +89,9 @@ async function dismissalRow(admin: ReturnType<typeof getSupabaseAdmin>, username
 }
 
 async function main() {
+  // STEP10-4(2026-08-27 CPO 작업지시): allowlist 통과 후에도 실데이터 실시간 검사.
+  await assertTenantIsQaSafe(OWNER);
+  await assertTenantIsQaSafe(OTHER_OWNER);
   const admin = getSupabaseAdmin();
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });

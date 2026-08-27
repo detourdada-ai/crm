@@ -20,7 +20,7 @@ import { settlementsRepository } from "../../src/lib/repositories/settlements.re
 import { resolvePeriodRange } from "../../src/lib/services/settlement.service";
 import { kstDayStartIso, kstDayEndIso, kstDayDateStrOf, kstTodayIso } from "../../src/lib/utils/kst-date";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner } from "./lib/qa-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
 
 const OWNER = QA_DEFAULT_OWNER;
 assertAllowedQaOwner(OWNER);
@@ -51,6 +51,8 @@ async function resolveSettlementForTest(driverId: string, rate: number, start: s
 }
 
 async function main() {
+  // STEP10-4(2026-08-27 CPO 작업지시): allowlist 통과 후에도 실데이터 실시간 검사.
+  await assertTenantIsQaSafe(OWNER);
   const admin = getSupabaseAdmin();
   const { data: tenant, error: tenantErr } = await admin.from("tenants").select("id").eq("slug", OWNER).maybeSingle();
   if (tenantErr || !tenant) throw new Error(`tenant lookup failed: ${tenantErr?.message}`);
