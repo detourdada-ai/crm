@@ -176,7 +176,7 @@ export function RecruitForm() {
 
       {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
       <Button type="submit" size="lg" className="w-full" disabled={isPending}>
-        {isPending ? "제출 중..." : "우리 사업 이야기 들려주기"}
+        {isPending ? "제출 중..." : "도입 문의하기"}
       </Button>
     </form>
   );

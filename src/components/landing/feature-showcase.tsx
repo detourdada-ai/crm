@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Store, Phone, MessageCircle, ArrowRight, CheckCircle2, Navigation, Play } from "lucide-react";
+import { Navigation, CheckCircle2, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ProductPreview, PreviewStat, PreviewFlowRow, PreviewTable, PointBadge, type PreviewTableRow } from "./product-preview";
@@ -92,11 +92,11 @@ function DeliveryPreview() {
 }
 
 /**
- * §CPO 랜딩 전면 개편 STEP7 — 기사 화면을 실제 Production UI(기사 앱 —
- * 현재/다음 배송 카드 + 배송완료 버튼 + 운행 시작/종료)를 기준으로 재현한다.
- * 실제 고객 개인정보는 절대 사용하지 않고, 다른 STEP들과 동일하게 가상값만
- * 쓴다("김민수"는 STEP1의 예시 주문과 같은 인물이라는 서사적 연결을 위해
- * 재사용 — 실제 데이터가 아니다).
+ * STEP10-6(2026-08-28 CPO 작업지시) — 기사 화면을 실제 Production UI(기사
+ * 앱 — 현재/다음 배송 카드 + 배송완료 버튼 + 운행 시작/종료)를 기준으로
+ * 재현한다. 실제 고객 개인정보는 절대 사용하지 않고, 다른 STEP들과 동일하게
+ * 가상값만 쓴다("김민수"는 STEP1의 예시 주문과 같은 인물이라는 서사적
+ * 연결을 위해 재사용 — 실제 데이터가 아니다).
  */
 function DriverAppPreview() {
   const [running, setRunning] = useState(false);
@@ -196,6 +196,46 @@ function CustomersPreview() {
   );
 }
 
+const DRIVER_LOCATIONS = [
+  { name: "홍길동", status: "운행중", updated: "2분 전" },
+  { name: "김철수", status: "운행중", updated: "5분 전" },
+  { name: "이영희", status: "운행종료", updated: "32분 전" },
+];
+
+/**
+ * STEP10-6(2026-08-28 CPO 작업지시) 신규 STEP5 — 실제 `/delivery/drivers`
+ * 화면(60초 자동 갱신 + "운행중 · N분 전" 최신성 표시)을 기준으로 재현한다.
+ * "실시간 관제/GPS 추적"이라는 표현은 절대 쓰지 않는다 — 실제로는 주기적
+ * 갱신 + 마지막 갱신 시각 표시 구조이기 때문이다(§CPO 원칙, STEP10-5 조사
+ * 결과 반영).
+ */
+function DeliveryStatusPreview() {
+  return (
+    <ProductPreview screen="배송 현황" showPreviewLabel>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <PreviewStat label="배송 대기" value="8" />
+        <PreviewStat label="배송중" value="5" />
+        <PreviewStat label="완료" value="21" />
+      </div>
+      <div className="mt-4 space-y-2">
+        {DRIVER_LOCATIONS.map((d, i) => (
+          <div key={d.name} className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
+            <p className="text-sm font-medium text-text-strong">
+              {i === 0 ? <PointBadge n={2} /> : null}
+              {d.name}
+            </p>
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {i === 0 ? <PointBadge n={3} /> : null}
+              <span className={d.status === "운행중" ? "font-semibold text-primary" : ""}>{d.status}</span>
+              <span>· {d.updated}</span>
+            </p>
+          </div>
+        ))}
+      </div>
+    </ProductPreview>
+  );
+}
+
 const SETTLEMENTS = [
   {
     key: "a",
@@ -215,7 +255,7 @@ const SETTLEMENTS = [
   },
 ];
 
-/** STEP 4 실제 화면 — 배송완료/정산대상/정산완료 흐름과 정산 금액을 번호로 짚어준다. */
+/** STEP 6 실제 화면 — 배송완료/정산대상/정산완료 흐름과 정산 금액을 번호로 짚어준다. */
 function SettlementPreview() {
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -251,6 +291,10 @@ function SettlementPreview() {
           </div>
         ))}
       </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        <PointBadge n={5} />
+        정산 완료 처리 시 정산일과 금액을 직접 확정하고, 기사별 일별 이력도 확인할 수 있습니다.
+      </p>
     </ProductPreview>
   );
 }
@@ -264,7 +308,6 @@ interface StepData {
   step: string;
   category: string;
   headline: string;
-  problem: string[];
   screenIntro: string;
   eyebrow: string;
   points: StepPoint[];
@@ -272,19 +315,19 @@ interface StepData {
   screen: ReactNode;
 }
 
-// §CPO 랜딩 전면 개편 STEP7: 기존 STEP1~4를 "주문 접수 → 고객 관리 → 배송
-// 관리 → 기사 앱 → 배송완료/정산" 업무 흐름 순서로 재배치하고, 기사 앱을
-// 신규로 추가했다(이전에는 사장님 화면만 보여주고 기사 화면이 빠져 있었다).
-// STEP은 반드시 동일한 리듬 — 상황/문제 → (왜 이 화면인지) → 실제 화면 →
-// 핵심 포인트(번호) → 결과 한 문장. 카피는 "기능 설명"이 아니라 "사장님이
-// 얻는 결과" 중심으로 쓴다. "자동으로 다 모아준다"는 표현은 쓰지 않는다 —
-// 수동/엑셀로 들어온 주문도 "같은 방식으로 관리"할 뿐이다.
+// STEP10-6(2026-08-28 CPO 작업지시) — STEP10-5 조사에서 확인된 3중 반복
+// (ComparisonSection/WhatOrdifyDoes/FeatureShowcase가 같은 "문제→해결"
+// 흐름을 반복) 중 앞의 둘은 problem-solution-section.tsx로 통합했으므로,
+// 여기서는 각 STEP의 "problem" 재진술과 도입부 채널 나열, 클로징 흐름
+// 다이어그램을 전부 제거했다 — 문제 공감은 바로 위 섹션이 이미 전담했다.
+// 대신 실제 화면과 "이 화면에서 무엇이 보이는지"에만 집중한다. STEP5
+// (배송 현황·기사 위치)를 신규로 추가하고, STEP6(정산)에는 최근 추가된
+// 지급 확정/기사별 이력을 반영했다.
 const STEPS: StepData[] = [
   {
     step: "STEP 1",
     category: "주문 접수",
     headline: "흩어진 주문을 한곳에 모읍니다",
-    problem: ["전화, 카카오톡, 스마트스토어, 엑셀 등 여러 경로로 들어오는 주문을", "따로 확인하고 다시 정리해야 했습니다."],
     screenIntro: "실제 주문관리 화면입니다 — 어디서 들어온 주문이든 이 화면에서 한 번에 확인합니다.",
     eyebrow: "주문관리",
     points: [
@@ -299,7 +342,6 @@ const STEPS: StepData[] = [
     step: "STEP 2",
     category: "고객 관리",
     headline: "주문이 쌓이면 고객 기록도 쌓입니다",
-    problem: ["기존 고객이 무엇을 주문했는지", "다시 찾아봐야 했습니다."],
     screenIntro: "실제 고객관리 화면입니다 — 주문할 때마다 고객 정보와 이력이 정리됩니다.",
     eyebrow: "고객관리",
     points: [
@@ -315,7 +357,6 @@ const STEPS: StepData[] = [
     step: "STEP 3",
     category: "배송 관리",
     headline: "오늘 보낼 주문을 바로 확인합니다",
-    problem: ["주문이 쌓이면 누가 무엇을 배송해야 하는지", "다시 확인하고 전달해야 했습니다."],
     screenIntro: "실제 배송관리 화면입니다 — 오늘 배송할 주문과 담당자를 이 화면에서 정리합니다.",
     eyebrow: "배송관리",
     points: [
@@ -330,7 +371,6 @@ const STEPS: StepData[] = [
     step: "STEP 4",
     category: "기사 앱",
     headline: "정리된 배송정보를 기사님이 바로 확인합니다",
-    problem: ["배송 목록을 카카오톡이나 문자로 다시 전달하고,", "기사님이 어디까지 배송했는지 다시 확인해야 했습니다."],
     screenIntro: "실제 기사 앱 화면입니다 — 배정된 배송을 모바일에서 순서대로 확인하고 처리합니다.",
     eyebrow: "기사 앱",
     points: [
@@ -343,31 +383,37 @@ const STEPS: StepData[] = [
   },
   {
     step: "STEP 5",
-    category: "완료 · 정산",
-    headline: "배송이 끝나면 정산까지 연결됩니다",
-    problem: ["배송이 끝난 뒤 실제 완료된 주문과 금액을", "다시 맞춰봐야 했습니다."],
-    screenIntro: "실제 정산관리 화면입니다 — 배송완료부터 정산대상, 금액까지 이 화면에서 확인합니다.",
+    category: "배송 현황 · 기사 위치",
+    headline: "배송이 시작되면, 전체 진행 상황을 한눈에 확인하세요",
+    screenIntro: "실제 배송 현황 화면입니다 — 배송 대기·배송중·완료 현황과 기사 위치를 확인합니다.",
+    eyebrow: "배송 현황",
+    points: [
+      { n: 1, label: "배송 대기 · 배송중 · 완료 현황" },
+      { n: 2, label: "운행 중인 기사 확인" },
+      { n: 3, label: "기사 위치와 최근 업데이트 시간 확인" },
+    ],
+    result: "배송이 지금 어디까지 진행됐는지, 다시 전화하지 않아도 확인할 수 있습니다.",
+    screen: <DeliveryStatusPreview />,
+  },
+  {
+    step: "STEP 6",
+    category: "정산 관리",
+    headline: "배송이 끝나면 정산까지 이어집니다",
+    screenIntro: "실제 정산관리 화면입니다 — 배송완료부터 정산대상, 지급 확정, 금액까지 이 화면에서 확인합니다.",
     eyebrow: "정산관리",
     points: [
       { n: 1, label: "배송 완료" },
       { n: 2, label: "정산 대상" },
       { n: 3, label: "정산 완료 여부" },
       { n: 4, label: "정산 금액" },
+      { n: 5, label: "지급 확정 · 기사별 이력" },
     ],
-    result: "배송 완료된 주문이 정산으로 이어져, 따로 다시 계산할 일을 줄입니다.",
+    result: "정산 대상 확인부터 지급 확정과 이력 관리까지, 업무 흐름의 마지막을 완성합니다.",
     screen: <SettlementPreview />,
   },
 ];
 
-const ORDER_CHANNELS = [
-  { icon: Store, label: "스마트스토어" },
-  { icon: Phone, label: "전화" },
-  { icon: MessageCircle, label: "카카오톡" },
-];
-
-const FLOW_STEPS = ["주문", "고객", "배송", "기사", "완료"];
-
-/** STEP 1~4 전부 동일하게 재사용하는 블록 — 시각적 리듬이 다르면 "각각 다른 기능 소개"처럼 읽히기 때문에 레이아웃을 절대 바꾸지 않는다. */
+/** STEP 1~6 전부 동일하게 재사용하는 블록 — 시각적 리듬이 다르면 "각각 다른 기능 소개"처럼 읽히기 때문에 레이아웃을 절대 바꾸지 않는다. */
 function StepBlock({ data }: { data: StepData }) {
   return (
     <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-surface px-6 py-8 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_16px_32px_-16px_rgba(15,23,42,0.15)] sm:px-10 sm:py-10">
@@ -376,14 +422,9 @@ function StepBlock({ data }: { data: StepData }) {
           {data.step} · {data.category}
         </span>
         <h3 className="mt-2 text-xl font-bold text-text-strong sm:text-2xl">{data.headline}</h3>
-        <div className="mx-auto mt-3 max-w-md space-y-1 text-sm text-muted-foreground">
-          {data.problem.map((line) => (
-            <p key={line}>→ {line}</p>
-          ))}
-        </div>
       </div>
 
-      <p className="mx-auto mt-6 max-w-md text-center text-sm font-medium text-text-strong">{data.screenIntro}</p>
+      <p className="mx-auto mt-4 max-w-md text-center text-sm font-medium text-text-strong">{data.screenIntro}</p>
 
       <div className="relative mt-4">
         <div aria-hidden className="absolute inset-6 -z-10 rounded-full bg-primary/10 blur-3xl" />
@@ -416,33 +457,10 @@ export function FeatureShowcase() {
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="text-center">
           <span className="text-xs font-semibold tracking-wide text-primary uppercase">제품 살펴보기</span>
-          <h2 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">주문 접수 → 고객 관리 → 배송 관리 → 기사 앱 → 완료/정산</h2>
+          <h2 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">주문 접수 → 고객 관리 → 배송 관리 → 기사 앱 → 배송 현황 → 정산</h2>
           <p className="mt-3 text-sm text-muted-foreground">
             설명을 읽지 않아도, 화면만 보면 사장님의 하루 업무가 그대로 보입니다.
           </p>
-        </div>
-
-        {/* 누구를 위한 서비스인지 — 서비스 소개 흐름 시작 직전에 한 번 더 명확히 한다. */}
-        <div className="mx-auto mt-10 max-w-2xl rounded-xl border border-dashed border-primary/30 bg-primary-soft/30 px-6 py-5 text-center">
-          <p className="text-sm font-semibold text-text-strong">주문이 여러 곳에서 들어오는 사장님이라면</p>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            스마트스토어, 전화, 카카오톡 등 주문이 여러 경로로 들어오고
-            <br className="hidden sm:block" />
-            엑셀이나 메모로 따로 정리하고 있다면 주문:한장이 도움이 될 수 있습니다.
-          </p>
-        </div>
-
-        {/* STEP 1의 "상황/문제"는 화면 없이 먼저 눈에 보이는 현실부터 짚는다. */}
-        <div className="mx-auto mt-10 flex max-w-2xl flex-wrap items-center justify-center gap-3">
-          {ORDER_CHANNELS.map((channel, i) => (
-            <div key={channel.label} className="flex items-center gap-3">
-              <span className="flex items-center gap-2 rounded-full border border-border bg-surface px-3.5 py-2 text-xs font-medium text-muted-foreground">
-                <channel.icon className="size-3.5" />
-                {channel.label}
-              </span>
-              {i < ORDER_CHANNELS.length - 1 ? <span className="text-muted-foreground/40">+</span> : null}
-            </div>
-          ))}
         </div>
 
         <div className="mt-10 space-y-16">
@@ -451,26 +469,8 @@ export function FeatureShowcase() {
           ))}
         </div>
 
-        {/* 앞의 5단계(STEP1~5)를 하나로 묶어주는 클로징 — 새 기능 소개가 아니라 흐름 요약. */}
-        <div className="mx-auto mt-16 max-w-2xl rounded-2xl border border-primary/30 bg-gradient-to-b from-primary-soft/60 to-surface px-6 py-10 text-center sm:px-10">
-          <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">업무 흐름</span>
-          <h3 className="mt-2 text-xl font-bold text-text-strong sm:text-2xl">주문부터 배송, 기사님까지 한 흐름으로 이어집니다</h3>
-          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-            주문을 따로 기록하고, 배송정보를 다시 전달하고, 정산을 다시 계산하는 일을 줄입니다.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-3">
-            {FLOW_STEPS.map((step, i) => (
-              <span key={step} className="flex items-center gap-2">
-                <span className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground">{step}</span>
-                {i < FLOW_STEPS.length - 1 ? <ArrowRight className="size-3.5 text-primary/40" /> : null}
-              </span>
-            ))}
-          </div>
-          <div className="mx-auto mt-6 flex max-w-md items-start gap-2 rounded-lg bg-surface px-3.5 py-2.5 text-left text-sm font-medium text-primary shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-            사장님은 주문을 관리하고, 주문:한장이 업무 흐름을 정리합니다.
-          </div>
-          <Button asChild size="lg" className="mt-6 gap-2">
+        <div className="mx-auto mt-16 max-w-2xl text-center">
+          <Button asChild size="lg" className="gap-2">
             <a href="#recruit">베타 신청하고 먼저 써보기</a>
           </Button>
           <p className="mt-3 text-xs text-muted-foreground">우리 가게에도 맞을지 직접 이야기해보세요.</p>

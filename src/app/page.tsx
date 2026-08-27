@@ -1,24 +1,27 @@
 import type { Metadata } from "next";
 import { SiteHeader } from "@/components/landing/site-header";
 import { HeroSection } from "@/components/landing/hero-section";
-import { ComparisonSection } from "@/components/landing/comparison-section";
-import { WhatOrdifyDoes } from "@/components/landing/what-ordify-does";
+import { ProblemSolutionSection } from "@/components/landing/problem-solution-section";
 import { FeatureShowcase } from "@/components/landing/feature-showcase";
 import { TargetAudience } from "@/components/landing/target-audience";
-import { IndustryScenarios } from "@/components/landing/industry-scenarios";
 import { FinalCtaSection } from "@/components/landing/final-cta-section";
 import { FaqSection } from "@/components/landing/faq-section";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { getSession } from "@/lib/auth/current-session";
 import { SITE_URL, SITE_NAME, SITE_TITLE, SITE_DESCRIPTION } from "@/lib/constants/site";
 
-// §CPO 랜딩 전면 개편(구조안 B, 2026-08): "기능 나열"이 아니라 "문제 →
-// 해결 → 작동 방식 → 신뢰 → CTA" 흐름으로 재구성 — 섹션 순서는
-// Hero(5초 이해) → Before/After(문제·해결을 최상단 근처로) → 주문한장이
-// 하는 일(주문→고객→배송→기사→완료 개념 흐름) → 실제 제품 화면(기사 앱
-// 신규 포함) → 대상/업종별 시나리오 → Beta CTA(모집 폼) → FAQ 순이다.
-// 이전 구조(모집 인트로를 최상단에 배치, 스마트스토어 전용 포지셔닝
-// 섹션)는 제거하고 각각 Beta CTA 블록/Hero 서브카피로 흡수했다.
+// STEP10-6(2026-08-28 CPO 작업지시) — 랜딩을 "기능 소개 페이지"가 아니라
+// "이게 우리에게 필요한 서비스인가?"를 빠르게 판단하고 문의하게 만드는
+// 페이지로 재정비. STEP10-5 조사에서 확인된 3중 반복(Comparison/
+// WhatOrdifyDoes/FeatureShowcase가 같은 "문제→해결" 흐름을 반복, Industry
+// Scenarios/TargetAudience가 같은 업종 라벨을 반복)을 통합해 9개 콘텐츠
+// 섹션을 6개로 압축했다:
+//   Hero(5초 이해) → 문제공감+해결(ProblemSolutionSection, 예전 Comparison+
+//   WhatOrdifyDoes 통합) → 실제 업무 흐름/기능 화면(FeatureShowcase, STEP5
+//   배송현황·기사위치/STEP6 정산 지급확정·이력 신규 반영) → 사용 대상
+//   (TargetAudience, 예전 TargetAudience+IndustryScenarios 통합 — 업종
+//   나열 대신 운영 방식 체크리스트 중심) → FAQ(8~12개, 문의 직전 의문
+//   해소 중심으로 전면 재설계) → Final CTA(도입 문의 프레이밍).
 // 실제 고객 후기가 아직 없으므로 허위 후기 섹션은 넣지 않는다.
 //
 // STEP-6: explicitly force-dynamic (never statically cached/prerendered) so
@@ -78,13 +81,11 @@ export default async function LandingPage() {
       <SiteHeader session={session} />
       <main className="flex-1">
         <HeroSection />
-        <ComparisonSection />
-        <WhatOrdifyDoes />
+        <ProblemSolutionSection />
         <FeatureShowcase />
         <TargetAudience />
-        <IndustryScenarios />
-        <FinalCtaSection />
         <FaqSection />
+        <FinalCtaSection />
       </main>
       <SiteFooter />
     </div>
