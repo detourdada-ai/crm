@@ -263,22 +263,22 @@ export const orderShipmentsRepository = {
     return rows.filter((r) => r.geocode_status === "success" && r.latitude !== null && r.longitude !== null);
   },
 
-  /** 그룹 재계산 시작 시 해당 (tenant, 배송일)의 기존 배송건 그룹 소속을 모두 비운다. */
-  async clearDeliveryGroupsForDate(tenantId: string, dateStr: string): Promise<void> {
-    const { error } = await getSupabaseAdmin()
-      .from("order_shipments")
-      .update({ delivery_group_id: null })
-      .eq("tenant_id", tenantId)
-      .gte("delivery_date", kstDayStartIso(dateStr))
-      .lte("delivery_date", kstDayEndIso(dateStr))
-      .not("delivery_group_id", "is", null);
-    if (error) throw error;
-  },
-
   /** 클러스터링 결과에 따라 배송건들을 그룹에 배정한다. */
   async assignShipmentsToGroup(shipmentIds: string[], groupId: string): Promise<void> {
     if (shipmentIds.length === 0) return;
     const { error } = await getSupabaseAdmin().from("order_shipments").update({ delivery_group_id: groupId }).in("id", shipmentIds);
+    if (error) throw error;
+  },
+
+  /**
+   * STEP10-7-C(2026-08-28 CPO 작업지시): 재계산 시 "그 날짜 전체"를 일괄로
+   * null 처리하던 clearDeliveryGroupsForDate 대신, 더 이상 어느 클러스터에도
+   * 속하지 않게 된 배송건 id만 좁혀서 비운다 — 클러스터 단위 원자적 재계산의
+   * 전제 조건(다른 클러스터의 소속을 건드리지 않음).
+   */
+  async clearGroupForShipmentIds(shipmentIds: string[]): Promise<void> {
+    if (shipmentIds.length === 0) return;
+    const { error } = await getSupabaseAdmin().from("order_shipments").update({ delivery_group_id: null }).in("id", shipmentIds);
     if (error) throw error;
   },
 

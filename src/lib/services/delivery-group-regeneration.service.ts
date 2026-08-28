@@ -1,11 +1,6 @@
 import "server-only";
-import { randomUUID } from "crypto";
 import { orderShipmentsRepository, type OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
-import {
-  deliveryGroupsRepository,
-  type DeliveryGroupInsert,
-  type DeliveryGroupRecomputeRow,
-} from "@/lib/repositories/delivery-groups.repository";
+import { deliveryGroupsRepository } from "@/lib/repositories/delivery-groups.repository";
 import { clusterPointsByDistance, computeCentroid, representativeRegion } from "@/lib/services/spatial-grouping.service";
 
 /** 배송 그룹화 기본 반경 — CPO 승인: "격자"가 아니라 "주문 간 실거리 N m 이내"가 연결 기준(그룹이 너무 잘게 쪼개진다는 CEO 피드백으로 50m→100m 확대). */
@@ -106,77 +101,142 @@ export async function regenerateDeliveryGroupsForTenant(
   }
 
   const groupsToDelete = existingGroups.filter((g) => !matchedGroupIds.has(g.id)).map((g) => g.id);
-  let nextGroupNo = existingGroups.reduce((max, g) => Math.max(max, g.group_no), 0) + 1;
   const existingGroupById = new Map(existingGroups.map((g) => [g.id, g]));
 
-  // 4) 실제 반영: 삭제 → 매칭된 그룹 재계산 → 신규 그룹 생성 → 배송건 소속 초기화 → 재배정.
-  // STEP7-C: 그룹마다 순차 DB 왕복하던 것을(recompute/create 각 1회씩,
-  // N개 그룹이면 N회 왕복) 먼저 in-memory로 대상 행을 전부 계산한 뒤
-  // recomputeMany(벌크 upsert 1회) + createMany(벌크 insert 1회)로 묶는다.
-  // 매칭/overlap 판단(위 3번)은 그대로이고, "결정된 값을 어떻게 쓰는지"만
-  // 바뀐다 — group_no/driver_id 유지 규칙, idempotent 결과는 동일하다.
-  await deliveryGroupsRepository.deleteByIds(groupsToDelete);
-
-  const finalGroupIdByCluster = new Map<number, string>();
-  const recomputeRows: DeliveryGroupRecomputeRow[] = [];
-  const createRows: (DeliveryGroupInsert & { id: string })[] = [];
-
+  // 신규(미매칭) 클러스터의 group_no를 동시성 루프 진입 전에 단일 스레드로
+  // 미리 배정한다 — 공유 카운터를 concurrent 콜백 안에서 증가시키면 경합
+  // 가능성이 생기므로, in-memory 계산은 항상 순차 구간에서 끝낸다.
+  let nextGroupNo = existingGroups.reduce((max, g) => Math.max(max, g.group_no), 0) + 1;
+  const groupNoByClusterIndex = new Map<number, number>();
   for (let i = 0; i < clusters.length; i++) {
-    const cluster = clusters[i];
-    const members = cluster.map((id) => shipmentById.get(id)!).filter(Boolean);
-    const centroid = computeCentroid(members.map((s) => ({ lat: s.latitude as number, lng: s.longitude as number })));
-    const region = representativeRegion(members.map((s) => ({ sido: s.sido, sigungu: s.sigungu, eupmyeondong: s.eupmyeondong })));
-
-    const matchedId = clusterToGroupId.get(i);
-    if (matchedId) {
-      const existing = existingGroupById.get(matchedId)!;
-      recomputeRows.push({
-        id: matchedId,
-        tenant_id: existing.tenant_id,
-        owner_username: existing.owner_username,
-        delivery_date: existing.delivery_date,
-        group_no: existing.group_no,
-        center_latitude: centroid.lat,
-        center_longitude: centroid.lng,
-        order_count: members.length,
-        representative_sido: region.sido,
-        representative_sigungu: region.sigungu,
-        representative_eupmyeondong: region.eupmyeondong,
-      });
-      finalGroupIdByCluster.set(i, matchedId);
-    } else {
-      const ownerUsername = members[0]?.owner_username ?? ownerUsernameFallback;
-      const newId = randomUUID();
-      createRows.push({
-        id: newId,
-        tenant_id: tenantId,
-        owner_username: ownerUsername,
-        delivery_date: dateStr,
-        group_no: nextGroupNo++,
-        center_latitude: centroid.lat,
-        center_longitude: centroid.lng,
-        order_count: members.length,
-        representative_sido: region.sido,
-        representative_sigungu: region.sigungu,
-        representative_eupmyeondong: region.eupmyeondong,
-      });
-      finalGroupIdByCluster.set(i, newId);
-    }
+    if (!clusterToGroupId.has(i)) groupNoByClusterIndex.set(i, nextGroupNo++);
   }
 
-  await deliveryGroupsRepository.recomputeMany(recomputeRows);
-  await deliveryGroupsRepository.createMany(createRows);
+  // 4) 실제 반영.
+  // STEP10-7-C(2026-08-28 CPO 작업지시, 유령 그룹 정합성 안정화): 이전 구조는
+  // (a) 모든 클러스터의 그룹 메타데이터를 recomputeMany/createMany로 먼저
+  // 벌크로 쓰고, (b) 그 배송일 전체 배송건 소속을 clearDeliveryGroupsForDate로
+  // 일괄 null 처리한 뒤, (c) 클러스터별로 assignShipmentsToGroup을 호출해
+  // 재배정했다. (a)(b)(c)가 서로 다른 시점의 분리된 단계였기 때문에, 특정
+  // 클러스터의 (c)만 실패해도 (a)에서 이미 만든 그 클러스터의 그룹 행
+  // (order_count 등 메타데이터 포함)은 남고, 그 클러스터의 배송건은 (b)에서
+  // null이 된 채 돌아오지 못하는 "유령 그룹"이 발생했다(2026-08-28 실측
+  // 재현 확인: scripts/qa/_repro_group_regen_partial_failure.ts, cleanup 완료).
+  //
+  // 지금은 클러스터 하나당 "그룹 upsert → 배송건 배정"을 하나의 단위로 묶어
+  // 처리한다 — 배정이 실패하면 그 클러스터의 그룹 행만 즉시 원복(신규 그룹은
+  // 삭제, 기존 그룹은 재계산 전 메타데이터로 되돌림)해 유령 그룹 자체가 생기지
+  // 않게 한다. assignShipmentsToGroup은 단일 UPDATE 문이라 부분 반영 없이
+  // 전부 실패하므로, 실패한 클러스터의 배송건은 이번 재계산으로 전혀 건드려
+  // 지지 않은 것과 동일한 상태로 남는다 — 그 상태에 맞춰 그룹 메타데이터를
+  // "재계산 전 값"으로 되돌리면 실제 배송건 소속과 다시 정확히 일치한다. 각
+  // 클러스터는 서로 다른 그룹 행/배송건 집합을 다루므로, 한 클러스터의 실패나
+  // 롤백이 다른 클러스터의 진행·결과에 영향을 주지 않는다.
+  await deliveryGroupsRepository.deleteByIds(groupsToDelete);
 
-  await orderShipmentsRepository.clearDeliveryGroupsForDate(tenantId, dateStr);
+  // 더 이상 어떤 새 클러스터에도 속하지 않게 된 배송건만 좁혀서 소속을 비운다
+  // (이전의 clearDeliveryGroupsForDate 블랭킷 null 처리를 대체) — 이 판단은
+  // 클러스터 처리 성공/실패와 무관하게 항상 유효하다(그 배송건은 이번
+  // 재계산이 만든 어떤 클러스터의 구성원도 아니므로).
+  const clusteredShipmentIds = new Set(clusters.flat());
+  const staleShipmentIds = shipments
+    .filter((s) => s.delivery_group_id && !clusteredShipmentIds.has(s.shipmentId))
+    .map((s) => s.shipmentId);
+  await orderShipmentsRepository.clearGroupForShipmentIds(staleShipmentIds);
+
+  const failures: { clusterIndex: number; error: unknown }[] = [];
 
   // STEP7-C: assignShipmentsToGroup도 클러스터마다 순차 호출하면 그룹 수만큼
   // 왕복이 생긴다 — 각 클러스터가 서로 다른 배송건 집합을 갱신해 경합이 없으므로
   // 동시성 제한(REGEN_CONCURRENCY_LIMIT)을 둔 병렬 처리로 바꾼다(무제한
-  // Promise.all 금지 — CPO 지시).
+  // Promise.all 금지 — CPO 지시). STEP10-7-C: 콜백 내부에서 에러를 다시
+  // throw하지 않고 failures 배열에 기록만 하는 이유 — runWithConcurrencyLimit의
+  // 워커는 잡히지 않은 예외가 나면 그 워커가 죽어 공유 커서에서 더 이상
+  // 작업을 가져가지 못한다(다른 워커는 계속 진행하지만, 남은 클러스터 중
+  // 일부는 "시도조차 안 된" 상태로 남을 위험이 있다). 모든 클러스터를 끝까지
+  // 시도한 뒤 실패 유무를 한 번에 판단해야 "한 클러스터의 실패가 다른
+  // 클러스터의 정합성을 깨면 안 된다"는 요구를 만족한다.
   await runWithConcurrencyLimit(clusters, REGEN_CONCURRENCY_LIMIT, async (cluster, i) => {
-    const groupId = finalGroupIdByCluster.get(i);
-    if (groupId) await orderShipmentsRepository.assignShipmentsToGroup(cluster, groupId);
+    const members = cluster.map((id) => shipmentById.get(id)!).filter(Boolean);
+    const centroid = computeCentroid(members.map((s) => ({ lat: s.latitude as number, lng: s.longitude as number })));
+    const region = representativeRegion(members.map((s) => ({ sido: s.sido, sigungu: s.sigungu, eupmyeondong: s.eupmyeondong })));
+    const matchedId = clusterToGroupId.get(i);
+
+    if (matchedId) {
+      const existing = existingGroupById.get(matchedId)!;
+      try {
+        await deliveryGroupsRepository.recompute(matchedId, {
+          center_latitude: centroid.lat,
+          center_longitude: centroid.lng,
+          order_count: members.length,
+          representative_sido: region.sido,
+          representative_sigungu: region.sigungu,
+          representative_eupmyeondong: region.eupmyeondong,
+        });
+      } catch (e) {
+        failures.push({ clusterIndex: i, error: e });
+        return;
+      }
+
+      try {
+        await orderShipmentsRepository.assignShipmentsToGroup(cluster, matchedId);
+      } catch (e) {
+        failures.push({ clusterIndex: i, error: e });
+        // 기존 그룹 재계산은 성공했지만 배정이 실패했다 — 배송건은 이번
+        // 재계산으로 전혀 건드려지지 않은 상태 그대로이므로, 그룹 메타데이터를
+        // 재계산 전 값으로 되돌려 실제 소속과 다시 일치시킨다(신규 삭제와
+        // 달리 이 그룹은 다른 정상 배송건이 여전히 참조 중일 수 있어 삭제하면
+        // 안 된다).
+        await deliveryGroupsRepository.recompute(matchedId, {
+          center_latitude: existing.center_latitude,
+          center_longitude: existing.center_longitude,
+          order_count: existing.order_count,
+          representative_sido: existing.representative_sido,
+          representative_sigungu: existing.representative_sigungu,
+          representative_eupmyeondong: existing.representative_eupmyeondong,
+        });
+      }
+      return;
+    }
+
+    const ownerUsername = members[0]?.owner_username ?? ownerUsernameFallback;
+    let createdId: string;
+    try {
+      const created = await deliveryGroupsRepository.create({
+        tenant_id: tenantId,
+        owner_username: ownerUsername,
+        delivery_date: dateStr,
+        group_no: groupNoByClusterIndex.get(i)!,
+        center_latitude: centroid.lat,
+        center_longitude: centroid.lng,
+        order_count: members.length,
+        representative_sido: region.sido,
+        representative_sigungu: region.sigungu,
+        representative_eupmyeondong: region.eupmyeondong,
+      });
+      createdId = created.id;
+    } catch (e) {
+      failures.push({ clusterIndex: i, error: e });
+      return;
+    }
+
+    try {
+      await orderShipmentsRepository.assignShipmentsToGroup(cluster, createdId);
+    } catch (e) {
+      failures.push({ clusterIndex: i, error: e });
+      // 신규 그룹은 이번 재계산 이전에 존재하지 않았으므로, 배정 실패 시
+      // 삭제하면(on delete set null 캐스케이드) 그 클러스터 배송건은 정확히
+      // "이번 재계산이 없었던 것"과 같은 상태로 남는다 — 유령 그룹이 생기지 않는다.
+      await deliveryGroupsRepository.deleteByIds([createdId]);
+    }
   });
+
+  if (failures.length > 0) {
+    const detail = failures
+      .map(({ clusterIndex, error }) => `cluster#${clusterIndex}: ${error instanceof Error ? error.message : String(error)}`)
+      .join("; ");
+    throw new Error(`배송 그룹 재계산 중 ${failures.length}개 클러스터 처리 실패 — ${detail}`);
+  }
 }
 
 /**
