@@ -60,6 +60,29 @@ async function waitForCondition(check: () => Promise<boolean>, timeoutMs = 10000
   return false;
 }
 
+/**
+ * STEP10-8-A(2026-08-28 CPO 작업지시) — F3 조사로 확인된 사실: 이 QA
+ * tenant(user3)에도 실제 운영 공지(예: "주문한장 업데이트 안내")가 이
+ * 스크립트가 만든 공지와 무관하게 별도로 존재/미확인 상태일 수 있고,
+ * 그 공지의 클라이언트 fetch→렌더까지 걸리는 시간이 800ms 고정 대기보다
+ * 길 수 있다. "dismiss한 공지1이 재노출되지 않는다"를 검증하려면 "다이얼로그가
+ * 아예 없다"가 아니라 "공지1 제목을 담은 다이얼로그가 뜨지 않는다"를 봐야
+ * 한다 — 그래야 이 스크립트와 무관한 다른 정당한 미확인 공지가 나타나는
+ * 것을 오탐(false FAIL)으로 잡지 않는다. windowMs 동안 폴링하며, 그 사이에
+ * 공지1 제목이 한 번이라도 뜨면 즉시 실패로 판정한다.
+ */
+async function assertTitleNeverAppears(page: Page, title: string, windowMs = 4000): Promise<boolean> {
+  const deadline = Date.now() + windowMs;
+  while (Date.now() < deadline) {
+    const dlg = page.getByRole("dialog");
+    if ((await dlg.count()) > 0 && (await dlg.isVisible().catch(() => false))) {
+      if ((await dlg.getByText(title).count()) > 0) return false;
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return true;
+}
+
 /** 팝업이 떠 있으면 (dismiss 기록 없이) ESC로 닫아 이후 상호작용을 가로막지 않게 한다. */
 async function closePopupIfVisible(page: Page) {
   const dialog = page.getByRole("dialog");
@@ -223,14 +246,14 @@ async function main() {
     record('F1. "오늘 그만 보기" 클릭 시 dismissed_date가 오늘 날짜로 기록됨', dismissedToday);
 
     await page.reload({ waitUntil: "load" });
-    const noPopupSameDaySameSession = !(await page.getByRole("dialog").isVisible().catch(() => false));
+    const noPopupSameDaySameSession = await assertTitleNeverAppears(page, TITLE_1);
     record("F2. 같은 날 같은 세션에서 재방문(reload) 시 공지1 팝업이 다시 뜨지 않음", noPopupSameDaySameSession);
 
     await setSession(context, OWNER, "user");
     await page.goto(`${BASE_URL}/dashboard`, { waitUntil: "load" });
-    await page.waitForTimeout(800);
-    const noPopupSameDayFreshLogin = !(await page.getByRole("dialog").isVisible().catch(() => false));
+    const noPopupSameDayFreshLogin = await assertTitleNeverAppears(page, TITLE_1);
     record("F3. 같은 날 새 로그인(쿠키 재발급)에도 공지1 팝업이 다시 뜨지 않음(당일 숨김 유지)", noPopupSameDayFreshLogin);
+    await closePopupIfVisible(page); // 이 tenant의 다른 정당한 미확인 공지(예: 실제 운영 공지)가 떠 있을 수 있으므로 이후 단계 진행 전 정리.
 
     // ---- Scenario G: 날짜가 바뀌면(자정 경계) 같은 공지가 다시 노출된다 ----
     // 실제 자정을 기다리는 대신, 방금 기록된 dismissed_date를 "어제"로 직접
