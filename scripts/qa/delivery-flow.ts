@@ -1,8 +1,8 @@
 /**
  * 배송관리 + 기사앱 Production QA — Chrome 확장 없이 Playwright로 실제
  * 배포 URL(기본값: https://jumunhanjang.vercel.app)을 헤드리스 브라우저로
- * 직접 조작한다. 테스트 tenant(user2)에 "QA-CPO-" prefix로 식별 가능한
- * 임시 데이터를 만들고, 시나리오를 끝내면 finally에서 반드시 지운다.
+ * 직접 조작한다. 테스트 tenant(QA_DEFAULT_OWNER)에 "QA-CPO-" prefix로 식별
+ * 가능한 임시 데이터를 만들고, 시나리오를 끝내면 finally에서 반드시 지운다.
  *
  * 실행: npx tsx scripts/qa/delivery-flow.ts
  * 로컬 dev로 돌리려면: QA_BASE_URL=http://localhost:3104 npx tsx scripts/qa/delivery-flow.ts
@@ -13,6 +13,7 @@ import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { seedQaOrders, cleanupQaOrders, type QaSeedResult } from "./lib/qa-data";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver } from "./lib/qa-guard";
+import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -102,6 +103,7 @@ async function run() {
 
     const context = await browser.newContext({ baseURL: BASE_URL });
     const page = await context.newPage();
+    await registerAnnouncementPopupHandler(page);
 
     // ---- 1~3: 배정필요 기본 화면 ----
     await setSession(context, OWNER, "user");

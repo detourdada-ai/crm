@@ -1,8 +1,8 @@
 /**
  * 배송목록 지역 멀티필터 + Export 회귀 — Production을 Playwright로 직접
- * 조작한다. user2에 "QA-CPO-" prefix 임시 주문 4건(강남구x2/송파구x1/강동구x1)을
- * 만들고, 전체/개별/복수/해제/새로고침/초기화/Export 일치를 검증한 뒤
- * finally에서 전부 지운다(AGENTS.md 절차).
+ * 조작한다. QA_DEFAULT_OWNER에 "QA-CPO-" prefix 임시 주문
+ * 4건(강남구x2/송파구x1/강동구x1)을 만들고, 전체/개별/복수/해제/새로고침/
+ * 초기화/Export 일치를 검증한 뒤 finally에서 전부 지운다(AGENTS.md 절차).
  *
  * 실행: npx tsx --env-file=.env.local scripts/qa/region-filter-flow.ts
  */
@@ -13,6 +13,7 @@ import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
+import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -133,6 +134,7 @@ async function main() {
 
     const context = await browser.newContext({ baseURL: BASE_URL });
     const page = await context.newPage();
+    await registerAnnouncementPopupHandler(page);
     await setSession(context, OWNER, "user");
 
     // ---- 1. 기본(전체 지역) — QA 4건 전부 노출 ----

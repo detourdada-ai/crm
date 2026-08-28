@@ -1,7 +1,8 @@
 /**
  * ACC(계정관리/기사관리 분리) Production QA — Playwright로 실제 배포 URL을
- * 직접 조작한다. 테스트 tenant(user2/user3)에만 "QA-CPO-" 임시 기사 계정을
- * 만들고, 시나리오가 끝나면 finally에서 반드시 원상복구한다(AGENTS.md 절차).
+ * 직접 조작한다. 테스트 tenant(QA_DEFAULT_OWNER/QA_SECONDARY_OWNER)에만
+ * "QA-CPO-" 임시 기사 계정을 만들고, 시나리오가 끝나면 finally에서 반드시
+ * 원상복구한다(AGENTS.md 절차).
  *
  * 실행: npx tsx scripts/qa/account-management.ts
  */
@@ -12,6 +13,7 @@ import { hashPassword } from "../../src/lib/auth/password";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { QA_DEFAULT_OWNER, QA_SECONDARY_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
+import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const RUN_TAG = String(Date.now());
@@ -119,6 +121,7 @@ async function main() {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page: Page = await context.newPage();
+  await registerAnnouncementPopupHandler(page);
   let currentDriverUsername = initialUsername;
 
   try {

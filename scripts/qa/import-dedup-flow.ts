@@ -14,6 +14,7 @@ import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { QA_DEFAULT_OWNER, QA_SECONDARY_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
+import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -115,6 +116,7 @@ async function main() {
   try {
     const context = await browser.newContext({ baseURL: BASE_URL });
     const page = await context.newPage();
+    await registerAnnouncementPopupHandler(page);
     await setSession(context, OWNER, "user");
 
     // ============================================================
@@ -358,6 +360,7 @@ async function main() {
     // ============================================================
     const mctx = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 390, height: 844 } });
     const mpage = await mctx.newPage();
+    await registerAnnouncementPopupHandler(mpage);
     await setSession(mctx, OWNER, "user");
     const nameH = `${QA_PREFIX}모바일H`;
     const phoneH = "010-9101-0009";

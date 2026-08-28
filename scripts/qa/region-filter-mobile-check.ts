@@ -1,7 +1,8 @@
 /**
  * 배송목록 지역 멀티필터 — 모바일 반응형 스팟체크 (작업지시서 §9).
  * 390px 뷰포트에서 Popover 잘림/가로스크롤/체크박스 탭 영역/라벨 길이/
- * 필터 영역 줄바꿈을 확인한다. user2에 disposable 데이터를 만들고 끝나면 지운다.
+ * 필터 영역 줄바꿈을 확인한다. QA_DEFAULT_OWNER에 disposable 데이터를
+ * 만들고 끝나면 지운다.
  */
 import { randomUUID } from "node:crypto";
 import { chromium, type BrowserContext } from "playwright";
@@ -9,6 +10,7 @@ import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
+import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -106,6 +108,7 @@ async function main() {
 
     const context = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 390, height: 844 } });
     const page = await context.newPage();
+    await registerAnnouncementPopupHandler(page);
     await setSession(context, OWNER);
 
     await page.goto(`${BASE_URL}/delivery?filter=all&dateFilter=today`, { waitUntil: "networkidle" });

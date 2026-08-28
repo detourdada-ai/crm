@@ -3,8 +3,9 @@
  * 경고/배송순서/주소/지역필터 일관성) + 수동분리(delivery_group_locked)
  * 전체 생명주기를 Production을 Playwright로 직접 조작해 검증한다.
  *
- * user2에 "QA-CPO-" prefix 임시 배송건을 만들고, 끝나면 finally에서 반드시
- * 지운다(AGENTS.md) — 삭제 순서는 order_shipments → orders → customers.
+ * QA_DEFAULT_OWNER에 "QA-CPO-" prefix 임시 배송건을 만들고, 끝나면
+ * finally에서 반드시 지운다(AGENTS.md) — 삭제 순서는 order_shipments →
+ * orders → customers.
  *
  * 실행: npx tsx scripts/qa/delivery-group-ux-flow.ts
  */
@@ -16,6 +17,7 @@ import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { kstTodayIso } from "./lib/qa-data";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver } from "./lib/qa-guard";
+import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -302,6 +304,7 @@ async function main() {
 
     const context = await browser.newContext({ baseURL: BASE_URL });
     const page = await context.newPage();
+    await registerAnnouncementPopupHandler(page);
     await setSession(context, OWNER, "user");
 
     await page.goto(`${BASE_URL}/delivery?filter=all&dateFilter=today`, { waitUntil: "networkidle" });
@@ -461,7 +464,13 @@ async function main() {
     // ---- Case 11: 분리 해제 후 재계산하면 다시 100m 클러스터링 대상에 포함된다 ----
     await page.reload({ waitUntil: "networkidle" });
     const restoreBtn = page.locator(`[data-testid="shipment-row-${c2b1Id}"]`).getByRole("button", { name: "분리 해제" });
-    const restoreBtnVisible = await restoreBtn.isVisible().catch(() => false);
+    // reload 직후 단발성 isVisible() 체크는 렌더 완료 전 타이밍에 걸리면
+    // false를 반환해버린다(STEP10-8-A에서 확인한 것과 같은 유형의 QA 스크립트
+    // 타이밍 결함) — waitFor(visible)로 실제 렌더될 때까지 기다린다.
+    const restoreBtnVisible = await restoreBtn
+      .waitFor({ state: "visible", timeout: 10000 })
+      .then(() => true)
+      .catch(() => false);
     if (restoreBtnVisible) {
       await restoreBtn.click();
       await page.waitForLoadState("networkidle").catch(() => {});
@@ -476,7 +485,7 @@ async function main() {
         return data;
       },
       (row) => row?.delivery_group_locked === false && !!row?.delivery_group_id,
-      // user2 테스트 테넌트에 누적된 실제 규모(오늘자 129건/그룹 25개)에서는
+      // QA 테스트 테넌트에 누적된 실제 규모(오늘자 129건/그룹 25개)에서는
       // 재계산이 그룹 수만큼 순차 DB 왕복을 하므로 20초로는 부족할 수 있다
       // (읽기전용으로 실측: 별도 버그가 아니라 재계산 자체의 소요시간 문제).
       45000

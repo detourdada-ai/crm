@@ -18,6 +18,7 @@ import { hashPassword } from "../../src/lib/auth/password";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { kstTodayIso } from "./lib/qa-data";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
+import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
 import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
@@ -97,6 +98,7 @@ async function main() {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await stubDaumPostcode(context);
   const page = await context.newPage();
+  await registerAnnouncementPopupHandler(page);
 
   try {
     // ============================================================

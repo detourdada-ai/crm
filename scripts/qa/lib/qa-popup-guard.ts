@@ -1,0 +1,39 @@
+/**
+ * STEP10-8-B(2026-08-28 CPO 작업지시) — 공지 시스템(STEP8-C) 도입 이후, 로그인한
+ * role="user" 세션에는 어느 보호 페이지에서든 미확인 공지 팝업이 뜰 수 있다.
+ * 공지 시스템을 몰랐던(그 이전에 작성된) 기존 QA 스크립트들은 이 오버레이가
+ * 자기 클릭 대상을 가리는 것을 예상하지 못해 타임아웃으로 실패한다
+ * (qa:delivery-group-ux-flow의 지역 필터 버튼 클릭 실패 등, STEP10-7-A에서
+ * 발견). Production 공지를 끄거나 숨기는 방식으로 QA를 통과시키는 건 CPO
+ * 방침에 어긋난다 — 대신 "공지가 있으면 정책대로 치우고, 없으면 그냥
+ * 진행"하는 대응을 모든 QA 스크립트가 공유하는 helper 하나로 통일한다.
+ *
+ * Playwright의 addLocatorHandler()는 정확히 이 용도(쿠키 배너 등 예기치
+ * 않은 오버레이가 다음 액션을 막을 때 자동으로 치워주는 것)로 설계된
+ * API다 — 매 페이지 이동/클릭 지점마다 수동으로 dismiss 호출을 흩뿌리지
+ * 않아도, 그 오버레이가 다른 액션을 막으려는 순간 Playwright가 알아서
+ * 먼저 처리해준다.
+ *
+ * 대상 다이얼로그를 "오늘 그만 보기" 버튼을 담고 있는 role=dialog로 좁혀서
+ * 찾는다 — 이 앱의 다른 모든 다이얼로그(삭제 확인/주문 수정 등)는 이 버튼이
+ * 없으므로, 그 어떤 시나리오가 스스로 열어둔 다이얼로그도 오탐으로 건드리지
+ * 않는다. ESC로 닫는다 — "그냥 닫기"는 dismiss를 기록하지 않으므로(앱 정책,
+ * announcement-login-popup.tsx) 이 handler가 실행돼도 실제 공지 dismiss
+ * 상태에 어떤 부작용도 남기지 않는다(announcements-flow.ts 자신의 F1-K4
+ * 시나리오처럼 dismiss 자체를 검증하는 스크립트에는 이 handler를 등록하지
+ * 않는다 — 등록하면 그 스크립트 자신의 클릭을 가로채 버린다).
+ *
+ * 모든 Playwright 기반 QA 스크립트는 `context.newPage()` 직후
+ * `await registerAnnouncementPopupHandler(page)`를 한 번만 호출하면 된다 —
+ * 이후 페이지 전체 수명 동안 자동으로 적용되고, 앞으로 공지 시스템에 새
+ * 종류의 팝업이 추가돼도(같은 role=dialog 구조를 따르는 한) 각 스크립트를
+ * 개별 수정할 필요가 없다.
+ */
+import type { Page } from "playwright";
+
+export async function registerAnnouncementPopupHandler(page: Page): Promise<void> {
+  const announcementDialog = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "오늘 그만 보기" }) });
+  await page.addLocatorHandler(announcementDialog, async () => {
+    await page.keyboard.press("Escape");
+  });
+}
