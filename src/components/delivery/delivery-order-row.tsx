@@ -251,7 +251,14 @@ function SeparateFromGroupControl({ shipmentId }: { shipmentId: string }) {
         toast.error(result.error ?? "배송건을 그룹에서 분리하는 중 오류가 발생했습니다.");
         return;
       }
-      toast.success("배송건을 그룹에서 분리했습니다.");
+      // STEP10-7-B: 분리(잠금) 자체는 성공했지만 남은 배송건의 그룹 재계산이
+      // 실패했을 수 있다 — 이 경우 성공 토스트를 그대로 보여주면 사용자가
+      // "다 끝났다"고 오해하므로 구분된 경고를 띄운다.
+      if (result.regroupFailed) {
+        toast.warning("배송건 분리는 완료됐지만, 나머지 배송건의 그룹 계산에 실패했습니다. 배송관리 화면을 새로고침해 확인해주세요.");
+      } else {
+        toast.success("배송건을 그룹에서 분리했습니다.");
+      }
       setOpen(false);
     });
   }
@@ -302,7 +309,11 @@ function RestoreFromSeparationControl({ shipmentId }: { shipmentId: string }) {
         toast.error(result.error ?? "그룹 자동계산 대상으로 되돌리는 중 오류가 발생했습니다.");
         return;
       }
-      toast.success("다음 배송그룹 계산부터 다시 포함됩니다.");
+      if (result.regroupFailed) {
+        toast.warning("분리 해제는 완료됐지만, 그룹 계산에 실패했습니다. 배송관리 화면을 새로고침해 확인해주세요.");
+      } else {
+        toast.success("다음 배송그룹 계산부터 다시 포함됩니다.");
+      }
     });
   }
 

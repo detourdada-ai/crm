@@ -24,6 +24,13 @@ export interface DeliveryGroupsResult {
 export interface DeliveryGroupActionState {
   ok: boolean;
   error: string | null;
+  /**
+   * STEP10-7-B(2026-08-28 CPO 작업지시): 잠금/해제(ok) 자체는 성공했지만
+   * 뒤이은 배송그룹 재계산이 실패했을 때만 true — "분리는 됐지만 남은
+   * 그룹은 갱신되지 않았을 수 있다"를 UI가 성공 토스트와 구분해서 보여줄
+   * 수 있게 한다. ok:false(잠금/해제 자체 실패)일 때는 의미 없음.
+   */
+  regroupFailed?: boolean;
 }
 
 /**
@@ -111,9 +118,12 @@ export async function separateShipmentFromGroupAction(shipmentId: string): Promi
     const session = await requireSession();
     const ownerScope = ownerScopeFor(session);
     const { tenantId, ownerUsername, deliveryDate } = await orderShipmentsRepository.setGroupLocked(shipmentId, true, ownerScope);
-    if (deliveryDate) await triggerDeliveryGroupRegeneration(tenantId, deliveryDate, ownerUsername, "manual_separate");
+    // STEP10-7-B: 잠금 자체(setGroupLocked)는 여기까지 왔으면 성공한 것이다.
+    // 재계산은 별개 단계이므로 결과를 따로 받아 regroupFailed로 전달한다 —
+    // 재계산이 실패해도 잠금 성공까지 실패로 되돌리지 않는다(P15-A 정신 유지).
+    const regrouped = deliveryDate ? await triggerDeliveryGroupRegeneration(tenantId, deliveryDate, ownerUsername, "manual_separate") : true;
     revalidatePath("/delivery");
-    return { ok: true, error: null };
+    return { ok: true, error: null, regroupFailed: !regrouped };
   } catch (e) {
     return { ok: false, error: toActionError(e, "배송건을 그룹에서 분리하는 중 오류가 발생했습니다.") };
   }
@@ -125,9 +135,9 @@ export async function restoreShipmentToGroupingAction(shipmentId: string): Promi
     const session = await requireSession();
     const ownerScope = ownerScopeFor(session);
     const { tenantId, ownerUsername, deliveryDate } = await orderShipmentsRepository.setGroupLocked(shipmentId, false, ownerScope);
-    if (deliveryDate) await triggerDeliveryGroupRegeneration(tenantId, deliveryDate, ownerUsername, "manual_restore");
+    const regrouped = deliveryDate ? await triggerDeliveryGroupRegeneration(tenantId, deliveryDate, ownerUsername, "manual_restore") : true;
     revalidatePath("/delivery");
-    return { ok: true, error: null };
+    return { ok: true, error: null, regroupFailed: !regrouped };
   } catch (e) {
     return { ok: false, error: toActionError(e, "배송건을 그룹 자동계산 대상으로 되돌리는 중 오류가 발생했습니다.") };
   }

@@ -189,16 +189,27 @@ export async function regenerateDeliveryGroupsForTenant(
  * 절대 throw하지 않는다: CPO 방침(P15-A 3번) — 그룹 재계산 실패가 주문
  * 저장/삭제 자체를 실패로 보이게 하면 안 되므로, 실패는 로그로만 남기고
  * 호출자에게는 항상 정상 반환한다.
+ *
+ * STEP10-7-B(2026-08-28 CPO 작업지시): 다만 "실패를 삼킨다"와 "실패 여부를
+ * 아무도 알 수 없다"는 다른 문제다 — 자동 호출(주문 생성/수정/삭제/취소/
+ * Excel import 등)은 여전히 반환값을 무시하고 그대로 계속 진행해도 되지만
+ * (P15-A 정책 유지, 이번 STEP 범위 밖), 수동 액션(배송건 분리/분리해제)처럼
+ * "재계산까지 성공했다"고 사용자에게 알려야 하는 호출자는 이 반환값으로
+ * 구분해야 한다. 그래서 성공/실패를 boolean으로 반환하도록 바꾼다 — throw는
+ * 여전히 안 하고, 호출자가 강제로 반환값을 받아 처리할 필요도 없다(기존
+ * 자동 호출부는 `await triggerDeliveryGroupRegeneration(...)`로 반환값을
+ * 그냥 버려도 동작이 완전히 동일하다).
  */
 export async function triggerDeliveryGroupRegeneration(
   tenantId: string,
   dateStr: string,
   ownerUsername: string,
   operation?: string
-): Promise<void> {
+): Promise<boolean> {
   try {
     const shipments = await orderShipmentsRepository.findEligibleForGrouping(dateStr, ownerUsername);
     await regenerateDeliveryGroupsForTenant(tenantId, dateStr, shipments, ownerUsername);
+    return true;
   } catch (e) {
     // STEP7-E(2026-08 CPO 작업지시): 실패를 여전히 삼키지만(P15-A 방침 유지 —
     // 그룹 재계산 실패가 주문 저장 자체를 실패로 보이게 하면 안 됨), 어떤
@@ -209,5 +220,6 @@ export async function triggerDeliveryGroupRegeneration(
     console.warn(
       `[delivery-group-regen-failed] operation=${operation ?? "unknown"} tenant_id=${tenantId} delivery_date=${dateStr} error=${message}`
     );
+    return false;
   }
 }
