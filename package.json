@@ -11,6 +11,7 @@
     "qa:delivery-next": "tsx scripts/qa/delivery-next-flow.ts",
     "qa:delivery-group-ux": "tsx scripts/qa/delivery-group-ux-flow.ts",
     "qa:delivery-group-performance": "tsx scripts/qa/delivery-group-performance.ts",
+    "qa:delivery-group-partial-failure": "tsx scripts/qa/delivery-group-partial-failure-flow.ts",
     "qa:account-management": "tsx scripts/qa/account-management.ts",
     "qa:beta": "tsx scripts/qa/beta-flow.ts",
     "qa:delivery-region": "tsx scripts/qa/region-filter-flow.ts",
