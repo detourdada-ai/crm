@@ -274,7 +274,15 @@ async function run() {
     // 그 경로를 가리키는지 확인한 뒤 직접 이동해 같은 데이터 동기화를 검증한다.
     await setSession(context, OWNER, "user");
     await page.goto(`${BASE_URL}/delivery`, { waitUntil: "networkidle" });
-    const driverLocationHref = await page.getByRole("link", { name: "기사 위치", exact: false }).getAttribute("href");
+    // 2026-08-28 조사: 이 링크는 PageHeader action에 조건 없이 항상 렌더되고
+    // (src/app/(protected)/delivery/page.tsx:243), 독립 재현 스크립트로는
+    // 6초 안에 정상 확인됨 — 앱 결함은 아니다. 다만 이 스크립트가 20여 개
+    // 시나리오를 하나의 page/context로 오래 이어온 뒤라 렌더가 기본
+    // actionability 대기(30초)보다 늦게 끝나는 경우가 있어, waitFor로
+    // 명시적으로 좀 더 기다린 뒤 확인한다.
+    const driverLocationLink = page.getByRole("link", { name: "기사 위치", exact: false });
+    await driverLocationLink.waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+    const driverLocationHref = await driverLocationLink.getAttribute("href").catch(() => null);
     record("15a. 배송관리의 '기사 위치'가 전용 페이지(/delivery/drivers) 링크로 노출", driverLocationHref === "/delivery/drivers", `href=${driverLocationHref}`);
 
     await page.goto(`${BASE_URL}/delivery/drivers`, { waitUntil: "networkidle" });
