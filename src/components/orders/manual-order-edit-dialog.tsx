@@ -27,7 +27,22 @@ import {
 } from "@/lib/constants/payment";
 import type { Order, OrderItem } from "@/types/domain";
 
-export function ManualOrderEditDialog({ order, item }: { order: Order; item: OrderItem | null }) {
+export function ManualOrderEditDialog({
+  order,
+  item,
+  deliveryGroupLocked = false,
+}: {
+  order: Order;
+  item: OrderItem | null;
+  /**
+   * STEP10-9(2026-08-28 CPO 작업지시) — 배송관리에서만 보이던 수동분리
+   * (delivery_group_locked) 상태를 주문 수정 화면에서도 최소한으로 알려준다.
+   * 여기서는 안내만 하고 Lock 로직/자동 해제/그룹 알고리즘/주문 수정 동작은
+   * 전혀 건드리지 않는다 — 주소를 바꿔도 이 배송건은 계속 그룹 재계산에서
+   * 제외된다는 것만 사장님이 미리 알 수 있게 한다.
+   */
+  deliveryGroupLocked?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
@@ -61,6 +76,11 @@ export function ManualOrderEditDialog({ order, item }: { order: Order; item: Ord
           <DialogTitle>주문 수정</DialogTitle>
           <DialogDescription>이 주문의 내용을 수정합니다. 고객 정보는 별도로 동기화되지 않으니 필요하면 고객관리에서도 함께 수정해주세요.</DialogDescription>
         </DialogHeader>
+        {deliveryGroupLocked ? (
+          <p className="rounded-md bg-warning-soft px-2.5 py-1.5 text-xs text-warning">
+            이 배송건은 자동 배송그룹 계산에서 제외되어 있습니다. 주소를 수정해도 그룹은 자동으로 바뀌지 않습니다.
+          </p>
+        ) : null}
         <form ref={formRef} onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="editName">수령인</Label>

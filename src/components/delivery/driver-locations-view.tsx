@@ -21,12 +21,50 @@ function isShiftRunning({ shift }: DriverLocation): boolean {
   return !!shift?.started_at && !shift?.ended_at;
 }
 
-function statusText({ shift }: DriverLocation): string {
+/**
+ * STEP10-9(2026-08-28 CPO 작업지시) — 기사 앱은 운행 중 5분 간격으로만 위치를
+ * 보낸다(my-deliveries-list.tsx의 LOCATION_UPDATE_INTERVAL_MS, 실시간 GPS
+ * 추적이 아니라 참고 정보). "N분 전" 숫자만 보여주면 한 번 핑을 놓친 것과
+ * 앱이 꺼진 지 오래된 것을 사장님이 구분할 수 없다 — 정상 주기(≤10분, 1회
+ * 지연까지 허용)/지연(10~30분)/오래됨(30분 이상, 6회 이상 누락)으로 나눠
+ * 문구와 점 색을 다르게 준다. 실시간 GPS처럼 과장하지 않도록 "위치
+ * 업데이트"라는 표현은 유지하고 "추적 중"류의 문구는 쓰지 않는다.
+ */
+const LOCATION_STALE_AFTER_MIN = 10;
+const LOCATION_VERY_STALE_AFTER_MIN = 30;
+
+type LocationFreshness = "fresh" | "stale" | "veryStale" | "unknown";
+
+function locationFreshness(l: DriverLocation): LocationFreshness {
+  if (!isShiftRunning(l)) return "unknown";
+  const mins = minutesAgo(l.shift?.last_location_at ?? null);
+  if (mins == null) return "unknown";
+  if (mins >= LOCATION_VERY_STALE_AFTER_MIN) return "veryStale";
+  if (mins >= LOCATION_STALE_AFTER_MIN) return "stale";
+  return "fresh";
+}
+
+function statusText(l: DriverLocation): string {
+  const { shift } = l;
   if (!shift?.started_at) return "운행 전";
   if (shift.ended_at) return "운행 종료";
   const mins = minutesAgo(shift.last_location_at);
   if (mins == null) return "운행중 · 위치 없음";
+  const freshness = locationFreshness(l);
+  if (freshness === "veryStale") return `운행중 · 위치 정보가 오래됨(${mins}분 전)`;
+  if (freshness === "stale") return `운행중 · 위치 업데이트 지연(${mins}분 전)`;
   return `운행중 · ${mins}분 전`;
+}
+
+function statusDotClass(l: DriverLocation): string {
+  if (!isShiftRunning(l)) return "bg-muted-foreground";
+  const freshness = locationFreshness(l);
+  // "운행중" 자체는 여전히 사실이므로, 점을 회색(꺼짐처럼 보임)으로 되돌리지
+  // 않는다 — 지연/오래됨 모두 "지금 주의가 필요한 상태"로 같은 warning 점을
+  // 쓰고, 정도 차이는 statusText의 문구("지연"/"오래됨")로만 구분한다.
+  if (freshness === "stale" || freshness === "veryStale") return "bg-warning";
+  if (freshness === "unknown") return "bg-muted-foreground";
+  return "bg-success";
 }
 
 const CLOCK_TICK_MS = 15 * 1000;
@@ -239,8 +277,13 @@ export function DriverLocationsView() {
                     <span className={cn("size-2.5 shrink-0 rounded-full", driverColorById.get(l.driver.id))} />
                     {l.driver.name}
                   </span>
-                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className={cn("size-1.5 shrink-0 rounded-full", isShiftRunning(l) ? "bg-success" : "bg-muted-foreground")} />
+                  <span
+                    className={cn(
+                      "flex items-center gap-1.5 text-xs",
+                      locationFreshness(l) === "stale" || locationFreshness(l) === "veryStale" ? "text-warning" : "text-muted-foreground"
+                    )}
+                  >
+                    <span className={cn("size-1.5 shrink-0 rounded-full", statusDotClass(l))} />
                     {statusText(l)}
                   </span>
                 </div>

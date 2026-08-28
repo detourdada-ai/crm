@@ -100,7 +100,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           </p>
         ) : null}
         <div className="ml-auto flex gap-2">
-          <ManualOrderEditDialog order={order} item={items[0] ?? null} />
+          <ManualOrderEditDialog order={order} item={items[0] ?? null} deliveryGroupLocked={singleShipment?.delivery_group_locked ?? false} />
           <OrderCancelButton orderId={order.id} deliveryStatus={order.delivery_status} />
           {order.import_id === null ? <ManualOrderDeleteButton orderId={order.id} /> : null}
         </div>
@@ -179,6 +179,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                     <span className="text-muted-foreground">-</span>
                   )}
                 </div>
+                {singleShipment?.delivery_group_locked ? (
+                  <p className="border-b py-1.5 text-xs text-warning last:border-0">
+                    ※ 이 배송건은 자동 배송그룹 계산에서 제외되어 있습니다.
+                  </p>
+                ) : null}
               </>
             ) : (
               <div className="space-y-2 border-b py-1.5 last:border-0">
@@ -203,6 +208,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                           drivers={drivers}
                         />
                       </div>
+                      {s.delivery_group_locked ? (
+                        <p className="text-xs text-warning">※ 이 배송건은 자동 배송그룹 계산에서 제외되어 있습니다.</p>
+                      ) : null}
                       <div className="flex justify-end">
                         <OrderDeliveryStatusAction shipmentId={s.id} deliveryStatus={s.delivery_status} />
                       </div>
