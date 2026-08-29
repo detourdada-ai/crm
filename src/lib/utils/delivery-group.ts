@@ -30,8 +30,20 @@ export function groupRegionLabel(
  */
 export function extractComplexName(addressSnapshot: string | null | undefined): string | null {
   if (!addressSnapshot) return null;
-  const match = addressSnapshot.match(/\(([^,)]+),\s*([^)]+)\)/);
-  return match ? match[2].trim() : null;
+  const standard = addressSnapshot.match(/\(([^,)]+),\s*([^)]+)\)/);
+  if (standard) return standard[2].trim();
+  // STEP11-1-B(CPO 작업지시, 2026-08): "(법정동) 건물명 101동 202호"처럼
+  // 건물명이 괄호 밖(수기입력/전화주문 주소 등)에 오는 경우 위 표준 패턴은
+  // 못 잡는다. 오탐 방지를 위해 이 폴백은 "아파트"/"APT" 키워드가 실제로
+  // 포함된 후보만 인정한다(그 외 임의 텍스트를 건물명으로 추정하지 않는다는
+  // 기존 원칙 유지) — isApartmentName()과 이중으로 검사하는 셈이지만, 여기서
+  // 걸러야 폴백이 "숫자 앞의 아무 텍스트"를 전부 건물명으로 오인하지 않는다.
+  const afterDong = addressSnapshot.match(/\([^,)]+\)\s*([^\d]+)/);
+  if (afterDong) {
+    const candidate = afterDong[1].trim();
+    if (candidate && /아파트|APT/i.test(candidate)) return candidate;
+  }
+  return null;
 }
 
 /**
