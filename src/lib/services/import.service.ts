@@ -13,9 +13,9 @@ import { parseDeliveryDateFromOption, parseDeliveryAreaFromOption } from "@/lib/
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { geocodeBatch, type GeocodeFields } from "@/lib/services/geocoding.service";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
-import { kstDayDateStrOf } from "@/lib/utils/kst-date";
+import { kstDayDateStrOf, kstTodayIso } from "@/lib/utils/kst-date";
 import { DEFAULT_PAYMENT_STATUS, isPaymentStatus, isPaymentMethod } from "@/lib/constants/payment";
-import type { ParsedSheet, ColumnMapping } from "@/types/excel";
+import type { ParsedSheet, ColumnMapping, ImportDateFilterInput } from "@/types/excel";
 import type { Customer, ImportRowError, ImportSummary, Order, OrderItem, OrderShipment, PaymentStatus, PaymentMethod } from "@/types/domain";
 
 // 주문번호가 없는 행은 다른 행과 묶일 근거가 없어 행 하나만으로 독립된
@@ -51,6 +51,8 @@ export interface RunImportInput {
    * 같이 쓸 수 있다.
    */
   approvedCandidateGroupKeys?: string[];
+  /** STEP11-2 Phase4(2026-08 CPO 작업지시): 날짜 기준 Import 정책 — 생략하거나 mode="all"이면 기존과 완전히 동일하게 동작한다. */
+  dateFilter?: ImportDateFilterInput;
 }
 
 export interface RunImportResult {
@@ -118,6 +120,31 @@ export function parseOptionalDate(value: unknown): string | null {
     if (!Number.isNaN(d.getTime())) return d.toISOString();
   }
   return null;
+}
+
+/**
+ * STEP11-2 Phase4(2026-08 CPO 작업지시): "오늘 주문만 접수" 같은 특정 사업장
+ * 요구를 하드코딩하지 않고, "어떤 날짜 컬럼을 기준으로 어떤 날짜의 주문을
+ * 가져올 것인가"로 일반화한 정책의 핵심 판단 함수. mode="all"(기본값)이면
+ * 기존 동작과 완전히 동일(필터 없음). "today"/"specific_date"는 실제
+ * 매핑된 날짜 컬럼(dateFilter.field)의 원본 셀 값만 본다 — 옵션정보에서
+ * 파생되는 상품별 배송일(parseDeliveryDateFromOption)처럼 이 시점 이후에
+ * 계산되는 값은 쓰지 않는다(그룹 단위로 한 번만 판단해야 dedup 이전에
+ * 적용할 수 있다는 CPO 지시와 일치). 기준 컬럼 값 자체가 비어 있거나
+ * 해석 불가능하면 "그 날짜인지 확인할 수 없다"는 뜻이므로 안전하게
+ * 제외한다(임의로 포함시키지 않는다).
+ */
+export function isRowExcludedByDateFilter(
+  row: Record<string, unknown>,
+  mapping: ColumnMapping,
+  dateFilter: ImportDateFilterInput | undefined
+): boolean {
+  if (!dateFilter || dateFilter.mode === "all") return false;
+  const targetDay = dateFilter.mode === "today" ? kstTodayIso() : dateFilter.date;
+  if (!targetDay) return false;
+  const raw = parseOptionalDate(getMapped(row, mapping, dateFilter.field));
+  if (!raw) return true;
+  return kstDayDateStrOf(raw) !== targetDay;
 }
 
 /**
@@ -286,6 +313,7 @@ export async function runImport({
   mapping,
   ownerUsername,
   approvedCandidateGroupKeys,
+  dateFilter,
 }: RunImportInput): Promise<RunImportResult> {
   const approvedGroupKeys = new Set(approvedCandidateGroupKeys ?? []);
   const tenant = await tenantsRepository.findByUsername(ownerUsername);
@@ -333,6 +361,11 @@ export async function runImport({
   // 그렇게 payment_status=null("확인 필요")로 남긴 주문(그룹) 수를 세어
   // 업로드 결과 화면에 명확한 경고로 보여주기 위한 것이다.
   let unrecognizedPaymentStatusOrderCount = 0;
+  // STEP11-2 Phase4(2026-08 CPO 작업지시): 날짜 필터 조건에 맞지 않아 dedup
+  // 판정 이전에 제외된 건수 — successRows/failedRowCount/candidateSkipped*
+  // 와 완전히 분리된 별도 버킷이다(§4 "날짜 제외 ≠ 중복 ≠ 실패").
+  let dateExcludedRows = 0;
+  let dateExcludedOrders = 0;
 
   // 베타 오픈 준비 — 주문 데이터 표준화: "주문번호" 컬럼은 스마트스토어 같은
   // 채널에서만 존재하고, 일반 엑셀(성명/전화/품목/수량/주소 등 한 줄=한 주문
@@ -492,6 +525,15 @@ export async function runImport({
     const hasRealOrderNumber = !groupKey.startsWith(NO_ORDER_NUMBER_PREFIX);
     const orderNumber = hasRealOrderNumber ? groupKey : null;
     try {
+      // STEP11-2 Phase4(2026-08 CPO 작업지시): 날짜 필터는 dedup보다 먼저,
+      // 그룹의 첫 행만으로 판단한다 — 날짜 제외는 중복/신규/오류 판정
+      // 자체에 도달하지 않아야 하므로 이 try 블록의 가장 첫 검사여야 한다.
+      if (isRowExcludedByDateFilter(rows[0], mapping, dateFilter)) {
+        dateExcludedRows += rows.length;
+        dateExcludedOrders += 1;
+        continue;
+      }
+
       // 주문관리·표준엑셀·배송관리 UX 개선(2026-08 CPO 작업지시) §3-2/§4 Phase1
       // Confirm 시점 재검증: import-dedup.service.ts(Analyze)와 동일한 검사를
       // 여기서도 독립적으로 수행한다(브라우저 판단을 신뢰하지 않는다 — §14/§15
@@ -1107,6 +1149,8 @@ export async function runImport({
       repeatConfirmSkippedRows,
       repeatConfirmSkippedOrders,
       unrecognizedPaymentStatusOrders: unrecognizedPaymentStatusOrderCount,
+      dateExcludedRows,
+      dateExcludedOrders,
     },
     errors,
   };

@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { analyzeImportFileAction, analyzeDuplicatesAction, confirmImportAction } from "@/actions/import";
-import type { ColumnMapping, MappableField, ParsedSheet, DedupAnalysis } from "@/types/excel";
+import type { ColumnMapping, MappableField, ParsedSheet, DedupAnalysis, ImportDateFilterInput } from "@/types/excel";
 import type { ImportSummary, ImportRowError } from "@/types/domain";
 import { ImportDropzone } from "./import-dropzone";
 import { ColumnMappingForm } from "./column-mapping-form";
@@ -24,7 +24,14 @@ type Stage =
       unmapped: MappableField[];
       unrecognizedHeaders: string[];
     }
-  | { step: "review"; fileName: string; parsed: ParsedSheet; mapping: ColumnMapping; analysis: DedupAnalysis }
+  | {
+      step: "review";
+      fileName: string;
+      parsed: ParsedSheet;
+      mapping: ColumnMapping;
+      analysis: DedupAnalysis;
+      dateFilter: ImportDateFilterInput;
+    }
   | { step: "done"; importId: string; summary: ImportSummary; errors: ImportRowError[] };
 
 export function ImportWorkspace() {
@@ -79,23 +86,29 @@ export function ImportWorkspace() {
   // §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08): 컬럼 매핑 확정 →
   // 즉시 등록이 아니라 중복 분석(읽기 전용)을 먼저 거친다. 사용자가 검토
   // 화면에서 확인한 뒤에만 실제 등록(handleFinalConfirm)이 실행된다.
-  function handleCheckDuplicates(mapping: ColumnMapping) {
+  function handleCheckDuplicates(mapping: ColumnMapping, dateFilter: ImportDateFilterInput) {
     if (stage.step !== "mapping") return;
     const { fileName, parsed } = stage;
     startCheckingDuplicates(async () => {
-      const result = await analyzeDuplicatesAction(parsed, mapping);
+      const result = await analyzeDuplicatesAction(parsed, mapping, dateFilter);
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      setStage({ step: "review", fileName, parsed, mapping, analysis: result.analysis });
+      setStage({ step: "review", fileName, parsed, mapping, analysis: result.analysis, dateFilter });
     });
   }
 
   function handleFinalConfirm(approvedCandidateGroupKeys: string[]) {
     if (stage.step !== "review") return;
     startConfirming(async () => {
-      const result = await confirmImportAction(stage.fileName, stage.parsed, stage.mapping, approvedCandidateGroupKeys);
+      const result = await confirmImportAction(
+        stage.fileName,
+        stage.parsed,
+        stage.mapping,
+        approvedCandidateGroupKeys,
+        stage.dateFilter
+      );
       if (!result.ok) {
         toast.error(result.error);
         return;

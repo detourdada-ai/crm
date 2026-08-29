@@ -13,7 +13,7 @@ import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
-import type { ColumnMapping, MappableField, ParsedSheet, DedupAnalysis } from "@/types/excel";
+import type { ColumnMapping, MappableField, ParsedSheet, DedupAnalysis, ImportDateFilterInput } from "@/types/excel";
 import type { ImportRecord, ImportSummary, ImportRowError } from "@/types/domain";
 
 export interface AnalyzeImportResult {
@@ -67,11 +67,12 @@ export interface AnalyzeDuplicatesError {
  */
 export async function analyzeDuplicatesAction(
   parsed: ParsedSheet,
-  mapping: ColumnMapping
+  mapping: ColumnMapping,
+  dateFilter?: ImportDateFilterInput
 ): Promise<AnalyzeDuplicatesResult | AnalyzeDuplicatesError> {
   try {
     const session = await requireSession();
-    const analysis = await classifyDuplicates({ parsed, mapping, ownerUsername: session.username });
+    const analysis = await classifyDuplicates({ parsed, mapping, ownerUsername: session.username, dateFilter });
     return { ok: true, analysis };
   } catch (e) {
     return { ok: false, error: toActionError(e, "중복 확인 중 오류가 발생했습니다.") };
@@ -93,7 +94,8 @@ export async function confirmImportAction(
   fileName: string,
   parsed: ParsedSheet,
   mapping: ColumnMapping,
-  approvedCandidateGroupKeys?: string[]
+  approvedCandidateGroupKeys?: string[],
+  dateFilter?: ImportDateFilterInput
 ): Promise<ConfirmImportResult | ConfirmImportError> {
   try {
     const session = await requireSession();
@@ -103,6 +105,7 @@ export async function confirmImportAction(
       mapping,
       ownerUsername: session.username,
       approvedCandidateGroupKeys,
+      dateFilter,
     });
     // STD-4: 다음 업로드부터 같은 헤더는 자동매핑되도록 저장 — import는 이미
     // 끝났으므로 저장 실패로 이번 확정 자체를 실패시키지 않는다(best-effort).

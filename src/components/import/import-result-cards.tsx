@@ -68,6 +68,12 @@ export function ImportResultCards({
         <p className="text-sm text-muted-foreground">
           총 <span className="font-semibold text-text-strong">{summary.totalRawRows.toLocaleString()}개</span> 상품주문
         </p>
+        {summary.dateExcludedRows > 0 ? (
+          <p className="text-sm text-muted-foreground">
+            날짜 조건 제외 <span className="font-semibold text-text-strong">{summary.dateExcludedRows.toLocaleString()}건</span>
+            (중복이나 실패가 아니라 선택한 날짜 범위에 해당하지 않아 가져오지 않았습니다)
+          </p>
+        ) : null}
         <dl className="space-y-1.5 text-sm">
           <div className="flex items-baseline justify-between">
             <dt className="text-muted-foreground">신규 주문</dt>

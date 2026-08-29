@@ -13,6 +13,7 @@ import {
   parseOptionalDate,
   parseOrderDate,
   resolvePaymentStatusCell,
+  isRowExcludedByDateFilter,
   NO_ORDER_NUMBER_PREFIX,
   REPEAT_ORDER_NUMBER_CONFIRM_THRESHOLD,
 } from "@/lib/services/import.service";
@@ -25,6 +26,7 @@ import type {
   DedupProductOrderItem,
   DedupIdentityConflictEntry,
   DedupRepeatRowEntry,
+  ImportDateFilterInput,
 } from "@/types/excel";
 
 import type { Order } from "@/types/domain";
@@ -33,6 +35,8 @@ export interface ClassifyDuplicatesInput {
   parsed: ParsedSheet;
   mapping: ColumnMapping;
   ownerUsername: string;
+  /** STEP11-2 Phase4(2026-08 CPO 작업지시): runImport()과 동일한 판단을 미리보기 화면에도 반영한다 — 날짜 제외 건은 애초에 groups 순회 대상에서 빠진다. */
+  dateFilter?: ImportDateFilterInput;
 }
 
 function productSummaryOf(items: { product_name: string; option_name: string | null; quantity: number }[]): string {
@@ -69,7 +73,7 @@ function productSummaryOf(items: { product_name: string; option_name: string | n
  * 이유(성능/구조상 하나의 루프로 합치기 어려움). Phase 2의 파싱 로직이
  * 바뀌면 이 함수도 함께 갱신해야 한다.
  */
-export async function classifyDuplicates({ parsed, mapping, ownerUsername }: ClassifyDuplicatesInput): Promise<DedupAnalysis> {
+export async function classifyDuplicates({ parsed, mapping, ownerUsername, dateFilter }: ClassifyDuplicatesInput): Promise<DedupAnalysis> {
   const tenant = await tenantsRepository.findByUsername(ownerUsername);
   if (!tenant) throw new Error(`No tenant membership found for account "${ownerUsername}".`);
 
@@ -149,12 +153,22 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
     };
   }
 
+  // STEP11-2 Phase4(2026-08 CPO 작업지시): runImport()과 동일하게, 날짜
+  // 필터에 맞지 않는 그룹은 신규/중복 판정 자체를 하지 않는다 — 미리보기
+  // 화면(Analyze)이 실제 등록 결과(Confirm)와 어긋나지 않도록 여기서도
+  // dedup 로직 진입 전에 걸러낸다.
+  const dateExcludedGroupKeys = new Set<string>();
   const results: DedupGroupResult[] = [];
   for (const [groupKey, entries] of groups) {
     const rows = entries.map((e) => e.row);
     const hasRealOrderNumber = !groupKey.startsWith(NO_ORDER_NUMBER_PREFIX);
     const orderNumber = hasRealOrderNumber ? groupKey : null;
     const first = rows[0];
+
+    if (isRowExcludedByDateFilter(first, mapping, dateFilter)) {
+      dateExcludedGroupKeys.add(groupKey);
+      continue;
+    }
 
     const rawPhone = cellToString(getMapped(first, mapping, "phone")) || null;
     const rawAddress = cellToString(getMapped(first, mapping, "address")) || null;
@@ -414,8 +428,13 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
   // 벗어난다) — newCount+confirmedDuplicateCount+candidateCount+errorCount+
   // repeatConfirmCount === totalProductOrders 불변식을 이룬다.
   let repeatConfirmCount = 0;
+  let dateExcludedCount = 0;
   const resultByGroupKey = new Map(results.map((r) => [r.groupKey, r]));
   for (const [groupKey, entries] of groups) {
+    if (dateExcludedGroupKeys.has(groupKey)) {
+      dateExcludedCount += entries.length;
+      continue;
+    }
     const result = resultByGroupKey.get(groupKey)!;
     const rowCount = entries.length;
     totalProductOrders += rowCount;
@@ -446,6 +465,7 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername }: Cla
     identityConflictCount,
     repeatConfirmCount,
     unrecognizedPaymentStatusCount,
+    dateExcludedCount,
     groups: results,
   };
 }

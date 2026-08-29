@@ -2,13 +2,25 @@
 
 import { useMemo, useState } from "react";
 import { MAPPABLE_FIELDS } from "@/types/excel";
-import type { ColumnMapping, MappableField, ParsedSheet } from "@/types/excel";
+import type { ColumnMapping, MappableField, ParsedSheet, ImportDateFilterInput, ImportDateFilterField, ImportDateFilterMode } from "@/types/excel";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { kstTodayIso } from "@/lib/utils/kst-date";
 
 const NONE_VALUE = "__none__";
+
+/** STEP11-2 Phase4(2026-08 CPO 작업지시): "발송일/수령일"이 별도 필드로
+ *  독립 존재하지 않으므로(조사 결과, delivery_date가 "배송일(발송 희망일)"로
+ *  이미 그 의미를 겸함) 새 필드를 만들지 않고 기존 날짜 성격 MappableField
+ *  3개 중 실제 매핑된 것만 "기준 날짜 컬럼" 후보로 제시한다. */
+const DATE_FILTER_FIELDS: ImportDateFilterField[] = ["delivery_date", "order_date", "shipped_at"];
+
+function labelOf(field: ImportDateFilterField): string {
+  return MAPPABLE_FIELDS.find((f) => f.key === field)?.label ?? field;
+}
 
 /** 미리보기용 — 첫 행의 원본 셀 값을 화면에 보여줄 수 있는 짧은 문자열로 바꾼다. */
 function cellPreview(value: unknown): string | null {
@@ -29,7 +41,7 @@ export function ColumnMappingForm({
   initialMapping: ColumnMapping;
   initialUnmapped: MappableField[];
   unrecognizedHeaders: string[];
-  onConfirm: (mapping: ColumnMapping) => void;
+  onConfirm: (mapping: ColumnMapping, dateFilter: ImportDateFilterInput) => void;
   isSubmitting: boolean;
 }) {
   const [mapping, setMapping] = useState<ColumnMapping>(initialMapping);
@@ -40,6 +52,24 @@ export function ColumnMappingForm({
   );
 
   const canConfirm = requiredButUnmapped.length === 0;
+
+  // STEP11-2 Phase4: "가져올 주문 범위" — 매핑된 날짜 컬럼이 하나도 없으면
+  // 기준으로 삼을 값 자체가 없으므로 섹션을 아예 숨긴다(기본값 "전체
+  // 주문 가져오기"만 존재하는 것과 동일한 결과 — 기존 사용자 흐름에
+  // 영향 없음).
+  const availableDateFields = useMemo(() => DATE_FILTER_FIELDS.filter((f) => !!mapping[f]), [mapping]);
+  const [dateFilterMode, setDateFilterMode] = useState<ImportDateFilterMode>("all");
+  const [dateFilterField, setDateFilterField] = useState<ImportDateFilterField>(availableDateFields[0] ?? "delivery_date");
+  const [specificDate, setSpecificDate] = useState(kstTodayIso());
+
+  function handleConfirm() {
+    const dateFilter: ImportDateFilterInput = {
+      mode: dateFilterMode,
+      field: dateFilterField,
+      date: dateFilterMode === "specific_date" ? specificDate : undefined,
+    };
+    onConfirm(mapping, dateFilter);
+  }
 
   return (
     <div className="space-y-4">
@@ -126,6 +156,60 @@ export function ColumnMappingForm({
         </div>
       ) : null}
 
+      {availableDateFields.length > 0 ? (
+        <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+          <p className="text-sm font-medium text-text-strong">가져올 주문 범위</p>
+          <p className="text-xs text-muted-foreground">
+            기본값은 파일의 모든 주문을 그대로 가져오는 것입니다. 특정 날짜의 주문만 골라 받고 싶다면 아래에서 기준 날짜 컬럼과 범위를
+            선택하세요.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={dateFilterMode} onValueChange={(v) => setDateFilterMode(v as ImportDateFilterMode)}>
+              <SelectTrigger className="w-56" aria-label="가져올 주문 범위">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 주문 가져오기(기본)</SelectItem>
+                <SelectItem value="today">오늘 주문만 가져오기</SelectItem>
+                <SelectItem value="specific_date">특정 날짜 주문만 가져오기</SelectItem>
+              </SelectContent>
+            </Select>
+            {dateFilterMode !== "all" ? (
+              <>
+                <span className="text-sm text-muted-foreground">기준:</span>
+                <Select value={dateFilterField} onValueChange={(v) => setDateFilterField(v as ImportDateFilterField)}>
+                  <SelectTrigger className="w-40" aria-label="기준 날짜 컬럼">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableDateFields.map((f) => (
+                      <SelectItem key={f} value={f}>
+                        {labelOf(f)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            ) : null}
+            {dateFilterMode === "specific_date" ? (
+              <Input
+                type="date"
+                aria-label="특정 날짜"
+                value={specificDate}
+                onChange={(e) => setSpecificDate(e.target.value)}
+                className="w-40"
+              />
+            ) : null}
+          </div>
+          {dateFilterMode !== "all" ? (
+            <p className="text-xs text-muted-foreground">
+              {labelOf(dateFilterField)} 기준으로 {dateFilterMode === "today" ? "오늘" : specificDate || "선택한 날짜"}에 해당하지 않는
+              주문은 등록되지 않고 &ldquo;날짜 조건 제외&rdquo;로 별도 집계됩니다(중복/오류와 다름).
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between">
         <div className="flex flex-wrap gap-1">
           {requiredButUnmapped.map((f) => (
@@ -134,7 +218,7 @@ export function ColumnMappingForm({
             </Badge>
           ))}
         </div>
-        <Button disabled={!canConfirm || isSubmitting} onClick={() => onConfirm(mapping)}>
+        <Button disabled={!canConfirm || isSubmitting} onClick={handleConfirm}>
           {isSubmitting ? "확인 중..." : "다음: 중복 확인"}
         </Button>
       </div>

@@ -392,6 +392,10 @@ export interface ImportSummary {
   repeatConfirmSkippedOrders: number;
   /** Phase 2 §5(2026-08 CPO 작업지시): 결제상태 컬럼은 있었지만 값이 표준 4개(결제완료/미결제/부분결제/환불)와 달라 payment_status=null("확인 필요")로 등록된 주문(그룹) 수 — 금전 리스크가 있어 결제완료로 임의 변환하지 않았다는 걸 업로드 결과 화면에서 명확히 경고해야 한다. */
   unrecognizedPaymentStatusOrders: number;
+  /** STEP11-2 Phase4(2026-08 CPO 작업지시): 날짜 필터 조건(기준 컬럼/오늘/특정일)에 맞지 않아 dedup 판정 이전에 제외된 상품주문(행) 수 — 중복/실패와 분리된 별도 집계. 날짜 필터를 쓰지 않았으면(mode="all") 항상 0. */
+  dateExcludedRows: number;
+  /** 위와 동일한 개념의 주문(그룹) 수. */
+  dateExcludedOrders: number;
 }
 
 export interface ImportRecord {

@@ -220,6 +220,15 @@ export function DedupReview({
           총 <span className="font-semibold text-text-strong">{analysis.totalProductOrders.toLocaleString()}개 상품주문</span>을
           확인했습니다(주문 묶음 {analysis.totalGroups.toLocaleString()}건).
         </p>
+        {/* STEP11-2 Phase4(2026-08 CPO 작업지시): 날짜 필터로 제외된 건은
+            중복/신규 판정 자체를 받지 않으므로 위 total과 별개로 먼저
+            보여준다 — "왜 파일 건수보다 적게 처리됐는지"를 바로 알 수 있게. */}
+        {analysis.dateExcludedCount > 0 ? (
+          <p className="text-sm text-muted-foreground">
+            날짜 조건에 맞지 않아 <span className="font-semibold text-text-strong">{analysis.dateExcludedCount.toLocaleString()}건</span>을
+            제외했습니다(중복이나 오류가 아닙니다).
+          </p>
+        ) : null}
         {/*
           STEP2(2026-08 CPO 작업지시): 아래 숫자는 반드시 상품주문(엑셀 원본 행)
           단위로 세어 위 총 개수와 정확히 합이 맞아야 한다 — 부모 주문(그룹) 수로

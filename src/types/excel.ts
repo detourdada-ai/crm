@@ -96,6 +96,27 @@ export interface ParsedSheet {
   rows: Record<string, unknown>[];
 }
 
+/**
+ * STEP11-2 Phase4(CPO 작업지시, 2026-08): "오늘 주문만 접수"라는 특정 사장님의
+ * 요구를 하드코딩하지 않고, "어떤 날짜 컬럼을 기준으로 어떤 날짜 범위의
+ * 주문을 가져올 것인가"로 일반화한 Import 날짜 필터 정책. 조사 결과 발송일/
+ * 수령일이 별도 MappableField로 독립 존재하지 않으므로(delivery_date가
+ * "배송일(발송 희망일)"로 이미 그 의미를 겸한다), 새 필드를 만들지 않고
+ * 기존 날짜 성격 MappableField 3개(order_date/delivery_date/shipped_at)
+ * 중 실제로 매핑된 것만 기준 컬럼으로 선택할 수 있게 한다.
+ */
+export type ImportDateFilterField = "order_date" | "delivery_date" | "shipped_at";
+export type ImportDateFilterMode = "all" | "today" | "specific_date";
+
+export interface ImportDateFilterInput {
+  /** 기본값 "all" — 기존 사용자/운영 방식에 영향을 주지 않는다(날짜 필터 미사용과 동일). */
+  mode: ImportDateFilterMode;
+  /** mode가 "all"이 아닐 때만 의미를 갖는다. */
+  field: ImportDateFilterField;
+  /** mode === "specific_date"일 때만 사용하는 KST 기준 날짜(YYYY-MM-DD). */
+  date?: string;
+}
+
 export interface ColumnMapping {
   // Maps our internal field key -> the source column header found in the uploaded file
   [key: string]: string | undefined;
@@ -211,5 +232,7 @@ export interface DedupAnalysis {
   repeatConfirmCount: number;
   /** Phase 2 §5(2026-08 CPO 작업지시): 결제상태 컬럼 값이 표준 4개와 달라 결제완료로 임의 변환하지 않고 "확인 필요"로 남긴 그룹 수 — 금전 리스크 경고용. */
   unrecognizedPaymentStatusCount: number;
+  /** STEP11-2 Phase4: 날짜 필터 조건에 맞지 않아 애초에 신규/중복 판정 대상에서 제외된 상품주문(행) 수 — 중복도 실패도 아닌 별도 집계(§4 "날짜 제외 ≠ 중복"). */
+  dateExcludedCount: number;
   groups: DedupGroupResult[];
 }
