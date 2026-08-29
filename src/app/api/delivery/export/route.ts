@@ -6,7 +6,7 @@ import { isValidDateString } from "@/lib/utils/date";
 import { kstTodayIso, resolveKstQuickRange, isQuickDateFilter, type QuickDateFilterValue } from "@/lib/utils/kst-date";
 import { digitsOnly } from "@/lib/utils/phone";
 import { filterOrdersByDriver } from "@/lib/utils/delivery-driver-filter";
-import { filterOrdersByRegionOrBuilding } from "@/lib/utils/delivery-region-filter";
+import { filterOrdersByRegionHierarchy } from "@/lib/utils/delivery-region-filter";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 const EXPORT_MAX_ROWS = 5000;
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  orders = filterOrdersByRegionOrBuilding(orders, params.getAll("region"), params.getAll("building"));
+  orders = filterOrdersByRegionHierarchy(orders, params.getAll("region"), params.getAll("dong"), params.getAll("building"));
 
   orders = filterOrdersByDriver(orders, params.get("driverFilter"));
 

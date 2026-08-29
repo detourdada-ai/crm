@@ -86,6 +86,7 @@ export function DeliveryLiveFilters({
 }) {
   const searchParams = useSearchParams();
   const [activeRegions, setActiveRegionsState] = useState<string[]>(() => searchParams.getAll("region"));
+  const [activeDongKeys, setActiveDongKeysState] = useState<string[]>(() => searchParams.getAll("dong"));
   const [activeBuildingKeys, setActiveBuildingKeysState] = useState<string[]>(() => searchParams.getAll("building"));
   const [activeDriverId, setActiveDriverIdState] = useState<string | null>(() => searchParams.get("driverFilter"));
 
@@ -101,16 +102,19 @@ export function DeliveryLiveFilters({
     if (lastSyncedRef.current === searchParamsString) return;
     lastSyncedRef.current = searchParamsString;
     setActiveRegionsState(searchParams.getAll("region"));
+    setActiveDongKeysState(searchParams.getAll("dong"));
     setActiveBuildingKeysState(searchParams.getAll("building"));
     setActiveDriverIdState(searchParams.get("driverFilter"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParamsString]);
 
-  const syncUrlBar = useCallback((regions: string[], buildings: string[], driverId: string | null) => {
+  const syncUrlBar = useCallback((regions: string[], dongs: string[], buildings: string[], driverId: string | null) => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     params.delete("region");
     for (const r of regions) params.append("region", r);
+    params.delete("dong");
+    for (const d of dongs) params.append("dong", d);
     params.delete("building");
     for (const b of buildings) params.append("building", b);
     if (driverId) params.set("driverFilter", driverId);
@@ -122,28 +126,36 @@ export function DeliveryLiveFilters({
   const setActiveRegions = useCallback(
     (next: string[]) => {
       setActiveRegionsState(next);
-      syncUrlBar(next, activeBuildingKeys, activeDriverId);
+      syncUrlBar(next, activeDongKeys, activeBuildingKeys, activeDriverId);
     },
-    [activeBuildingKeys, activeDriverId, syncUrlBar]
+    [activeDongKeys, activeBuildingKeys, activeDriverId, syncUrlBar]
+  );
+  const setActiveDongKeys = useCallback(
+    (next: string[]) => {
+      setActiveDongKeysState(next);
+      syncUrlBar(activeRegions, next, activeBuildingKeys, activeDriverId);
+    },
+    [activeRegions, activeBuildingKeys, activeDriverId, syncUrlBar]
   );
   const setActiveBuildingKeys = useCallback(
     (next: string[]) => {
       setActiveBuildingKeysState(next);
-      syncUrlBar(activeRegions, next, activeDriverId);
+      syncUrlBar(activeRegions, activeDongKeys, next, activeDriverId);
     },
-    [activeRegions, activeDriverId, syncUrlBar]
+    [activeRegions, activeDongKeys, activeDriverId, syncUrlBar]
   );
-  const clearRegionAndBuildingFilters = useCallback(() => {
+  const clearRegionFilters = useCallback(() => {
     setActiveRegionsState([]);
+    setActiveDongKeysState([]);
     setActiveBuildingKeysState([]);
-    syncUrlBar([], [], activeDriverId);
+    syncUrlBar([], [], [], activeDriverId);
   }, [activeDriverId, syncUrlBar]);
   const setActiveDriverId = useCallback(
     (next: string | null) => {
       setActiveDriverIdState(next);
-      syncUrlBar(activeRegions, activeBuildingKeys, next);
+      syncUrlBar(activeRegions, activeDongKeys, activeBuildingKeys, next);
     },
-    [activeRegions, activeBuildingKeys, syncUrlBar]
+    [activeRegions, activeDongKeys, activeBuildingKeys, syncUrlBar]
   );
 
   // page.tsx의 buildFilterHref/buildExportHref와 동일한 조합 로직 — region은
@@ -156,6 +168,8 @@ export function DeliveryLiveFilters({
     if (baseQuery.dateTo) search.set("dateTo", baseQuery.dateTo);
     if (baseQuery.q) search.set("q", baseQuery.q);
     for (const r of activeRegions) search.append("region", r);
+    for (const d of activeDongKeys) search.append("dong", d);
+    for (const b of activeBuildingKeys) search.append("building", b);
     if (activeDriverId) search.set("driverFilter", activeDriverId);
     if (baseQuery.product) search.set("product", baseQuery.product);
     if (next !== "unassigned") search.set("filter", next);
@@ -170,6 +184,8 @@ export function DeliveryLiveFilters({
     if (baseQuery.dateTo) search.set("dateTo", baseQuery.dateTo);
     if (baseQuery.q) search.set("q", baseQuery.q);
     for (const r of activeRegions) search.append("region", r);
+    for (const d of activeDongKeys) search.append("dong", d);
+    for (const b of activeBuildingKeys) search.append("building", b);
     if (activeDriverId) search.set("driverFilter", activeDriverId);
     if (activeFilter !== "all") search.set("filter", activeFilter);
     if (baseQuery.product) search.set("product", baseQuery.product);
@@ -245,9 +261,11 @@ export function DeliveryLiveFilters({
               mode={mode}
               activeRegions={activeRegions}
               setActiveRegions={setActiveRegions}
+              activeDongKeys={activeDongKeys}
+              setActiveDongKeys={setActiveDongKeys}
               activeBuildingKeys={activeBuildingKeys}
               setActiveBuildingKeys={setActiveBuildingKeys}
-              clearRegionAndBuildingFilters={clearRegionAndBuildingFilters}
+              clearRegionFilters={clearRegionFilters}
               activeDriverId={activeDriverId}
               setActiveDriverId={setActiveDriverId}
             />

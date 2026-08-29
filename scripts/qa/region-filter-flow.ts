@@ -1,8 +1,10 @@
 /**
- * 배송목록 지역 멀티필터 + Export 회귀 — Production을 Playwright로 직접
- * 조작한다. QA_DEFAULT_OWNER에 "QA-CPO-" prefix 임시 주문
- * 4건(강남구x2/송파구x1/강동구x1)을 만들고, 전체/개별/복수/해제/새로고침/
- * 초기화/Export 일치를 검증한 뒤 finally에서 전부 지운다(AGENTS.md 절차).
+ * 배송목록 지역 멀티필터(시군구→읍면동→건물명 3단 계층, STEP11-2 Phase3) +
+ * Export 회귀 — Production/로컬을 Playwright로 직접 조작한다. QA_DEFAULT_OWNER에
+ * "QA-CPO-" prefix 임시 주문 7건(강남구 역삼동x3/강남구 삼성동x1/송파구
+ * 신천동x1/강동구 고덕동x1/지역미확인x1)을 만들고, 전체/시군구/읍면동/건물
+ * 세 계층 각각의 단독·복합 선택, 해제, 새로고침, 초기화, Export 일치를
+ * 검증한 뒤 finally에서 전부 지운다(AGENTS.md 절차).
  *
  * 실행: npx tsx --env-file=.env.local scripts/qa/region-filter-flow.ts
  */
@@ -72,17 +74,20 @@ async function main() {
   const shipmentIds: string[] = [];
 
   const APT_BUILDING = `${QA_PREFIX}아파트`;
-  const defs: { key: string; sigungu: string | null; name: string; address: string }[] = [
-    { key: "A", sigungu: "강남구", name: `${QA_PREFIX}지역A강남`, address: "서울 강남구 테스트로 1" },
-    { key: "B", sigungu: "강남구", name: `${QA_PREFIX}지역B강남`, address: "서울 강남구 테스트로 1" },
-    { key: "C", sigungu: "송파구", name: `${QA_PREFIX}지역C송파`, address: "서울 송파구 테스트로 1" },
-    { key: "D", sigungu: "강동구", name: `${QA_PREFIX}지역D강동`, address: "서울 강동구 테스트로 1" },
-    // 지역 필터 2단계 QA: 건물(아파트) 하위 필터 — 괄호 안 (동, 건물명) 패턴이어야 extractComplexName이 인식한다.
-    { key: "E", sigungu: "강남구", name: `${QA_PREFIX}지역E강남아파트`, address: `서울 강남구 테스트로 2 (101동, ${APT_BUILDING})` },
-    // 지역 필터 2단계 QA: sigungu=null(지오코딩 실패/보류) — "지역 미확인" 버킷에서 노출/필터 가능해야 한다.
-    { key: "F", sigungu: null, name: `${QA_PREFIX}지역F미확인`, address: "서울 미확인구 테스트로 1" },
+  const defs: { key: string; sigungu: string | null; eupmyeondong: string | null; name: string; address: string }[] = [
+    { key: "A", sigungu: "강남구", eupmyeondong: "역삼동", name: `${QA_PREFIX}지역A역삼`, address: "서울 강남구 테스트로 1" },
+    { key: "B", sigungu: "강남구", eupmyeondong: "역삼동", name: `${QA_PREFIX}지역B역삼`, address: "서울 강남구 테스트로 1" },
+    // STEP11-2 Phase3: 건물(아파트) 하위 필터 — 괄호 안 (동, 건물명) 패턴이어야 extractComplexName이 인식한다. 같은 동(역삼동) 소속.
+    { key: "E", sigungu: "강남구", eupmyeondong: "역삼동", name: `${QA_PREFIX}지역E역삼아파트`, address: `서울 강남구 테스트로 2 (역삼동, ${APT_BUILDING})` },
+    // STEP11-2 Phase3: 같은 시군구(강남구) 안의 다른 읍면동 — 동 단위 선택이 시군구 선택과 구분되는지 검증.
+    { key: "G", sigungu: "강남구", eupmyeondong: "삼성동", name: `${QA_PREFIX}지역G삼성`, address: "서울 강남구 테스트로 3" },
+    { key: "C", sigungu: "송파구", eupmyeondong: "신천동", name: `${QA_PREFIX}지역C송파`, address: "서울 송파구 테스트로 1" },
+    { key: "D", sigungu: "강동구", eupmyeondong: "고덕동", name: `${QA_PREFIX}지역D강동`, address: "서울 강동구 테스트로 1" },
+    // sigungu=null(지오코딩 실패/보류) — "지역 미확인" 버킷에서 노출/필터 가능해야 한다.
+    { key: "F", sigungu: null, eupmyeondong: null, name: `${QA_PREFIX}지역F미확인`, address: "서울 미확인구 테스트로 1" },
   ];
   const UNKNOWN_REGION_LABEL = "지역 미확인";
+  const OTHER_BUILDING_LABEL = "기타 주소";
 
   const browser = await chromium.launch();
   try {
@@ -108,6 +113,7 @@ async function main() {
         phone_snapshot: "010-0000-0000",
         address_snapshot: d.address,
         sigungu: d.sigungu,
+        eupmyeondong: d.eupmyeondong,
         sido: "서울",
         delivery_date: today,
         delivery_status: "배송대기",
@@ -137,16 +143,16 @@ async function main() {
     await registerAnnouncementPopupHandler(page);
     await setSession(context, OWNER, "user");
 
-    // ---- 1. 기본(전체 지역) — QA 4건 전부 노출 ----
+    // ---- 1. 기본(전체 지역) — QA 7건 전부 노출 ----
     await page.goto(`${BASE_URL}/delivery?filter=all&dateFilter=today`, { waitUntil: "networkidle" });
     let text = await mainText(page);
     record(
-      "1. 전체 지역 기본 상태 — QA 4건 전부 노출",
+      "1. 전체 지역 기본 상태 — QA 7건 전부 노출",
       defs.every((d) => text.includes(d.name)) && text.includes("전체 지역"),
       text.slice(0, 200)
     );
 
-    // ---- 2. 팝오버 열기 — 전체/강남구(2건)/송파구(1건)/강동구(1건) 체크박스 노출 ----
+    // ---- 2. 팝오버 열기 — 전체/강남구(4건)/송파구(1건)/강동구(1건) 체크박스 노출 ----
     await page.getByRole("button", { name: "전체 지역" }).click();
     await page.waitForTimeout(300);
     const popoverText = (await page.locator('[role="dialog"], [data-radix-popper-content-wrapper]').first().innerText().catch(() => "")) ?? "";
@@ -156,18 +162,17 @@ async function main() {
       popoverText.slice(0, 300)
     );
 
-    // ---- 3. 강남구 1개 선택 — URL/목록/현재조건 반영 ----
+    // ---- 3. 강남구 1개 선택(시군구 단위) — URL/목록/현재조건 반영, 동/건물 무관하게 4건 전부 ----
     await page.getByRole("checkbox", { name: /강남구/ }).click();
     await page.waitForURL((u) => u.searchParams.getAll("region").includes("강남구"), { timeout: 5000 }).catch(() => {});
     text = await mainText(page);
     const urlAfterGangnam = page.url();
     record(
-      "3. 강남구 1개 선택 → URL region=강남구 + 강남구 2건만 노출(송파/강동 제외)",
+      "3. 강남구 1개 선택 → URL region=강남구 + 강남구 4건(A/B/E/G) 노출(송파/강동 제외)",
       urlAfterGangnam.includes("region=%EA%B0%95%EB%82%A8%EA%B5%AC") &&
-        text.includes(defs[0].name) &&
-        text.includes(defs[1].name) &&
-        !text.includes(defs[2].name) &&
-        !text.includes(defs[3].name) &&
+        ["A", "B", "E", "G"].every((k) => text.includes(defs.find((d) => d.key === k)!.name)) &&
+        !text.includes(defs.find((d) => d.key === "C")!.name) &&
+        !text.includes(defs.find((d) => d.key === "D")!.name) &&
         text.includes("현재 조건") &&
         text.includes("강남구"),
       urlAfterGangnam
@@ -182,11 +187,9 @@ async function main() {
     text = await mainText(page);
     const urlAfterBoth = page.url();
     record(
-      "4. 강남구+송파구 복수선택 → OR조건(3건 노출, 강동구 제외) + '2개 지역' 요약",
-      text.includes(defs[0].name) &&
-        text.includes(defs[1].name) &&
-        text.includes(defs[2].name) &&
-        !text.includes(defs[3].name) &&
+      "4. 강남구+송파구 복수선택 → OR조건(5건 노출, 강동구 제외) + '2개 지역' 요약",
+      ["A", "B", "E", "G", "C"].every((k) => text.includes(defs.find((d) => d.key === k)!.name)) &&
+        !text.includes(defs.find((d) => d.key === "D")!.name) &&
         text.includes("2개 지역"),
       `url=${urlAfterBoth} text=${text.slice(0, 150)}`
     );
@@ -197,7 +200,9 @@ async function main() {
     text = await mainText(page);
     record(
       "5. 강남구 해제 → 송파구만 남고 OR조건 정상 축소",
-      !text.includes(defs[0].name) && !text.includes(defs[1].name) && text.includes(defs[2].name) && !text.includes(defs[3].name),
+      ["A", "B", "E", "G"].every((k) => !text.includes(defs.find((d) => d.key === k)!.name)) &&
+        text.includes(defs.find((d) => d.key === "C")!.name) &&
+        !text.includes(defs.find((d) => d.key === "D")!.name),
       text.slice(0, 150)
     );
 
@@ -206,7 +211,7 @@ async function main() {
     await page.waitForURL((u) => !u.searchParams.has("region"), { timeout: 5000 }).catch(() => {});
     text = await mainText(page);
     record(
-      "6. 마지막 지역 해제 → 전체 지역 자동 복귀(4건 전부 노출)",
+      "6. 마지막 지역 해제 → 전체 지역 자동 복귀(7건 전부 노출)",
       defs.every((d) => text.includes(d.name)) && text.includes("전체 지역"),
       text.slice(0, 150)
     );
@@ -233,7 +238,7 @@ async function main() {
     text = await mainText(page);
     record(
       "8. 새로고침 후 지역 선택(강동구) URL·화면 유지",
-      text.includes(defs[3].name) && !text.includes(defs[0].name) && page.url().includes("region="),
+      text.includes(defs.find((d) => d.key === "D")!.name) && !text.includes(defs.find((d) => d.key === "A")!.name) && page.url().includes("region="),
       text.slice(0, 150)
     );
 
@@ -247,13 +252,12 @@ async function main() {
       text.slice(0, 150)
     );
 
-    // ---- 10. Export 회귀 — 화면과 Excel 건수 일치 ----
-    // E(강남구·아파트)가 추가되어 "강남구" 지역 전체 선택 시 A/B/E 3건이 맞다
-    // (지역 선택은 그 지역의 모든 건물을 포함 — 건물 필터와는 별개, OR 규칙).
+    // ---- 10. Export 회귀 — 화면과 Excel 건수 일치(시군구 단위) ----
     const cookie = `${SESSION_COOKIE_NAME}=${qaSessionToken(OWNER, "user")}`;
-    async function exportRowCount(regions: string[], buildingKeys: string[] = []): Promise<number> {
+    async function exportRowCount(regions: string[], dongKeys: string[] = [], buildingKeys: string[] = []): Promise<number> {
       const params = new URLSearchParams({ filter: "all", dateFilter: "today" });
       for (const r of regions) params.append("region", r);
+      for (const d of dongKeys) params.append("dong", d);
       for (const b of buildingKeys) params.append("building", b);
       const res = await fetch(`${BASE_URL}/api/delivery/export?${params.toString()}`, { headers: { Cookie: cookie } });
       if (res.status !== 200) throw new Error(`export status ${res.status}`);
@@ -265,76 +269,110 @@ async function main() {
     }
 
     const exportGangnam = await exportRowCount(["강남구"]);
-    record("10a. Export 강남구 단일 지역 = 3건(A/B/E, 건물 무관 전체)", exportGangnam === 3, `got=${exportGangnam}`);
+    record("10a. Export 강남구 단일 지역 = 4건(A/B/E/G, 동/건물 무관 전체)", exportGangnam === 4, `got=${exportGangnam}`);
 
     const exportGangnamSongpa = await exportRowCount(["강남구", "송파구"]);
-    record("10b. Export 강남구+송파구 복수 지역 = 4건(OR)", exportGangnamSongpa === 4, `got=${exportGangnamSongpa}`);
+    record("10b. Export 강남구+송파구 복수 지역 = 5건(OR)", exportGangnamSongpa === 5, `got=${exportGangnamSongpa}`);
 
     const exportAll = await exportRowCount([]);
-    record("10c. Export 전체 지역 = QA 6건 전부 포함", exportAll === 6, `got=${exportAll}`);
+    record("10c. Export 전체 지역 = QA 7건 전부 포함", exportAll === 7, `got=${exportAll}`);
 
-    // ---- 11. 지역 필터 2단계: 강남구 하위 건물(아파트/기타) 펼침 + 건물 단위 선택 ----
+    // ---- 11. 시군구 펼치기 → 읍면동 목록(역삼동/삼성동) 노출, 아직 건물은 안 보임 ----
     await page.goto(`${BASE_URL}/delivery?filter=all&dateFilter=today`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: "전체 지역" }).click();
     await page.waitForTimeout(300);
-    const expandGangnamBtn = page.getByRole("button", { name: /강남구 건물 목록 펼치기/ });
+    const expandGangnamBtn = page.getByRole("button", { name: /강남구 읍면동 목록 펼치기/ });
     await expandGangnamBtn.click();
     await page.waitForTimeout(200);
     const popoverText2 = (await page.locator('[role="dialog"], [data-radix-popper-content-wrapper]').first().innerText().catch(() => "")) ?? "";
     record(
-      "11. 강남구 펼치기 → 하위 건물 목록에 아파트(1건)와 기타(2건) 노출",
-      popoverText2.includes(APT_BUILDING) && popoverText2.includes("기타"),
-      popoverText2.slice(0, 300)
+      "11. 강남구 펼치기 → 하위 읍면동(역삼동 3건/삼성동 1건) 노출, 건물명은 아직 안 보임(처음부터 다 펼치지 않는다)",
+      popoverText2.includes("역삼동") && popoverText2.includes("삼성동") && !popoverText2.includes(APT_BUILDING),
+      popoverText2.slice(0, 400)
     );
 
-    // ---- 12. 아파트 건물 체크박스만 선택 → 그 건물 소속 주문(E)만 노출, 같은 지역의 A/B는 제외 ----
+    // ---- 12. 읍면동(역삼동) 단위 선택 → 그 동 소속 주문(A/B/E)만 노출, 같은 시군구의 G는 제외 ----
+    await page.getByRole("checkbox", { name: /^역삼동/ }).click();
+    await page.waitForURL((u) => u.searchParams.getAll("dong").length === 1, { timeout: 5000 }).catch(() => {});
+    text = await mainText(page);
+    const urlAfterDong = page.url();
+    record(
+      "12. 읍면동(역삼동) 단일 선택 → A/B/E만 노출(G/C/D/F 제외) + URL dong=강남구||역삼동",
+      ["A", "B", "E"].every((k) => text.includes(defs.find((d) => d.key === k)!.name)) &&
+        !text.includes(defs.find((d) => d.key === "G")!.name) &&
+        !text.includes(defs.find((d) => d.key === "C")!.name) &&
+        urlAfterDong.includes("dong=") &&
+        urlAfterDong.includes(encodeURIComponent("강남구||역삼동")),
+      urlAfterDong
+    );
+
+    // ---- 13. Export도 읍면동 필터를 동일하게 반영하는지 확인 ----
+    const dongKey = "강남구||역삼동";
+    const exportDong = await exportRowCount([], [dongKey]);
+    record("13. Export 읍면동(역삼동) 단일 선택 = 3건(A/B/E)", exportDong === 3, `got=${exportDong}`);
+
+    // ---- 14. 읍면동 해제 후 다시 펼쳐서 건물 목록(아파트/기타 주소) 확인 ----
+    await page.getByRole("checkbox", { name: /^역삼동/ }).click();
+    await page.waitForURL((u) => !u.searchParams.has("dong"), { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(200);
+    const expandYeoksamBtn = page.getByRole("button", { name: /역삼동 건물 목록 펼치기/ });
+    await expandYeoksamBtn.click();
+    await page.waitForTimeout(200);
+    const popoverText3 = (await page.locator('[role="dialog"], [data-radix-popper-content-wrapper]').first().innerText().catch(() => "")) ?? "";
+    record(
+      "14. 역삼동 펼치기 → 하위 건물 목록에 아파트(1건)와 '기타 주소'(2건) 노출",
+      popoverText3.includes(APT_BUILDING) && popoverText3.includes(OTHER_BUILDING_LABEL),
+      popoverText3.slice(0, 400)
+    );
+
+    // ---- 15. 건물(아파트) 체크박스만 선택 → 그 건물 소속 주문(E)만 노출 ----
     await page.getByRole("checkbox", { name: new RegExp(APT_BUILDING) }).click();
     await page.waitForURL((u) => u.searchParams.getAll("building").length === 1, { timeout: 5000 }).catch(() => {});
     text = await mainText(page);
     const urlAfterBuilding = page.url();
     record(
-      "12. 건물(아파트) 단일 선택 → 그 건물 소속 주문만 노출(A/B/C/D/F 제외) + '건물 1곳' 요약",
-      text.includes(defs[4].name) &&
-        !text.includes(defs[0].name) &&
-        !text.includes(defs[1].name) &&
-        !text.includes(defs[2].name) &&
-        !text.includes(defs[3].name) &&
-        !text.includes(defs[5].name) &&
-        text.includes("건물 1곳") &&
+      "15. 건물(아파트) 단일 선택 → E만 노출(A/B/C/D/F/G 제외) + 현재조건에 건물명 반영",
+      text.includes(defs.find((d) => d.key === "E")!.name) &&
+        ["A", "B", "C", "D", "F", "G"].every((k) => !text.includes(defs.find((d) => d.key === k)!.name)) &&
+        text.includes(`· ${APT_BUILDING} ·`) &&
         urlAfterBuilding.includes("building="),
       `url=${urlAfterBuilding} text=${text.slice(0, 150)}`
     );
 
-    // ---- 13. Export도 건물 필터를 동일하게 반영하는지 확인 ----
-    const buildingKey = `강남구||${APT_BUILDING}`;
-    const exportBuilding = await exportRowCount([], [buildingKey]);
-    record("13. Export 건물(아파트) 단일 선택 = 1건(E)", exportBuilding === 1, `got=${exportBuilding}`);
+    // ---- 16. Export도 건물 필터를 동일하게(3단 키) 반영하는지 확인 ----
+    const buildingKey = `강남구||역삼동||${APT_BUILDING}`;
+    const exportBuilding = await exportRowCount([], [], [buildingKey]);
+    record("16. Export 건물(아파트) 단일 선택 = 1건(E)", exportBuilding === 1, `got=${exportBuilding}`);
 
-    // ---- 14. "지역 미확인" 버킷 — sigungu=null 주문(F)이 목록에서 조용히 사라지지 않고 선택 가능해야 한다 ----
+    // ---- 17. "지역 미확인" 버킷 — sigungu=null 주문(F)이 목록에서 조용히 사라지지 않고 선택 가능해야 하며, 하위 계층(동/건물)을 갖지 않는다 ----
     await page.goto(`${BASE_URL}/delivery?filter=all&dateFilter=today`, { waitUntil: "networkidle" });
     text = await mainText(page);
-    record("14a. 필터 미적용 상태 — 지역 미확인 주문(F)도 기본 노출", text.includes(defs[5].name), text.slice(0, 150));
+    record("17a. 필터 미적용 상태 — 지역 미확인 주문(F)도 기본 노출", text.includes(defs.find((d) => d.key === "F")!.name), text.slice(0, 150));
 
     await page.getByRole("button", { name: "전체 지역" }).click();
     await page.waitForTimeout(300);
-    const popoverText3 = (await page.locator('[role="dialog"], [data-radix-popper-content-wrapper]').first().innerText().catch(() => "")) ?? "";
+    const popoverText4 = (await page.locator('[role="dialog"], [data-radix-popper-content-wrapper]').first().innerText().catch(() => "")) ?? "";
+    const hasUnknownExpandBtn = await page
+      .getByRole("button", { name: /지역 미확인 읍면동 목록 펼치기/ })
+      .count()
+      .then((n) => n > 0);
     record(
-      "14b. 지역 체크박스 목록에 '지역 미확인' 버킷이 명시적으로 노출",
-      popoverText3.includes(UNKNOWN_REGION_LABEL),
-      popoverText3.slice(0, 300)
+      "17b. 지역 체크박스 목록에 '지역 미확인' 버킷이 명시적으로 노출되고, 하위 읍면동 펼치기 버튼은 없다(하위 계층 없음)",
+      popoverText4.includes(UNKNOWN_REGION_LABEL) && !hasUnknownExpandBtn,
+      popoverText4.slice(0, 300)
     );
 
     await page.getByRole("checkbox", { name: new RegExp(UNKNOWN_REGION_LABEL) }).click();
     await page.waitForURL((u) => u.searchParams.getAll("region").includes(UNKNOWN_REGION_LABEL), { timeout: 5000 }).catch(() => {});
     text = await mainText(page);
     record(
-      "14c. '지역 미확인' 선택 → F만 노출(다른 지역 전부 제외)",
-      text.includes(defs[5].name) && defs.slice(0, 5).every((d) => !text.includes(d.name)),
+      "17c. '지역 미확인' 선택 → F만 노출(다른 지역 전부 제외)",
+      text.includes(defs.find((d) => d.key === "F")!.name) && defs.filter((d) => d.key !== "F").every((d) => !text.includes(d.name)),
       text.slice(0, 150)
     );
 
     const exportUnknown = await exportRowCount([UNKNOWN_REGION_LABEL]);
-    record("15. Export '지역 미확인' 선택 = 1건(F)", exportUnknown === 1, `got=${exportUnknown}`);
+    record("18. Export '지역 미확인' 선택 = 1건(F)", exportUnknown === 1, `got=${exportUnknown}`);
 
     await context.close();
   } finally {

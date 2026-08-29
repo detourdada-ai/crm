@@ -12,7 +12,7 @@ import {
   type GroupBuildingCount,
   type GroupStatusSubtotal,
 } from "@/lib/utils/delivery-group";
-import { filterOrdersByRegionOrBuilding, buildRegionBuildingCounts, UNKNOWN_REGION_LABEL } from "@/lib/utils/delivery-region-filter";
+import { filterOrdersByRegionHierarchy, buildRegionHierarchyCounts } from "@/lib/utils/delivery-region-filter";
 import { filterOrdersByDriver, DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { buildDriverColorMap } from "@/lib/utils/driver-colors";
 import type { OrderItemSummary } from "@/actions/orders";
@@ -51,9 +51,11 @@ export function DeliveryFilterStack({
   mode = "default",
   activeRegions,
   setActiveRegions,
+  activeDongKeys,
+  setActiveDongKeys,
   activeBuildingKeys,
   setActiveBuildingKeys,
-  clearRegionAndBuildingFilters,
+  clearRegionFilters,
   activeDriverId,
   setActiveDriverId,
 }: {
@@ -75,11 +77,16 @@ export function DeliveryFilterStack({
   // 전체 RSC를 다시 가져온다 — 실측 3초의 원인). 상태를 상위(DeliveryLiveFilters)로
   // 끌어올려 controlled prop으로 받는다 — 상위가 로컬 state로 관리하고
   // history.replaceState로만 주소창을 동기화해 서버 재요청 없이 즉시 반영한다.
+  // STEP11-2 Phase3: 지역 계층이 시군구 단일에서 시군구→읍면동→건물명
+  // 3단으로 늘어나며 activeDongKeys가 추가됐다 — 세 계층은 서로 독립적으로
+  // 선택되고 OR로 합쳐진다(filterOrdersByRegionHierarchy).
   activeRegions: string[];
   setActiveRegions: (next: string[]) => void;
+  activeDongKeys: string[];
+  setActiveDongKeys: (next: string[]) => void;
   activeBuildingKeys: string[];
   setActiveBuildingKeys: (next: string[]) => void;
-  clearRegionAndBuildingFilters: () => void;
+  clearRegionFilters: () => void;
   activeDriverId: string | null;
   setActiveDriverId: (next: string | null) => void;
 }) {
@@ -100,8 +107,8 @@ export function DeliveryFilterStack({
   const applyDriverFilter = mode === "progress";
 
   const regionFilteredOrders = useMemo(
-    () => (applyRegionFilter ? filterOrdersByRegionOrBuilding(orders, activeRegions, activeBuildingKeys) : orders),
-    [orders, activeRegions, activeBuildingKeys, applyRegionFilter]
+    () => (applyRegionFilter ? filterOrdersByRegionHierarchy(orders, activeRegions, activeDongKeys, activeBuildingKeys) : orders),
+    [orders, activeRegions, activeDongKeys, activeBuildingKeys, applyRegionFilter]
   );
   const driverFilteredOrders = useMemo(
     () => (applyDriverFilter ? filterOrdersByDriver(regionFilteredOrders, activeDriverId) : regionFilteredOrders),
@@ -196,18 +203,9 @@ export function DeliveryFilterStack({
   // "강남구를 고르면 옵션이 강남구 하나로 붕괴"하는 문제가 안 생긴다.
   // CPO 지적(2026-08): 지오코딩이 안 됐거나 실패해 sigungu가 없는 배송건도
   // 필터 목록에서 조용히 빠지면 안 된다 — "지역 미확인"으로 명시적으로
-  // 노출해 선택할 수 있게 한다(UNKNOWN_REGION_LABEL, filterOrdersByRegionOrBuilding과 동일 규칙).
-  const regionCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const o of orders) {
-      const label = o.sigungu ?? UNKNOWN_REGION_LABEL;
-      map.set(label, (map.get(label) ?? 0) + 1);
-    }
-    return Array.from(map.entries()).map(([sigungu, count]) => ({ sigungu, count }));
-  }, [orders]);
-  // 지역 필터 2단계: select 안의 건물별 건수도 자기 자신 제외 원칙(§STD-6과
-  // 동일)을 따라 region/building 필터 자체를 뺀 나머지 조건 기준(orders)으로 센다.
-  const buildingCounts = useMemo(() => buildRegionBuildingCounts(orders), [orders]);
+  // 노출해 선택할 수 있게 한다. STEP11-2 Phase3: 시군구/읍면동/건물 세
+  // 계층의 집계를 한 번에 계산한다(buildRegionHierarchyCounts).
+  const { regionCounts, dongCounts, buildingCounts } = useMemo(() => buildRegionHierarchyCounts(orders), [orders]);
 
   const activeDriverLabel = !activeDriverId
     ? "전체"
@@ -215,8 +213,24 @@ export function DeliveryFilterStack({
       ? "미배정"
       : (drivers.find((d) => d.id === activeDriverId)?.name ?? "기사");
 
+  // STEP11-2 Phase3: 지역 계층이 시군구 하나에서 시군구/읍면동/건물 세
+  // 층으로 늘어났으므로, "현재 조건" 요약도 시군구가 비어있다고 곧바로
+  // "전체지역"이라 하면 안 된다 — 읍면동/건물만 선택된 상태를 "전체지역"
+  // 이라고 잘못 표시하는 회귀를 막기 위해 세 계층을 순서대로 확인한다.
   const activeRegionLabel =
-    activeRegions.length === 0 ? "전체지역" : activeRegions.length === 1 ? activeRegions[0] : `${activeRegions.length}개 지역`;
+    activeRegions.length > 0
+      ? activeRegions.length === 1
+        ? activeRegions[0]
+        : `${activeRegions.length}개 지역`
+      : activeDongKeys.length > 0
+        ? activeDongKeys.length === 1
+          ? activeDongKeys[0].split("||")[1]
+          : `${activeDongKeys.length}개 읍면동`
+        : activeBuildingKeys.length > 0
+          ? activeBuildingKeys.length === 1
+            ? activeBuildingKeys[0].split("||")[2]
+            : `${activeBuildingKeys.length}곳 건물`
+          : "전체지역";
 
   const summaryParts = [statusLabel];
   if (mode === "assign" || mode === "default") summaryParts.push(activeRegionLabel);
@@ -231,10 +245,13 @@ export function DeliveryFilterStack({
             regionCounts={regionCounts}
             activeRegions={activeRegions}
             onChange={setActiveRegions}
+            dongCounts={dongCounts}
+            activeDongKeys={activeDongKeys}
+            onDongChange={setActiveDongKeys}
             buildingCounts={buildingCounts}
             activeBuildingKeys={activeBuildingKeys}
             onBuildingChange={setActiveBuildingKeys}
-            onClearAll={clearRegionAndBuildingFilters}
+            onClearAll={clearRegionFilters}
           />
         </div>
       ) : null}
