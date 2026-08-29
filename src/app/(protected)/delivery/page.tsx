@@ -1,14 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { AutoRefresh } from "@/components/common/auto-refresh";
-import { DeliveryFilterBar } from "@/components/delivery/delivery-filter-bar";
-import { DeliveryFilterStack } from "@/components/delivery/delivery-filter-stack";
-import { DriverManagementDialog } from "@/components/delivery/driver-management-dialog";
-import { DeliveryStatusFlow, type DeliveryFilter, type DeliveryFlowCount } from "@/components/delivery/delivery-status-flow";
-import { PageHeader } from "@/components/common/page-header";
-import { EmptyState } from "@/components/common/empty-state";
-import { Button } from "@/components/ui/button";
-import { Truck, Download, Navigation } from "lucide-react";
-import Link from "next/link";
+import { DeliveryLiveFilters } from "@/components/delivery/delivery-live-filters";
+import type { DeliveryFilter, DeliveryFlowCount } from "@/components/delivery/delivery-status-flow";
 import { getDeliveryBoardAction } from "@/actions/delivery";
 import { listDeliveryGroupsAction } from "@/actions/delivery-groups";
 import { listDriversAction } from "@/actions/drivers";
@@ -62,9 +54,9 @@ export default async function DeliveryPage({
 }) {
   const params = await searchParams;
   const today = kstTodayIso();
-  // 배송목록 필터 UX 개편: region은 같은 key가 여러 번 실릴 수 있는(멀티선택)
-  // param이라 Next.js가 string | string[] | undefined로 준다 — 항상 배열로 정규화.
-  const activeRegions = Array.isArray(params.region) ? params.region : params.region ? [params.region] : [];
+  // 배송목록 필터 UX 개편: region/building/driverFilter는 DeliveryLiveFilters가
+  // 클라이언트 로컬 state로 직접 관리한다(STEP11-2 Phase2) — 여기서는 더
+  // 이상 파싱하지 않는다.
 
   // Phase 4-B STEP8: 배송일 빠른 필터(전체/오늘/이번주/이번달/기간선택) —
   // Orders와 동일 패턴. 기본값은 "오늘"(배송관리는 원래 오늘 업무 화면이므로
@@ -185,116 +177,31 @@ export default async function DeliveryPage({
     if (o.driver_id) driverCounts[o.driver_id] = (driverCounts[o.driver_id] ?? 0) + 1;
   }
 
-  function buildFilterHref(next: DeliveryFilter) {
-    const search = new URLSearchParams();
-    if (params.dateFilter) search.set("dateFilter", params.dateFilter);
-    if (params.dateFrom) search.set("dateFrom", params.dateFrom);
-    if (params.dateTo) search.set("dateTo", params.dateTo);
-    if (params.q) search.set("q", params.q);
-    for (const r of activeRegions) search.append("region", r);
-    if (params.driverFilter) search.set("driverFilter", params.driverFilter);
-    if (params.product) search.set("product", params.product);
-    // 기본값이 "배정필요"로 바뀌었으므로, 그 값으로 이동할 때만 filter
-    // param을 생략한다(그래야 배정필요 칩을 눌러도 URL이 깨끗하게 유지된다).
-    if (next !== "unassigned") search.set("filter", next);
-    const qs = search.toString();
-    return qs ? `/delivery?${qs}` : "/delivery";
-  }
-
-  // S2-C STEP6: 지금 화면에 적용된 필터 그대로 Excel API를 호출한다 —
-  // params.filter(원본 쿼리) 대신 activeFilter(기본값까지 반영해 이미
-  // 해석된 값)를 써야, filter param이 없는 기본 상태(배정필요)에서도
-  // 화면과 정확히 같은 조건으로 다운로드된다.
-  function buildExportHref() {
-    const search = new URLSearchParams();
-    if (params.dateFilter) search.set("dateFilter", params.dateFilter);
-    if (params.dateFrom) search.set("dateFrom", params.dateFrom);
-    if (params.dateTo) search.set("dateTo", params.dateTo);
-    if (params.q) search.set("q", params.q);
-    for (const r of activeRegions) search.append("region", r);
-    if (params.driverFilter) search.set("driverFilter", params.driverFilter);
-    if (activeFilter !== "all") search.set("filter", activeFilter);
-    if (params.product) search.set("product", params.product);
-    const qs = search.toString();
-    return qs ? `/api/delivery/export?${qs}` : "/api/delivery/export";
-  }
-
   return (
-    <div className="space-y-6">
+    <>
       <AutoRefresh />
-      <PageHeader
-        title="배송관리"
-        description="오늘 배송할 주문을 확인하고 배정 및 배송 상태를 관리하세요."
-        action={
-          <div className="flex items-center gap-2">
-            <Button asChild variant="outline" size="sm" className="gap-1.5">
-              <a href={buildExportHref()}>
-                <Download className="size-4" />
-                Excel 다운로드
-              </a>
-            </Button>
-            <DriverManagementDialog
-              drivers={allDrivers}
-              isAdmin={isAdmin}
-              accountUsernames={accountUsernames}
-              knownRegions={knownRegions}
-            />
-            <Button asChild variant="outline" size="sm" className="gap-1.5">
-              <a href="/delivery/drivers" target="_blank" rel="noopener noreferrer">
-                <Navigation className="size-4" />
-                기사 위치
-              </a>
-            </Button>
-          </div>
-        }
-      />
-
-      <DeliveryStatusFlow counts={flowCounts} active={activeFilter} buildHref={buildFilterHref} />
-
-      <DeliveryFilterBar
+      <DeliveryLiveFilters
+        baseQuery={{ dateFilter: params.dateFilter, dateFrom: params.dateFrom, dateTo: params.dateTo, q: params.q, product: params.product }}
+        activeFilter={activeFilter}
+        flowCounts={flowCounts}
         dateFilter={dateFilter}
         dateFrom={range?.start ?? today}
         dateTo={range?.end ?? today}
         productOptions={productSummary}
+        allDrivers={allDrivers}
+        isAdmin={isAdmin}
+        accountUsernames={accountUsernames}
+        knownRegions={knownRegions}
+        visibleOrders={visibleOrders}
+        drivers={drivers}
+        groups={groupResult?.groups ?? []}
+        statusLabel={STATUS_LABELS[activeFilter]}
+        itemSummaries={itemSummaries}
+        bagManagementEnabled={features.bagManagement}
+        driverCounts={driverCounts}
+        reorderEnabled={isSingleDay}
+        mode={deliveryModeFor(activeFilter)}
       />
-
-      {orders.length === 0 ? (
-        <EmptyState
-          icon={Truck}
-          title="배송할 주문이 없습니다."
-          description="선택한 조건에 해당하는 배송 예정 주문이 없습니다. 주문관리에서 배송일을 확인하거나 새 주문을 등록해보세요."
-          action={
-            <Button asChild variant="outline" size="sm">
-              <Link href="/orders">주문관리로 이동</Link>
-            </Button>
-          }
-        />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>배송 목록</CardTitle>
-            <CardDescription>
-              배송 예정 주문을 확인하고 기사 배정을 관리하세요.
-              {groupResult && groupResult.groups.length > 0
-                ? " 가까운 배송지는 배송그룹으로 자동 묶여 있습니다 — 그룹은 참고용이며, 그룹 안에서도 주문마다 다른 기사를 배정할 수 있습니다."
-                : ""}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <DeliveryFilterStack
-              orders={visibleOrders}
-              drivers={drivers}
-              groups={groupResult?.groups ?? []}
-              statusLabel={STATUS_LABELS[activeFilter]}
-              itemSummaries={itemSummaries}
-              bagManagementEnabled={features.bagManagement}
-              driverCounts={driverCounts}
-              reorderEnabled={isSingleDay}
-              mode={deliveryModeFor(activeFilter)}
-            />
-          </CardContent>
-        </Card>
-      )}
-    </div>
+    </>
   );
 }

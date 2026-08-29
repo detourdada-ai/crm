@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DeliveryRegionMultiFilter } from "@/components/delivery/delivery-region-multi-filter";
 import { DeliveryBoard } from "@/components/delivery/delivery-board";
 import { DeliveryMapView } from "@/components/delivery/delivery-map-view";
@@ -50,6 +49,13 @@ export function DeliveryFilterStack({
   driverCounts,
   reorderEnabled,
   mode = "default",
+  activeRegions,
+  setActiveRegions,
+  activeBuildingKeys,
+  setActiveBuildingKeys,
+  clearRegionAndBuildingFilters,
+  activeDriverId,
+  setActiveDriverId,
 }: {
   orders: OrderShipmentBoardRow[];
   drivers: Driver[];
@@ -62,53 +68,21 @@ export function DeliveryFilterStack({
   /** 특정 배송일 하나만 조회 중일 때만 true — route_order가 의미를 갖는 범위. */
   reorderEnabled: boolean;
   mode?: DeliveryStackMode;
+  // STEP11-2 Phase2(CPO 작업지시, 2026-08): region/building/driverFilter는
+  // "이미 받은 데이터를 클라이언트에서 거르기만 하는" 조건이라 router.push로
+  // URL을 바꿀 이유가 없다(App Router는 searchParams를 읽는 페이지에서
+  // router.push가 일어나면 그 파라미터를 실제로 쓰는지와 무관하게 페이지
+  // 전체 RSC를 다시 가져온다 — 실측 3초의 원인). 상태를 상위(DeliveryLiveFilters)로
+  // 끌어올려 controlled prop으로 받는다 — 상위가 로컬 state로 관리하고
+  // history.replaceState로만 주소창을 동기화해 서버 재요청 없이 즉시 반영한다.
+  activeRegions: string[];
+  setActiveRegions: (next: string[]) => void;
+  activeBuildingKeys: string[];
+  setActiveBuildingKeys: (next: string[]) => void;
+  clearRegionAndBuildingFilters: () => void;
+  activeDriverId: string | null;
+  setActiveDriverId: (next: string | null) => void;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  // 배송목록 필터 UX 개편(CPO, 2026-08): 기존 배송그룹 단일선택("전체
-  // 지역" Select)을 행정구역(sigungu) 멀티선택으로 바꾼다 — 여러 지역을
-  // 한 번에 조회할 수 있어야 한다는 요구. URL은 같은 key를 여러 번 실어
-  // 표현한다(region=강남구&region=송파구).
-  const activeRegions = searchParams.getAll("region");
-  function setActiveRegions(next: string[]) {
-    const params = new URLSearchParams(searchParams);
-    params.delete("region");
-    for (const r of next) params.append("region", r);
-    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
-  }
-
-  // 지역 필터 2단계(CPO 추가 요청, 2026-08): 지역 안의 건물(아파트1/아파트2/
-  // 기타) 하위 선택 — region과 별도 URL param으로 관리해 뒤로가기/공유 링크에도
-  // 그대로 남는다.
-  const activeBuildingKeys = searchParams.getAll("building");
-  function setActiveBuildingKeys(next: string[]) {
-    const params = new URLSearchParams(searchParams);
-    params.delete("building");
-    for (const b of next) params.append("building", b);
-    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
-  }
-  // "전체" 체크박스는 region/building 두 param을 동시에 지워야 한다 — setActiveRegions([])와
-  // setActiveBuildingKeys([])를 연달아 호출하면 둘 다 같은(클릭 시점의) searchParams
-  // 스냅샷에서 새 URL을 만들기 때문에, 뒤에 호출된 쪽이 앞의 변경을 덮어써 버린다
-  // (region 삭제 push 직후 building 삭제 push가 region을 다시 원래 값으로 되살림).
-  // 그래서 두 param을 한 번의 router.push로 함께 지운다.
-  function clearRegionAndBuildingFilters() {
-    const params = new URLSearchParams(searchParams);
-    params.delete("region");
-    params.delete("building");
-    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
-  }
-
-  const activeDriverId = searchParams.get("driverFilter");
-  function setActiveDriverId(next: string | null) {
-    const params = new URLSearchParams(searchParams);
-    if (next) params.set("driverFilter", next);
-    else params.delete("driverFilter");
-    router.push(params.toString() ? `${pathname}?${params.toString()}` : pathname);
-  }
-
   // 화면에 보이지 않는 필터 컨트롤은 조건에서도 빼야 한다 — 예를 들어
   // 배송중(progress)에서는 지역 필터를 아예 숨기므로, 다른 탭에서 걸어둔
   // region URL param이 남아있어도 배송중 화면에서는 무시한다("보이는 필터
