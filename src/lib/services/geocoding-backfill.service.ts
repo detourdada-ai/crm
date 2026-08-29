@@ -17,6 +17,15 @@ export interface GeocodeBackfillResult {
  * 카카오에 실제로 다시 물어봐서 받은 응답으로만 갱신한다. 실패가 계속되는
  * 행은 그대로 failed로 남는다(억지로 성공 처리하지 않는다).
  */
+/**
+ * STEP11-2 Phase 2(CPO 작업지시, 2026-08): Admin이 전체 tenant의 실패 건을
+ * 한 번에 재처리하는 것 자체는 운영자 권한 범위 안이지만, 개별 행을 갱신할
+ * 때는 반드시 그 행이 실제로 속한 tenant(owner_username)를 명시해서
+ * repository의 소유권 스코핑(F15 이중검증 패턴)을 그대로 통과시켜야 한다 —
+ * "관리자니까 전부"가 아니라 "각 행은 각자의 tenant 범위 안에서" 처리한다.
+ * findFailedGeocode()가 이미 owner_username을 함께 내려주므로 추가 조회
+ *없이 바로 tenant 범위를 명시할 수 있다.
+ */
 export async function backfillFailedOrderGeocodes(): Promise<GeocodeBackfillResult> {
   const targets = await ordersRepository.findFailedGeocode();
   let succeeded = 0;
@@ -24,7 +33,7 @@ export async function backfillFailedOrderGeocodes(): Promise<GeocodeBackfillResu
     if (!t.address_snapshot) continue;
     const geo = await geocodeAddress(t.address_snapshot);
     if (geo.geocode_status !== "success") continue;
-    await ordersRepository.update(t.id, { ...geo, geocoded_at: new Date().toISOString() });
+    await ordersRepository.update(t.id, { ...geo, geocoded_at: new Date().toISOString() }, t.owner_username);
     succeeded++;
   }
   return { targeted: targets.length, succeeded, stillFailed: targets.length - succeeded };
@@ -37,7 +46,7 @@ export async function backfillFailedCustomerGeocodes(): Promise<GeocodeBackfillR
     if (!t.road_address) continue;
     const geo = await geocodeAddress(t.road_address);
     if (geo.geocode_status !== "success") continue;
-    await customersRepository.update(t.id, { ...geo, geocoded_at: new Date().toISOString() });
+    await customersRepository.update(t.id, { ...geo, geocoded_at: new Date().toISOString() }, t.owner_username);
     succeeded++;
   }
   return { targeted: targets.length, succeeded, stillFailed: targets.length - succeeded };
