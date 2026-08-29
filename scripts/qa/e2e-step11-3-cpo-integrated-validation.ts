@@ -46,6 +46,19 @@ function note(msg: string) {
   console.log(`[정보] ${msg}`);
 }
 
+/** 150건 일괄배정 직후처럼 서버가 순간적으로 바쁠 때, 단건 액션의 revalidate가
+ * DB 조회 시점보다 늦게 반영될 수 있어 고정 대기 대신 조건이 참이 될 때까지
+ * 짧은 간격으로 재확인한다(최대 timeoutMs). */
+async function pollUntil<T>(fn: () => Promise<T>, isReady: (v: T) => boolean, timeoutMs = 10000, intervalMs = 500): Promise<T> {
+  const start = Date.now();
+  let last: T = await fn();
+  while (!isReady(last) && Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, intervalMs));
+    last = await fn();
+  }
+  return last;
+}
+
 async function setSession(context: BrowserContext, username: string) {
   await context.clearCookies();
   const url = new URL(BASE_URL);
@@ -327,24 +340,49 @@ async function run() {
     await firstDriverBtn.click();
     await page.getByRole("menu").waitFor({ state: "visible", timeout: 10000 });
     await page.getByRole("menuitem", { name: new RegExp(`S113기사B-${RUN_TAG}`) }).click();
-    await page.waitForTimeout(1000);
-    const { count: driverBCount } = await admin.from("orders").select("id", { count: "exact", head: true }).eq("owner_username", OWNER).eq("driver_id", driverId2).ilike("order_number", `${PREFIX}%`);
-    record("STEP5-1. 개별 기사 변경 — 1건 driver_id 반영", (driverBCount ?? 0) === 1, `got=${driverBCount}`);
+    const driverBCount = await pollUntil(
+      async () => (await admin.from("orders").select("id", { count: "exact", head: true }).eq("owner_username", OWNER).eq("driver_id", driverId2).ilike("order_number", `${PREFIX}%`)).count ?? 0,
+      (v) => v >= 1
+    );
+    record("STEP5-1. 개별 기사 변경 — 1건 driver_id 반영", driverBCount === 1, `got=${driverBCount}`);
 
     // ================= STEP6: 가방번호 + 회수여부 =================
-    const bagInput = page.locator('input[placeholder="가방번호"]').first();
+    // 텍스트/aria-label 기반 앵커는 저장 후 재검증(revalidatePath)으로 행이
+    // 재정렬되면 다른 배송건을 가리킬 위험이 있다. 각 행은 /orders/{id}로
+    // 이동하는 고유 링크를 갖고 있으므로, STEP5에서 이미 확인한 order id를
+    // 그대로 사용해 href 기준으로 정확히 같은 배송건의 행을 고정한다.
+    const { data: driverBOrder } = await admin
+      .from("orders")
+      .select("id")
+      .eq("owner_username", OWNER)
+      .eq("driver_id", driverId2)
+      .ilike("order_number", `${PREFIX}%`)
+      .single();
+    const driverBOrderId = driverBOrder!.id as string;
+    const driverBRow = page.locator(`xpath=//a[@href="/orders/${driverBOrderId}"]/ancestor::div[contains(@class, "rounded-xl")][1]`);
+    const bagInput = driverBRow.locator('input[placeholder="가방번호"]');
     await bagInput.fill(`BAG-${RUN_TAG}`);
     await bagInput.blur();
-    await page.waitForTimeout(800);
-    const returnToggle = page.getByText("미회수").first();
-    if (await returnToggle.count()) {
-      await returnToggle.click();
-      await page.waitForTimeout(800);
+    const bagCount = await pollUntil(
+      async () => (await admin.from("order_shipments").select("id", { count: "exact", head: true }).eq("owner_username", OWNER).eq("bag_number", `BAG-${RUN_TAG}`)).count ?? 0,
+      (v) => v >= 1
+    );
+    record("STEP6-1. 가방번호 저장 확인", bagCount >= 1, `got=${bagCount}`);
+    // 가방번호 저장 요청이 서버에서 아직 처리 중이면(특히 150건 일괄배정 직후
+    // 서버가 바쁠 때) 배지가 "미회수" 텍스트 대신 로딩 스피너를 보여준다 —
+    // DB에는 이미 반영됐어도 클라이언트 요청은 아직 안 끝났을 수 있으므로,
+    // 텍스트가 안정될 때까지 기다린 뒤 클릭한다.
+    const returnToggle = driverBRow.getByText("미회수").or(driverBRow.getByText("회수완료"));
+    await returnToggle.first().waitFor({ state: "visible", timeout: 15000 });
+    if ((await driverBRow.getByText("미회수").count()) > 0) {
+      await driverBRow.getByText("미회수").click();
     }
-    const { count: bagCount } = await admin.from("order_shipments").select("id", { count: "exact", head: true }).eq("owner_username", OWNER).eq("bag_number", `BAG-${RUN_TAG}`);
-    record("STEP6-1. 가방번호 저장 확인", (bagCount ?? 0) >= 1, `got=${bagCount}`);
-    const { count: returnedCount } = await admin.from("order_shipments").select("id", { count: "exact", head: true }).eq("owner_username", OWNER).eq("bag_number", `BAG-${RUN_TAG}`).eq("bag_returned", true);
-    record("STEP6-2. 회수여부 저장 확인", (returnedCount ?? 0) >= 1, `got=${returnedCount}`);
+    const returnedCount = await pollUntil(
+      async () =>
+        (await admin.from("order_shipments").select("id", { count: "exact", head: true }).eq("owner_username", OWNER).eq("bag_number", `BAG-${RUN_TAG}`).eq("bag_returned", true)).count ?? 0,
+      (v) => v >= 1
+    );
+    record("STEP6-2. 회수여부 저장 확인", returnedCount >= 1, `got=${returnedCount}`);
 
     // ================= STEP7: 새로고침 후 상태 유지 =================
     await page.reload({ waitUntil: "networkidle" });
