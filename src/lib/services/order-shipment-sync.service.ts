@@ -40,43 +40,51 @@ export async function syncOrdersFromShipments(orderIds: string[]): Promise<void>
     byOrder.set(s.order_id, list);
   }
 
-  for (const orderId of distinctOrderIds) {
-    const list = byOrder.get(orderId);
-    if (!list || list.length === 0) continue;
+  // STEP11-2 Phase2(CPO 작업지시, 2026-08): 기사 일괄배정 20건에 15초가
+  //걸리던 병목의 두 번째 축 — normalizeRouteOrderOnAssign()과 별개로 이
+  // 함수도 주문마다 순차 await UPDATE를 돌고 있었다. 각 주문이 받는 patch는
+  // 서로 다르지만(대표값 계산이 그 주문 소속 배송건들만 보고 끝남) 다른
+  // 주문의 계산 결과에 의존하지 않으므로, order-shipments.repository.ts의
+  // normalizeRouteOrderOnAssign과 동일하게 Promise.all 병렬 처리로 바꾼다.
+  await Promise.all(
+    distinctOrderIds.map(async (orderId) => {
+      const list = byOrder.get(orderId);
+      if (!list || list.length === 0) return;
 
-    const distinctDrivers = new Set(list.map((s) => s.driver_id).filter((d): d is string => d !== null));
-    const driverId = distinctDrivers.size === 1 ? [...distinctDrivers][0] : null;
+      const distinctDrivers = new Set(list.map((s) => s.driver_id).filter((d): d is string => d !== null));
+      const driverId = distinctDrivers.size === 1 ? [...distinctDrivers][0] : null;
 
-    const statuses = list.map((s) => s.delivery_status as DeliveryStatus);
-    const nonCancelled = statuses.filter((s) => s !== "취소");
-    let deliveryStatus: DeliveryStatus;
-    if (nonCancelled.length === 0) deliveryStatus = "취소";
-    else if (nonCancelled.some((s) => s === "배송중")) deliveryStatus = "배송중";
-    else if (nonCancelled.every((s) => s === "완료")) deliveryStatus = "완료";
-    else if (nonCancelled.some((s) => s === "완료")) deliveryStatus = "배송중";
-    else deliveryStatus = "배송대기";
+      const statuses = list.map((s) => s.delivery_status as DeliveryStatus);
+      const nonCancelled = statuses.filter((s) => s !== "취소");
+      let deliveryStatus: DeliveryStatus;
+      if (nonCancelled.length === 0) deliveryStatus = "취소";
+      else if (nonCancelled.some((s) => s === "배송중")) deliveryStatus = "배송중";
+      else if (nonCancelled.every((s) => s === "완료")) deliveryStatus = "완료";
+      else if (nonCancelled.some((s) => s === "완료")) deliveryStatus = "배송중";
+      else deliveryStatus = "배송대기";
 
-    const completedAt =
-      deliveryStatus === "완료"
-        ? (list
-            .map((s) => s.completed_at)
-            .filter((v): v is string => v !== null)
-            .sort()
-            .at(-1) ?? null)
-        : null;
+      const completedAt =
+        deliveryStatus === "완료"
+          ? (list
+              .map((s) => s.completed_at)
+              .filter((v): v is string => v !== null)
+              .sort()
+              .at(-1) ?? null)
+          : null;
 
-    const first = list[0];
-    const { error: updateError } = await admin
-      .from("orders")
-      .update({
-        driver_id: driverId,
-        delivery_status: deliveryStatus,
-        completed_at: completedAt,
-        bag_number: first.bag_number,
-        bag_returned: first.bag_returned,
-        fulfillment_method: first.fulfillment_method as "delivery" | "direct_pickup",
-      })
-      .eq("id", orderId);
-    if (updateError) throw updateError;
-  }
+      const first = list[0];
+      const { error: updateError } = await admin
+        .from("orders")
+        .update({
+          driver_id: driverId,
+          delivery_status: deliveryStatus,
+          completed_at: completedAt,
+          bag_number: first.bag_number,
+          bag_returned: first.bag_returned,
+          fulfillment_method: first.fulfillment_method as "delivery" | "direct_pickup",
+        })
+        .eq("id", orderId);
+      if (updateError) throw updateError;
+    })
+  );
 }

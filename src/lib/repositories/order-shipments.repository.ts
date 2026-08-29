@@ -158,11 +158,14 @@ async function normalizeRouteOrderOnAssign(
       .lte("delivery_date", kstDayEndIso(day))
       .neq("delivery_status", "취소");
     if (error) throw error;
+    // STEP11-2 Phase2(CPO 작업지시, 2026-08): id마다 다른 값을 매겨야 해서
+    // 하나의 UPDATE 문으로 합칠 수 없지만(각 행이 서로 다른 route_order를
+    // 받음), 순차 awit로 20건에 15초가 걸리던 것을 compactRouteOrder()와
+    // 동일하게 Promise.all 병렬 처리로 바꾼다 — next 값은 이 동기 map 안에서
+    // 미리 확정되므로(응답 도착 순서와 무관), 병렬로 쏴도 매겨지는 순번은
+    // 이전과 완전히 동일하다.
     let next = (existing ?? []).filter((r) => !idSet.has(r.id)).length + 1;
-    for (const id of ids) {
-      await admin.from("order_shipments").update({ route_order: next }).eq("id", id);
-      next += 1;
-    }
+    await Promise.all(ids.map((id) => admin.from("order_shipments").update({ route_order: next++ }).eq("id", id)));
   }
 
   for (const key of sourceDriverDays) {
