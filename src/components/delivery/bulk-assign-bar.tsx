@@ -59,7 +59,7 @@ export function BulkAssignBar({
         </button>
       </div>
       <Select value={driverId} onValueChange={onDriverIdChange} onOpenChange={onDriverSelectOpenChange} disabled={fulfillmentChoice === "direct_pickup"}>
-        <SelectTrigger className="w-40 bg-surface">
+        <SelectTrigger className="w-40 bg-surface" aria-label="담당 기사 선택">
           <SelectValue placeholder="담당 기사 선택" />
         </SelectTrigger>
         <SelectContent>
