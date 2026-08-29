@@ -37,3 +37,22 @@ export async function registerAnnouncementPopupHandler(page: Page): Promise<void
     await page.keyboard.press("Escape");
   });
 }
+
+/**
+ * addLocatorHandler()는 "다음 액션을 막을 때"만 자동 개입한다 — .click() 같은
+ * 실제 조작 앞에서는 알아서 팝업을 치워주지만, .isVisible()/.count()처럼
+ * 상태만 읽는 순수 조회는 "액션"이 아니라서 handler가 트리거되지 않는다.
+ * Radix Dialog는 열려 있는 동안 나머지 페이지 콘텐츠에 aria-hidden을 걸어서
+ * 접근성 트리에서 숨기므로, 공지 팝업이 뜬 채로 페이지 내 다른 버튼을
+ * getByRole("button")로 조회하면 실제로는 있는 버튼도 "없음"으로 보인다
+ * (앱 버그 아님 — STEP10 E2E 작업 중 발견, Scenario A의 "수정"/"전체 삭제"
+ * 버튼 오탐 원인). page.goto() 직후 클릭이 아니라 상태 조회부터 하는
+ * 스크립트는 이 함수를 먼저 호출해 명시적으로 치워야 한다.
+ */
+export async function dismissAnnouncementPopupIfPresent(page: Page): Promise<void> {
+  const announcementDialog = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "오늘 그만 보기" }) });
+  if (await announcementDialog.isVisible().catch(() => false)) {
+    await page.keyboard.press("Escape");
+    await announcementDialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+  }
+}
