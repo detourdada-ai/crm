@@ -2,6 +2,7 @@ import "server-only";
 import { orderShipmentsRepository, type OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import { deliveryGroupsRepository } from "@/lib/repositories/delivery-groups.repository";
 import { clusterPointsByDistance, computeCentroid, representativeRegion } from "@/lib/services/spatial-grouping.service";
+import { extractComplexName, buildingNormalizationKey } from "@/lib/utils/delivery-group";
 
 /** 배송 그룹화 기본 반경 — CPO 승인: "격자"가 아니라 "주문 간 실거리 N m 이내"가 연결 기준(그룹이 너무 잘게 쪼개진다는 CEO 피드백으로 50m→100m 확대). */
 export const GROUP_RADIUS_METERS = 100;
@@ -15,6 +16,58 @@ export const GROUP_RADIUS_METERS = 100;
  * 제한한다.
  */
 const REGEN_CONCURRENCY_LIMIT = 8;
+
+/**
+ * STEP11-11(CPO 작업지시, 2026-08-30) — Option 1: 동일 단지 우선 + 공간
+ * 반경 보조. STEP11-9/10에서 user1 실데이터(8일/416건)로 검증된 "D-100"
+ * 모델을 그대로 구현한다.
+ *
+ * 1순위: 신뢰 가능한 건물명(extractComplexName, 기존 로직 그대로)이 이 배송일에
+ * 2건 이상 겹치면 좌표 거리와 무관하게 하나의 그룹 후보로 본다.
+ * 2순위: 건물명이 없거나(단독주택 등) 그 건물명이 이 배송일에 1건뿐이면
+ * 기존 100m 반경 클러스터링을 적용하되, **같은 읍면동 내부로 제한**한다 —
+ * 실측 결과 동 경계를 유지해도 커버리지/건물혼합 손해가 없고 서로 다른
+ * 동을 억지로 묶는 사례만 확실히 없앤다(STEP11-9 리포트 참고).
+ *
+ * GROUP_RADIUS_METERS(100m) 자체는 바꾸지 않는다 — "숫자 튜닝"이 아니라
+ * "무엇을 먼저 볼지"의 순서를 바꾸는 것이 이번 변경의 핵심이다.
+ */
+export function buildDeliveryGroupClusters(
+  eligibleShipments: { shipmentId: string; latitude: number; longitude: number; address_snapshot: string | null; eupmyeondong: string | null }[]
+): string[][] {
+  const byBuildingKey = new Map<string, typeof eligibleShipments>();
+  const leftover: typeof eligibleShipments = [];
+  for (const s of eligibleShipments) {
+    const buildingName = extractComplexName(s.address_snapshot);
+    const key = buildingName ? buildingNormalizationKey(buildingName) : null;
+    if (!key) {
+      leftover.push(s);
+      continue;
+    }
+    const list = byBuildingKey.get(key) ?? [];
+    list.push(s);
+    byBuildingKey.set(key, list);
+  }
+
+  const clusters: string[][] = [];
+  for (const [, members] of byBuildingKey) {
+    if (members.length >= 2) clusters.push(members.map((m) => m.shipmentId));
+    else leftover.push(...members);
+  }
+
+  const leftoverByDong = new Map<string, typeof eligibleShipments>();
+  for (const s of leftover) {
+    const key = s.eupmyeondong ?? "__no_dong__";
+    const list = leftoverByDong.get(key) ?? [];
+    list.push(s);
+    leftoverByDong.set(key, list);
+  }
+  for (const [, members] of leftoverByDong) {
+    const points = members.map((m) => ({ id: m.shipmentId, lat: m.latitude, lng: m.longitude }));
+    clusters.push(...clusterPointsByDistance(points, GROUP_RADIUS_METERS).filter((c) => c.length >= 2));
+  }
+  return clusters;
+}
 
 async function runWithConcurrencyLimit<T>(items: T[], limit: number, fn: (item: T, index: number) => Promise<void>): Promise<void> {
   let cursor = 0;
@@ -64,15 +117,19 @@ export async function regenerateDeliveryGroupsForTenant(
     priorMembersByGroup.set(shipment.delivery_group_id, set);
   }
 
-  // 2) 새 클러스터 계산 — 크기 2 이상만 "그룹" 후보(1개짜리는 미그룹으로 처리).
-  // P4C Phase3 STEP5: 수동분리(delivery_group_locked=true)된 배송건은 클러스터링
-  // 입력 자체에서 제외한다 — 100m 반경/알고리즘은 그대로이고, "재계산 전에
-  // 무엇을 넣을지"만 사전 필터링한다(운영자가 분리한 배송건이 다음 재계산
-  // 때 조용히 원래 그룹으로 되돌아가지 않도록).
-  const points = shipments
-    .filter((s) => s.latitude !== null && s.longitude !== null && !s.delivery_group_locked)
-    .map((s) => ({ id: s.shipmentId, lat: s.latitude as number, lng: s.longitude as number }));
-  const clusters = clusterPointsByDistance(points, GROUP_RADIUS_METERS).filter((c) => c.length >= 2);
+  // 2) 새 클러스터 계산. P4C Phase3 STEP5: 수동분리(delivery_group_locked=true)된
+  // 배송건은 클러스터링 입력 자체에서 제외한다(운영자가 분리한 배송건이 다음
+  // 재계산 때 조용히 원래 그룹으로 되돌아가지 않도록).
+  const eligible = shipments.filter((s) => s.latitude !== null && s.longitude !== null && !s.delivery_group_locked);
+  const clusters = buildDeliveryGroupClusters(
+    eligible.map((s) => ({
+      shipmentId: s.shipmentId,
+      latitude: s.latitude as number,
+      longitude: s.longitude as number,
+      address_snapshot: s.address_snapshot,
+      eupmyeondong: s.eupmyeondong,
+    }))
+  );
   const shipmentById = new Map(shipments.map((s) => [s.shipmentId, s]));
 
   // 3) 기존 그룹 ↔ 새 클러스터 매칭: 겹치는 배송건 수(intersection)가 가장 큰

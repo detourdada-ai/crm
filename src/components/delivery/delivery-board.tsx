@@ -104,6 +104,33 @@ export function DeliveryBoard({
 
   const orderById = useMemo(() => new Map(orders.map((o) => [o.rowKey, o.id])), [orders]);
 
+  // STEP11-11(CPO 작업지시, 2026-08-30): 그룹 카드에서 "이 그룹 전체 선택"을
+  // 누르면 기존 일괄배정 흐름(BulkAssignBar)을 그대로 재사용할 수 있도록,
+  // 화면에 지금 보이는 배송건만 기준으로 그룹별 멤버 rowKey를 모아둔다
+  // (P14-A 원칙과 동일 — 필터로 가려진 배송건은 그룹 선택에도 포함하지 않는다).
+  const groupMemberRowKeys = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const o of currentlyDisplayedOrders) {
+      if (!o.delivery_group_id) continue;
+      const list = map.get(o.delivery_group_id) ?? [];
+      list.push(o.rowKey);
+      map.set(o.delivery_group_id, list);
+    }
+    return map;
+  }, [currentlyDisplayedOrders]);
+
+  function toggleGroupSelection(groupId: string, checked: boolean) {
+    const memberIds = groupMemberRowKeys.get(groupId) ?? [];
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of memberIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
   function toggle(id: string, checked: boolean) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -249,6 +276,11 @@ export function DeliveryBoard({
     // STEP5-B: 건물이 섞였으면 "지역 · 건물명 외 N곳" 대신 지역명만 쓰고
     // ⚠ 경고를 별도 신호로 보여준다(라벨 문구에 억지로 요약해 넣지 않는다).
     const label = (isMixed ? groupLabel?.region : groupLabel?.full) ?? "배송그룹";
+    // STEP11-11: 화면에 보이는 그룹 멤버 기준으로 선택 상태를 계산 —
+    // BulkAssignBar가 이미 selectedCount만 보고 동작하므로 별도 배선 없이
+    // 기존 일괄배정 흐름을 그대로 재사용한다.
+    const memberIds = groupMemberRowKeys.get(groupId) ?? [];
+    const allSelected = memberIds.length > 0 && memberIds.every((id) => visibleSelected.has(id));
     return (
       <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -270,12 +302,20 @@ export function DeliveryBoard({
             <span className="rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">
               ⚠ 건물 {buildings.length}곳 포함
             </span>
-          ) : null}
+          ) : (
+            <span className="text-xs text-muted-foreground">같은 배송지로 묶였습니다</span>
+          )}
         </div>
         {isMixed ? (
           <p className="mt-1 text-xs text-muted-foreground">
             {buildings.map((b) => `🏢 ${b.name} ${b.count}건`).join("  ·  ")}
           </p>
+        ) : null}
+        {memberIds.length > 0 ? (
+          <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <Checkbox checked={allSelected} onCheckedChange={(checked) => toggleGroupSelection(groupId, checked === true)} />
+            이 그룹 {memberIds.length}건 선택
+          </label>
         ) : null}
       </div>
     );

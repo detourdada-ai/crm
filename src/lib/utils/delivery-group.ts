@@ -120,7 +120,7 @@ export interface GroupBuildingCount {
  * 유사도 추정이 아니라 정확히 같은 정규화 키만 묶으므로 "미사역 파라곤"과
  * "미사강변 호반 써밋"처럼 실제 다른 건물은 절대 합쳐지지 않는다.
  */
-function buildingNormalizationKey(name: string): string {
+export function buildingNormalizationKey(name: string): string {
   return name.replace(/\s+/g, "").replace(/아파트|apt/gi, "").toLowerCase();
 }
 
