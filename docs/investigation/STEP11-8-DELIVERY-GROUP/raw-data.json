@@ -1,0 +1,1744 @@
+{
+  "targetOwner": "user1",
+  "generatedAt": "2026-08-30T09:21:51.049Z",
+  "report": [
+    {
+      "deliveryDate": "2026-09-04",
+      "totalEligibleShipments": 30,
+      "totalGroups": 4,
+      "groupedShipments": 10,
+      "ungroupedShipments": 20,
+      "dongBasedCounts": {
+        "고덕동": 6,
+        "덕풍동": 3,
+        "풍산동": 6,
+        "선동": 3,
+        "창우동": 1,
+        "망월동": 5,
+        "신장동": 2,
+        "강일동": 2,
+        "명일동": 1,
+        "암사동": 1
+      },
+      "dongSplitAcrossMultipleGroups": [
+        {
+          "dong": "고덕동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "풍산동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "선동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "망월동",
+          "splitIntoGroupsCount": 2
+        }
+      ],
+      "groupsCrossingMultipleDong": [],
+      "groups": [
+        {
+          "groupId": "00236596-403d-49a1-9e16-9fac6fea2664",
+          "groupNo": 2,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "선동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "리슈빌아파트",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 1400
+        },
+        {
+          "groupId": "b337b16a-c70e-499c-8241-a24a27240159",
+          "groupNo": 1,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "풍산동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변아란티움",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 852
+        },
+        {
+          "groupId": "bda09536-04f8-4ccc-9cdf-abaf341206f5",
+          "groupNo": 3,
+          "orderCount": 4,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "고덕동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕그라시움아파트",
+              "count": 4
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 2662
+        },
+        {
+          "groupId": "1e6a98d3-04a7-4987-8944-d4cc0d948408",
+          "groupNo": 4,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 호반 써밋",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 852
+        }
+      ]
+    },
+    {
+      "deliveryDate": "2026-09-03",
+      "totalEligibleShipments": 20,
+      "totalGroups": 2,
+      "groupedShipments": 4,
+      "ungroupedShipments": 16,
+      "dongBasedCounts": {
+        "고덕동": 5,
+        "풍산동": 2,
+        "선동": 3,
+        "창우동": 1,
+        "망월동": 3,
+        "덕풍동": 1,
+        "상일동": 2,
+        "강일동": 2,
+        "신장동": 1
+      },
+      "dongSplitAcrossMultipleGroups": [
+        {
+          "dong": "고덕동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "선동",
+          "splitIntoGroupsCount": 2
+        }
+      ],
+      "groupsCrossingMultipleDong": [],
+      "groups": [
+        {
+          "groupId": "f4c0f01a-4e44-4b8c-aad5-7134cae63c97",
+          "groupNo": 1,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "선동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "리슈빌아파트",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 2662
+        },
+        {
+          "groupId": "39093577-8e67-4f8c-83ee-a917e3147a4d",
+          "groupNo": 2,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "고덕동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕그라시움아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 2662
+        }
+      ]
+    },
+    {
+      "deliveryDate": "2026-09-02",
+      "totalEligibleShipments": 28,
+      "totalGroups": 3,
+      "groupedShipments": 7,
+      "ungroupedShipments": 21,
+      "dongBasedCounts": {
+        "고덕동": 4,
+        "덕풍동": 1,
+        "망월동": 7,
+        "풍산동": 5,
+        "선동": 2,
+        "상일동": 3,
+        "강일동": 2,
+        "신장동": 2,
+        "창우동": 1,
+        "명일동": 1
+      },
+      "dongSplitAcrossMultipleGroups": [
+        {
+          "dong": "풍산동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "상일동",
+          "splitIntoGroupsCount": 2
+        }
+      ],
+      "groupsCrossingMultipleDong": [],
+      "groups": [
+        {
+          "groupId": "01d6b8ef-fa15-4350-9d29-b986aa55e025",
+          "groupNo": 3,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "신장동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "백조현대아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 3111
+        },
+        {
+          "groupId": "05e46cc6-2d9c-42bb-8b68-1de700130e6a",
+          "groupNo": 2,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "상일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕아르테온아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 1979
+        },
+        {
+          "groupId": "0e05344d-3174-4b27-b63a-cbaa69d97d50",
+          "groupNo": 1,
+          "orderCount": 3,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "풍산동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변아란티움",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 1979
+        }
+      ]
+    },
+    {
+      "deliveryDate": "2026-09-01",
+      "totalEligibleShipments": 26,
+      "totalGroups": 4,
+      "groupedShipments": 8,
+      "ungroupedShipments": 18,
+      "dongBasedCounts": {
+        "고덕동": 5,
+        "덕풍동": 3,
+        "망월동": 5,
+        "창우동": 1,
+        "상일동": 4,
+        "강일동": 2,
+        "신장동": 2,
+        "선동": 2,
+        "풍산동": 1,
+        "암사동": 1
+      },
+      "dongSplitAcrossMultipleGroups": [
+        {
+          "dong": "고덕동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "상일동",
+          "splitIntoGroupsCount": 2
+        }
+      ],
+      "groupsCrossingMultipleDong": [],
+      "groups": [
+        {
+          "groupId": "0d085eb1-0b22-4d65-ad1e-abb15638fd2b",
+          "groupNo": 2,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "상일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕 롯데캐슬 베네루체",
+              "count": 1
+            },
+            {
+              "name": "고덕센트럴 IPARK",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 72,
+          "minInterGroupDistanceM": 886
+        },
+        {
+          "groupId": "a8835efb-68c7-472a-85b1-ffafffc755ea",
+          "groupNo": 3,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "신장동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "백조현대아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 4782
+        },
+        {
+          "groupId": "c81c28a0-57c9-427a-91a1-cd81a675b684",
+          "groupNo": 4,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "선동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변리슈빌엔에이치에프",
+              "count": 1
+            },
+            {
+              "name": "리슈빌아파트",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 2662
+        },
+        {
+          "groupId": "b32b7b95-8132-425e-9081-d85075223370",
+          "groupNo": 1,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "고덕동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕그라시움아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 886
+        }
+      ]
+    },
+    {
+      "deliveryDate": "2026-08-31",
+      "totalEligibleShipments": 24,
+      "totalGroups": 1,
+      "groupedShipments": 2,
+      "ungroupedShipments": 22,
+      "dongBasedCounts": {
+        "고덕동": 4,
+        "망월동": 8,
+        "선동": 2,
+        "풍산동": 2,
+        "덕풍동": 1,
+        "상일동": 2,
+        "강일동": 3,
+        "명일동": 1,
+        "신장동": 1
+      },
+      "dongSplitAcrossMultipleGroups": [
+        {
+          "dong": "망월동",
+          "splitIntoGroupsCount": 2
+        }
+      ],
+      "groupsCrossingMultipleDong": [],
+      "groups": [
+        {
+          "groupId": "99f92c4a-3df7-4bba-939e-87b0b7cc670c",
+          "groupNo": 1,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 호반 써밋",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": null
+        }
+      ]
+    },
+    {
+      "deliveryDate": "2026-08-28",
+      "totalEligibleShipments": 84,
+      "totalGroups": 15,
+      "groupedShipments": 44,
+      "ungroupedShipments": 40,
+      "dongBasedCounts": {
+        "고덕동": 16,
+        "망월동": 22,
+        "창우동": 2,
+        "신장동": 6,
+        "덕풍동": 4,
+        "풍산동": 12,
+        "선동": 4,
+        "강일동": 4,
+        "상일동": 9,
+        "암사동": 2,
+        "명일동": 3
+      },
+      "dongSplitAcrossMultipleGroups": [
+        {
+          "dong": "고덕동",
+          "splitIntoGroupsCount": 3
+        },
+        {
+          "dong": "망월동",
+          "splitIntoGroupsCount": 7
+        },
+        {
+          "dong": "신장동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "풍산동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "선동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "상일동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "명일동",
+          "splitIntoGroupsCount": 2
+        }
+      ],
+      "groupsCrossingMultipleDong": [],
+      "groups": [
+        {
+          "groupId": "d9f9ecb2-2465-4321-b86c-871e4b65fa68",
+          "groupNo": 7,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "선동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "리버스위트칸타빌",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 820
+        },
+        {
+          "groupId": "5cdcc646-7791-4788-97f1-be8c55498573",
+          "groupNo": 2,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사푸르지오시티 A동",
+              "count": 1
+            },
+            {
+              "name": "미사푸르지오시티 B동",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 98,
+          "minInterGroupDistanceM": 296
+        },
+        {
+          "groupId": "93d3e507-84f7-4d61-b2a9-e30716335bf5",
+          "groupNo": 8,
+          "orderCount": 4,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "풍산동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변센트럴자이",
+              "count": 4
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 457
+        },
+        {
+          "groupId": "d917e409-a160-4b3c-ba0f-8220510d4970",
+          "groupNo": 6,
+          "orderCount": 4,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 호반 써밋",
+              "count": 1
+            },
+            {
+              "name": "미사역 파라곤",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 69,
+          "minInterGroupDistanceM": 296
+        },
+        {
+          "groupId": "056df5f5-3d81-4313-85a8-0845d34e73cf",
+          "groupNo": 3,
+          "orderCount": 3,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "고덕동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "래미안힐스테이트고덕",
+              "count": 3
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 451
+        },
+        {
+          "groupId": "94a7d7ff-d898-4086-98e2-7fe80b618210",
+          "groupNo": 4,
+          "orderCount": 9,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "고덕동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕그라시움아파트",
+              "count": 9
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 893
+        },
+        {
+          "groupId": "f4c5ad89-2edb-4848-9c9a-3323d0214af8",
+          "groupNo": 1,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "창우동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "꿈동산신안아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 1610
+        },
+        {
+          "groupId": "9a81aeed-4d91-4506-b436-25013deeed8b",
+          "groupNo": 5,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "신장동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "하남유시티대명루첸리버파크",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 93,
+          "minInterGroupDistanceM": 1610
+        },
+        {
+          "groupId": "f051a148-08c6-48bf-8ee3-d1f064b3a54e",
+          "groupNo": 10,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 센텀팰리스(Centum Palace",
+              "count": 1
+            },
+            {
+              "name": "미사강변도시18단지",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 103
+        },
+        {
+          "groupId": "04908a3d-8d0f-4231-ac52-2e39e170c943",
+          "groupNo": 11,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "암사동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "강동 롯데캐슬퍼스트아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 317
+        },
+        {
+          "groupId": "b8ce41a4-49b8-41f0-8ced-41229c4aadd1",
+          "groupNo": 12,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "명일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "삼익그린맨션",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 317
+        },
+        {
+          "groupId": "bd86c53d-f285-4864-b52d-316782daf6c9",
+          "groupNo": 13,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [],
+          "maxInternalDistanceM": 36,
+          "minInterGroupDistanceM": 760
+        },
+        {
+          "groupId": "4ff683e1-bcf1-4834-bee5-baab1266a586",
+          "groupNo": 9,
+          "orderCount": 4,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "상일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕롯데캐슬베네루체아파트",
+              "count": 3
+            },
+            {
+              "name": "고덕센트럴 IPARK",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 72,
+          "minInterGroupDistanceM": 893
+        },
+        {
+          "groupId": "47ff9da0-e60f-4723-b441-70527cf9afa5",
+          "groupNo": 15,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변사랑으로부영아파트",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 876
+        },
+        {
+          "groupId": "086abddf-f4a6-41f3-87be-aa8736a48431",
+          "groupNo": 14,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 하우스디 더 레이크",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 103
+        }
+      ]
+    },
+    {
+      "deliveryDate": "2026-08-27",
+      "totalEligibleShipments": 108,
+      "totalGroups": 20,
+      "groupedShipments": 62,
+      "ungroupedShipments": 46,
+      "dongBasedCounts": {
+        "풍산동": 20,
+        "망월동": 28,
+        "고덕동": 21,
+        "창우동": 4,
+        "상일동": 8,
+        "덕풍동": 4,
+        "선동": 6,
+        "명일동": 4,
+        "강일동": 7,
+        "신천동": 1,
+        "신장동": 4,
+        "암사동": 1
+      },
+      "dongSplitAcrossMultipleGroups": [
+        {
+          "dong": "풍산동",
+          "splitIntoGroupsCount": 5
+        },
+        {
+          "dong": "망월동",
+          "splitIntoGroupsCount": 6
+        },
+        {
+          "dong": "고덕동",
+          "splitIntoGroupsCount": 4
+        },
+        {
+          "dong": "창우동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "상일동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "덕풍동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "선동",
+          "splitIntoGroupsCount": 3
+        },
+        {
+          "dong": "명일동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "강일동",
+          "splitIntoGroupsCount": 3
+        }
+      ],
+      "groupsCrossingMultipleDong": [],
+      "groups": [
+        {
+          "groupId": "8d3064db-3dd6-4b75-b1bf-4a3e9d26405d",
+          "groupNo": 1,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "창우동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "꿈동산신안아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 2633
+        },
+        {
+          "groupId": "988f96fa-b943-4719-adfa-22b2b0b835aa",
+          "groupNo": 6,
+          "orderCount": 3,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "풍산동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변아란티움",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 74,
+          "minInterGroupDistanceM": 555
+        },
+        {
+          "groupId": "a24a64eb-04aa-436a-965a-ac1be901f121",
+          "groupNo": 7,
+          "orderCount": 14,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "고덕동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕그라시움아파트",
+              "count": 14
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 584
+        },
+        {
+          "groupId": "0b30124e-ee6e-493c-ae8f-062512ed976d",
+          "groupNo": 2,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "고덕동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕아이파크",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 485
+        },
+        {
+          "groupId": "5262b8fa-35de-429b-b5ae-9ad6aec891cc",
+          "groupNo": 4,
+          "orderCount": 4,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "고덕동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "래미안힐스테이트고덕",
+              "count": 3
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 451
+        },
+        {
+          "groupId": "5cb10b76-cfff-4320-8d13-1236edd764c2",
+          "groupNo": 5,
+          "orderCount": 4,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "상일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕 롯데캐슬 베네루체",
+              "count": 4
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 900
+        },
+        {
+          "groupId": "6dd66f59-a80e-4cb5-8c15-818df46bfdfd",
+          "groupNo": 14,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "선동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 센트리버",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 408
+        },
+        {
+          "groupId": "8d69ddd2-5dc6-488c-a036-2a3e601ae3c7",
+          "groupNo": 15,
+          "orderCount": 3,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "풍산동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 더샵 센트럴포레",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 97,
+          "minInterGroupDistanceM": 295
+        },
+        {
+          "groupId": "99cecb4a-ec8d-4664-a8bc-b03f651d5c1b",
+          "groupNo": 13,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "풍산동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 동일하이빌",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 112
+        },
+        {
+          "groupId": "b7a9b396-3396-4d1f-ba12-457063aa1fa3",
+          "groupNo": 16,
+          "orderCount": 3,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 호반 써밋",
+              "count": 1
+            },
+            {
+              "name": "미사역 파라곤",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 69,
+          "minInterGroupDistanceM": 708
+        },
+        {
+          "groupId": "79339ecb-c0cb-4a03-a8a5-50f208246c6f",
+          "groupNo": 18,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [],
+          "maxInternalDistanceM": 36,
+          "minInterGroupDistanceM": 607
+        },
+        {
+          "groupId": "ec8953b2-870e-4f6d-b0ca-709c00e242f1",
+          "groupNo": 20,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 하우스디 더 레이크",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 103
+        },
+        {
+          "groupId": "d8bfc4f7-2897-4cd4-a790-a65c75889576",
+          "groupNo": 17,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "강일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "강일리버파크7단지아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 606
+        },
+        {
+          "groupId": "3002731a-7a91-4521-afe2-b968df7e7e52",
+          "groupNo": 19,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변도시14단지",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 607
+        },
+        {
+          "groupId": "87e461e5-cba8-435a-bfe6-8c108145e66e",
+          "groupNo": 12,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "선동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "리버스위트칸타빌",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 408
+        },
+        {
+          "groupId": "9a1ea350-abcf-47d7-b4a9-bf3b48c05d46",
+          "groupNo": 11,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "명일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "삼익그린맨션",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 451
+        },
+        {
+          "groupId": "5e49b57f-38ef-41a9-b333-53e4f5769fe3",
+          "groupNo": 10,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "강일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "힐스테이트 리슈빌 강일",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 591
+        },
+        {
+          "groupId": "85104b7f-6670-4ae9-a774-34b00d524dae",
+          "groupNo": 9,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변도시18단지",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 103
+        },
+        {
+          "groupId": "20359653-928d-45b7-a636-b7a84dcf4568",
+          "groupNo": 3,
+          "orderCount": 5,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "풍산동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변센트럴자이",
+              "count": 5
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 112
+        },
+        {
+          "groupId": "a63077be-3406-4ba9-a99e-6ad2f2249834",
+          "groupNo": 8,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "덕풍동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "하남자이",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 2047
+        }
+      ]
+    },
+    {
+      "deliveryDate": "2026-08-26",
+      "totalEligibleShipments": 96,
+      "totalGroups": 19,
+      "groupedShipments": 61,
+      "ungroupedShipments": 35,
+      "dongBasedCounts": {
+        "풍산동": 16,
+        "감이동": 1,
+        "망월동": 18,
+        "고덕동": 17,
+        "선동": 7,
+        "신장동": 5,
+        "상일동": 16,
+        "강일동": 6,
+        "덕풍동": 4,
+        "창우동": 2,
+        "암사동": 2,
+        "명일동": 2
+      },
+      "dongSplitAcrossMultipleGroups": [
+        {
+          "dong": "풍산동",
+          "splitIntoGroupsCount": 4
+        },
+        {
+          "dong": "망월동",
+          "splitIntoGroupsCount": 6
+        },
+        {
+          "dong": "고덕동",
+          "splitIntoGroupsCount": 4
+        },
+        {
+          "dong": "선동",
+          "splitIntoGroupsCount": 3
+        },
+        {
+          "dong": "신장동",
+          "splitIntoGroupsCount": 2
+        },
+        {
+          "dong": "상일동",
+          "splitIntoGroupsCount": 4
+        },
+        {
+          "dong": "강일동",
+          "splitIntoGroupsCount": 2
+        }
+      ],
+      "groupsCrossingMultipleDong": [
+        {
+          "groupId": "33273c06-6b43-4bd4-ac29-a10091f9d571",
+          "distinctDong": [
+            "상일동",
+            "고덕동"
+          ],
+          "orderCount": 6
+        }
+      ],
+      "groups": [
+        {
+          "groupId": "89a7f927-7561-4075-920e-e70fc5b5c448",
+          "groupNo": 15,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "강일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "강동리버스트7단지",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 695
+        },
+        {
+          "groupId": "927aeff9-031e-4529-b506-8b435336cf6a",
+          "groupNo": 17,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "풍산동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "하남힐즈파크푸르지오 1단지",
+              "count": 1
+            },
+            {
+              "name": "미사 힐즈파크 푸르지오",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 1546
+        },
+        {
+          "groupId": "735ffddf-1c06-48b9-b0c5-3bc74e7fa8e0",
+          "groupNo": 16,
+          "orderCount": 3,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "선동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 2차 푸르지오",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 214
+        },
+        {
+          "groupId": "eba6271a-ddf2-416e-b232-d3421cd34abe",
+          "groupNo": 19,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "선동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "리슈빌아파트",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 403
+        },
+        {
+          "groupId": "a569a160-a315-436f-abdf-761fdc160a6a",
+          "groupNo": 18,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [],
+          "maxInternalDistanceM": 37,
+          "minInterGroupDistanceM": 725
+        },
+        {
+          "groupId": "ac34e2aa-0f07-4910-b9fb-4503bb8c73db",
+          "groupNo": 7,
+          "orderCount": 8,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "고덕동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕그라시움아파트",
+              "count": 8
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 705
+        },
+        {
+          "groupId": "67bf5314-125d-4bfc-a5f8-5244a26b85c6",
+          "groupNo": 4,
+          "orderCount": 5,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "고덕동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "래미안힐스테이트고덕",
+              "count": 5
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 498
+        },
+        {
+          "groupId": "0567a6cd-a6c9-4251-8c64-401dafefad3c",
+          "groupNo": 2,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "선동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 센트리버",
+              "count": 1
+            },
+            {
+              "name": "미사강변 더샵 리버포레",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 88,
+          "minInterGroupDistanceM": 214
+        },
+        {
+          "groupId": "33344632-9996-498f-9c6e-39f709922e92",
+          "groupNo": 8,
+          "orderCount": 6,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "풍산동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변센트럴자이",
+              "count": 6
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 306
+        },
+        {
+          "groupId": "33273c06-6b43-4bd4-ac29-a10091f9d571",
+          "groupNo": 6,
+          "orderCount": 6,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "상일동",
+            "고덕동"
+          ],
+          "crossesMultipleDong": true,
+          "representativeBuildings": [
+            {
+              "name": "고덕아르테온아파트",
+              "count": 5
+            },
+            {
+              "name": "고덕센트럴푸르지오",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 90,
+          "minInterGroupDistanceM": 702
+        },
+        {
+          "groupId": "df44cc1b-69d5-4af1-aff5-a9611d19391e",
+          "groupNo": 3,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "신장동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "에코타운",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 1804
+        },
+        {
+          "groupId": "1489a468-f444-4ed0-a29a-c4fe666ccfc5",
+          "groupNo": 5,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변도시12단지",
+              "count": 1
+            },
+            {
+              "name": "미사강변 파크뷰",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 422
+        },
+        {
+          "groupId": "86fb8d81-a77f-4e8a-9bf9-f360092cf22c",
+          "groupNo": 1,
+          "orderCount": 6,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "상일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕 롯데캐슬 베네루체",
+              "count": 4
+            },
+            {
+              "name": "고덕센트럴아이파크아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 72,
+          "minInterGroupDistanceM": 187
+        },
+        {
+          "groupId": "f002df2d-f240-44df-8526-3d2ffc417536",
+          "groupNo": 9,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 루나리움",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 472
+        },
+        {
+          "groupId": "96895924-8d54-4e0a-8dd2-40bc3d671ef9",
+          "groupNo": 10,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변파밀리에",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 422
+        },
+        {
+          "groupId": "20e71dd4-4243-426d-a55d-fb1a63409dfd",
+          "groupNo": 11,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "암사동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "강동 롯데캐슬퍼스트아파트",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 498
+        },
+        {
+          "groupId": "c9c5ad80-c552-4b45-80eb-2d10f4af0bed",
+          "groupNo": 12,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "강동구"
+          ],
+          "distinctDong": [
+            "상일동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "고덕숲아이파크",
+              "count": 2
+            }
+          ],
+          "maxInternalDistanceM": 0,
+          "minInterGroupDistanceM": 187
+        },
+        {
+          "groupId": "d13546a6-3b5b-42b8-99f6-a68df10ce435",
+          "groupNo": 13,
+          "orderCount": 2,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "풍산동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 더샵 센트럴포레",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 97,
+          "minInterGroupDistanceM": 306
+        },
+        {
+          "groupId": "1ecca46c-f5e4-4c9c-a4b9-9dbf607db361",
+          "groupNo": 14,
+          "orderCount": 3,
+          "distinctSigungu": [
+            "하남시"
+          ],
+          "distinctDong": [
+            "망월동"
+          ],
+          "crossesMultipleDong": false,
+          "representativeBuildings": [
+            {
+              "name": "미사강변 호반 써밋",
+              "count": 1
+            },
+            {
+              "name": "미사역 파라곤",
+              "count": 1
+            }
+          ],
+          "maxInternalDistanceM": 69,
+          "minInterGroupDistanceM": 425
+        }
+      ]
+    }
+  ]
+}
