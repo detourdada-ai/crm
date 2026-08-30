@@ -224,7 +224,7 @@ async function run() {
     record("UI-1. 그룹 카드에 단지명 라벨이 표시됨(안 D: 기존 리스트 유지 + 그룹 시각표시)", groupCardText.includes(`${PREFIX}그라시움`));
     record("UI-2. 그룹 카드에 '이 그룹 4건 선택' 문구가 보임", groupCardText.includes("이 그룹 4건 선택"));
 
-    const groupCheckbox = page.getByText("이 그룹 4건 선택").locator("xpath=./ancestor::label[1]//button[@role='checkbox']");
+    const groupCheckbox = page.locator("label", { hasText: "이 그룹 4건 선택" }).getByRole("checkbox");
     await groupCheckbox.click({ timeout: 8000 });
     await page.waitForTimeout(300);
     const bulkBarText = await page.locator("main").innerText().catch(() => "");
@@ -243,8 +243,9 @@ async function run() {
     });
     record("UI-4. 그룹 일괄선택 → 기사A 일괄배정이 DB에 실제 반영(4건)", bulkOk);
 
-    // 개별 변경: 그라시움-1만 기사B로 재배정.
-    await page.reload({ waitUntil: "networkidle" });
+    // 개별 변경: 그라시움-1만 기사B로 재배정. 방금 기사A로 일괄배정돼
+    // "배정필요" 탭(기본값)에서는 사라졌으므로 "전체" 탭으로 다시 진입한다.
+    await page.goto(`${BASE_URL}/delivery?filter=all&${dateQs}`, { waitUntil: "networkidle" });
     await dismissAnnouncementPopupIfPresent(page);
     const target1Row = page.locator(`xpath=//a[@href="/orders/${grasium[0].orderId}"]/ancestor::div[contains(@class, "rounded-xl")][1]`);
     await target1Row.getByRole("button", { name: /담당기사 변경/ }).click({ timeout: 8000 });

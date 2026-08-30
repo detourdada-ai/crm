@@ -1,0 +1,41 @@
+{
+  "gateId": "STEP11-11-DELIVERY-GROUP-IMPLEMENTATION",
+  "commit": "9c8eafd",
+  "baseUrl": "https://jumunhanjang.vercel.app",
+  "ctoFinal": "CONDITIONAL PASS",
+  "changes": {
+    "algorithm": "src/lib/services/delivery-group-regeneration.service.ts: buildDeliveryGroupClusters() — building-name priority + 100m radius fallback restricted to same eupmyeondong. GROUP_RADIUS_METERS unchanged.",
+    "ui": "src/components/delivery/delivery-board.tsx: group card '이 그룹 N건 선택' checkbox reusing existing selected-state + BulkAssignBar flow. No new screen."
+  },
+  "newScenarios": {
+    "script": "scripts/qa/e2e-step11-11-group-redesign.ts",
+    "pass": 12,
+    "total": 12,
+    "cases": [
+      "B-1 same-complex >100m apart merges into one group",
+      "B-2 group order_count correct",
+      "C-1/C-2 different complex within 100m never merges",
+      "D-boundary different eupmyeondong within 30m never merges",
+      "UI-1..UI-4 group label/checkbox/bulk-assign end to end",
+      "A-regression individual reassign + isolation from group + unrelated solo shipment display"
+    ]
+  },
+  "regressionSuites": [
+    { "script": "delivery-flow.ts", "pass": 29, "total": 29 },
+    { "script": "delivery-group-performance.ts", "pass": 46, "total": 46 },
+    { "script": "delivery-group-partial-failure-flow.ts", "pass": 17, "total": 17 }
+  ],
+  "realDataReverification": {
+    "script": "scripts/step11-11-verify-real-algorithm.ts",
+    "readOnly": true,
+    "tenant": "user1",
+    "totalShipments": 416,
+    "before": { "groups": 68, "coveragePct": 47.6, "buildingMixed": 13 },
+    "after": { "groups": 70, "coveragePct": 47.4, "fullyExplainable": 40, "buildingMixed": 10, "dongMixed": 0 },
+    "coverageDelta": -1,
+    "buildingMixDelta": -3,
+    "rootCause": "All 4 shipments that lost group membership were previously mis-merged into a different complex's (or a cross-dong) group under the pure-100m algorithm; the new algorithm correctly excludes them rather than force-attaching them.",
+    "cpoDecisionNeeded": "Accept -1 coverage as accuracy improvement (CTO recommendation) vs strict rework per literal 'no regression' instruction."
+  },
+  "buildGates": { "tsc": "0 new errors (2 pre-existing unrelated errors in untracked QA scripts)", "eslint": "0 errors, 2 unused-var warnings" }
+}
