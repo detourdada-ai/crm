@@ -88,9 +88,19 @@ function attachServerActionCounter(page: Page): { count: () => number; reset: ()
   return { count: () => n, reset: () => (n = 0) };
 }
 
-async function settle(page: Page, ms = 800) {
-  await page.waitForTimeout(ms);
-  await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+/** "변경사항 저장" 클릭 직후 호출한다. Production은 콜드스타트 등으로 로컬보다
+ *  왕복이 여러 초 더 걸릴 수 있어(실측상 서버 write 자체는 항상 정확하게
+ *  끝나지만 클라이언트가 응답을 늦게 받는 경우가 있었다) 고정 대기 대신
+ *  "변경사항 N건" 텍스트가 클릭 전과 달라질 때까지 최대 timeoutMs만큼 폴링한다. */
+async function waitForSaveToSettle(page: Page, beforeText: string, timeoutMs = 25000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  let text = await draftCountText(page);
+  while (text === beforeText && Date.now() < deadline) {
+    await page.waitForTimeout(500);
+    text = await draftCountText(page);
+  }
+  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+  return text;
 }
 
 interface SeedRow {
@@ -219,8 +229,9 @@ async function main() {
     record("A2. 변경사항 3건 카운터 표시(shipment 단위)", draftTextA.includes("3건"), draftTextA);
 
     counter.reset();
+    const beforeSaveTextA = await draftCountText(page);
     await page.getByRole("button", { name: "변경사항 저장" }).click();
-    await settle(page, 1500);
+    await waitForSaveToSettle(page, beforeSaveTextA);
     const reqAfterSaveA = counter.count();
     record("A3. 저장 클릭 시 서버요청 정확히 1회(배치)", reqAfterSaveA === 1, `실제=${reqAfterSaveA}`);
 
@@ -263,8 +274,9 @@ async function main() {
     record("C3. 그룹 멤버 1건 개별 override 후에도 여전히 변경사항 3건(shipment 단위)", draftTextC.includes("3건"), draftTextC);
 
     counter.reset();
+    const beforeSaveTextC = await draftCountText(page);
     await page.getByRole("button", { name: "변경사항 저장" }).click();
-    await settle(page, 1500);
+    await waitForSaveToSettle(page, beforeSaveTextC);
     record("C4. 그룹+개별 override 저장도 서버요청 1회", counter.count() === 1, `실제=${counter.count()}`);
     const { data: dbC } = await admin.from("order_shipments").select("id, driver_id").in("id", [k.get("G1A")!, k.get("G1B")!, k.get("G1C")!]);
     const rowC = (id: string) => dbC?.find((r) => r.id === id);
@@ -289,8 +301,9 @@ async function main() {
     record("D2. 변경사항 3건(그룹2건+개별1건)", draftTextD.includes("3건"), draftTextD);
 
     counter.reset();
+    const beforeSaveTextD = await draftCountText(page);
     await page.getByRole("button", { name: "변경사항 저장" }).click();
-    await settle(page, 1500);
+    await waitForSaveToSettle(page, beforeSaveTextD);
     record("D3. 서로 다른 대상(그룹/개별) 혼합 저장도 서버요청 1회", counter.count() === 1, `실제=${counter.count()}`);
     const { data: dbD } = await admin.from("order_shipments").select("id, driver_id").in("id", [k.get("G2A")!, k.get("G2B")!, k.get("INDG")!]);
     const rowD = (id: string) => dbD?.find((r) => r.id === id);
@@ -361,8 +374,9 @@ async function main() {
     driver2 = null;
 
     counter.reset();
+    const beforeSaveTextG = await draftCountText(page);
     await page.getByRole("button", { name: "변경사항 저장" }).click();
-    await settle(page, 1500);
+    await waitForSaveToSettle(page, beforeSaveTextG);
     record("G2. 부분실패 상황도 서버요청은 1회로 시도(배치 유지)", counter.count() === 1, `실제=${counter.count()}`);
     const draftTextGAfter = await draftCountText(page);
     record("G3. 실패한 1건만 변경사항에 남고 성공한 1건은 사라짐(1건)", draftTextGAfter.includes("1건"), draftTextGAfter);
@@ -446,9 +460,10 @@ async function main() {
     record(`I1. 150건 전체선택+일괄적용(Draft 반영) ${tApplyMs}ms, 저장 전 서버요청 0회`, counter.count() === 0, `요청=${counter.count()}, 소요=${tApplyMs}ms`);
 
     counter.reset();
+    const beforeSaveTextI = await draftCountText(page);
     const tSave0 = Date.now();
     await page.getByRole("button", { name: "변경사항 저장" }).click();
-    await settle(page, 3000);
+    await waitForSaveToSettle(page, beforeSaveTextI);
     const tSaveMs = Date.now() - tSave0;
     record(`I2. 150건 일괄저장 서버요청 1회(소요 ${tSaveMs}ms, 선택 ${tSelectMs}ms)`, counter.count() === 1, `요청=${counter.count()}`);
 
