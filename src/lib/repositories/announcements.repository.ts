@@ -42,17 +42,26 @@ export const announcementsRepository = {
     return data ?? [];
   },
 
-  /** 사장님 공지 목록 — 게시중 + 게시일이 도래한 것만, 최신순. */
-  async listPublished(): Promise<Announcement[]> {
+  /**
+   * 사장님 공지 화면 — 게시중 + 게시일이 도래한 것 중 최신 1건만.
+   *
+   * STEP11-14(CPO 작업지시, 2026-08-31): "여러 개 쌓인 게시판"이 아니라
+   * "지금 알아야 할 최신 안내 1개"만 보여준다 — admin이 실수로 이전 공지를
+   * "게시중" 상태로 남겨둬도(종료 처리를 깜빡해도) 사장님 화면에는 항상
+   * 가장 최신 것 하나만 노출되도록 쿼리 자체에서 강제한다.
+   */
+  async findLatestPublished(): Promise<Announcement | null> {
     const { data, error } = await getSupabaseAdmin()
       .from("announcements")
       .select("*")
       .eq("status", "게시중" satisfies AnnouncementStatus)
       .lte("published_at", kstTodayIso())
       .order("published_at", { ascending: false })
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (error) throw error;
-    return data ?? [];
+    return data;
   },
 
   async update(id: string, patch: AnnouncementUpdate): Promise<Announcement> {

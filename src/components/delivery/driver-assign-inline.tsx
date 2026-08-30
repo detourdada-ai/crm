@@ -12,13 +12,13 @@ import {
 import type { Driver, FulfillmentMethod } from "@/types/domain";
 
 /**
- * S2-A §9/§10: 배송건의 담당기사 영역을 클릭하면 즉시 기사 선택 UI가 열리고,
- * 선택 즉시 저장된다("변경" 클릭 → 상단 툴바 이동 → 적용의 기존 3단계 동선
- * 제거). 서버 액션(assignDriverAction/unassignDriverAction/
- * setFulfillmentMethodAction)은 그대로 재사용 — 이 컴포넌트는 트리거 UI만
- * 담당하고 실제 호출은 부모(DeliveryOrderRow → DeliveryBoard)가 한다.
- * 낙관적 업데이트는 쓰지 않는다 — 서버 액션 성공 후 revalidatePath로 내려오는
- * 새 props를 그대로 반영한다(기존 F13/P5 패턴 그대로).
+ * S2-A §9/§10: 배송건의 담당기사 영역을 클릭하면 즉시 기사 선택 UI가 열린다
+ * ("변경" 클릭 → 상단 툴바 이동 → 적용의 기존 3단계 동선 제거). 이 컴포넌트는
+ * 트리거 UI만 담당하고 실제 반영은 부모(DeliveryOrderRow → DeliveryBoard)가
+ * 한다 — STEP11-13부터는 선택 즉시 서버에 저장하지 않고 Draft에만 반영되며,
+ * 다음 배송건을 바로 이어서 입력할 수 있다("변경사항 저장"을 눌러야 실제
+ * 서버 반영). 서버 왕복을 기다리지 않으므로 낙관적 업데이트 개념 자체가
+ * 필요 없다.
  *
  * P1-B 회귀 복구: "배정 해제"(driver_id 제거, onUnassign)와 "직접수령 해제"
  * (fulfillment_method를 delivery로 되돌림, onClearDirectPickup)는 서로 다른

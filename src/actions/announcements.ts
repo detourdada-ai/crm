@@ -107,10 +107,10 @@ export async function listAnnouncementsForAdminAction(): Promise<Announcement[]>
   return announcementsRepository.list();
 }
 
-/** 사장님 공지 목록 — 게시중만, 로그인한 모든 계정이 조회 가능. */
-export async function listPublishedAnnouncementsAction(): Promise<Announcement[]> {
+/** 사장님 공지 화면 — 게시중인 것 중 최신 1건만, 로그인한 모든 계정이 조회 가능(STEP11-14). */
+export async function getLatestPublishedAnnouncementAction(): Promise<Announcement | null> {
   await requireSession();
-  return announcementsRepository.listPublished();
+  return announcementsRepository.findLatestPublished();
 }
 
 /** 공지 상세 — 종료된 공지도 상세는 계속 열람 가능(목록에서만 제외). */

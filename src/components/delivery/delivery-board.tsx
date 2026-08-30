@@ -417,7 +417,11 @@ export function DeliveryBoard({
           </p>
         ) : null}
         {memberIds.length > 0 ? (
-          <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+          // STEP11-14(CPO 작업지시): 그룹은 "같이 배정하면 편할 가능성이 높은
+          // 묶음"일 뿐 별도 모드가 아니다 — 체크하면 바로 아래 배송건들도
+          // 함께 선택되고, 그 다음부터는 일반 체크박스 선택과 동일하게
+          // BulkAssignBar(일괄 적용)로 이어진다.
+          <label className="mt-2 flex items-center gap-2 text-sm font-medium text-primary">
             <Checkbox checked={allSelected} onCheckedChange={(checked) => toggleGroupSelection(groupId, checked === true)} />
             이 그룹 {memberIds.length}건 선택
           </label>
@@ -439,6 +443,7 @@ export function DeliveryBoard({
         candidateDriverIds={candidateDriverIds}
         isPending={isPending}
         onApply={handleBulkApply}
+        onClearSelection={() => setSelected(new Set())}
       />
 
       {drafts.size > 0 ? (
