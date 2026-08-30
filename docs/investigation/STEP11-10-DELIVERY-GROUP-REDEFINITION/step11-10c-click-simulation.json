@@ -1,0 +1,90 @@
+{
+  "targetOwner": "user1",
+  "rows": [
+    {
+      "date": "2026-09-04",
+      "totalOrders": 30,
+      "currentClicks": 30,
+      "groupClicks": 24,
+      "groupCount": 4,
+      "ungrouped": 20,
+      "geocodeFailed": 0,
+      "reductionPct": 20
+    },
+    {
+      "date": "2026-09-03",
+      "totalOrders": 20,
+      "currentClicks": 20,
+      "groupClicks": 18,
+      "groupCount": 2,
+      "ungrouped": 16,
+      "geocodeFailed": 0,
+      "reductionPct": 10
+    },
+    {
+      "date": "2026-09-02",
+      "totalOrders": 28,
+      "currentClicks": 28,
+      "groupClicks": 24,
+      "groupCount": 3,
+      "ungrouped": 21,
+      "geocodeFailed": 0,
+      "reductionPct": 14.3
+    },
+    {
+      "date": "2026-09-01",
+      "totalOrders": 26,
+      "currentClicks": 26,
+      "groupClicks": 22,
+      "groupCount": 4,
+      "ungrouped": 18,
+      "geocodeFailed": 0,
+      "reductionPct": 15.4
+    },
+    {
+      "date": "2026-08-31",
+      "totalOrders": 24,
+      "currentClicks": 24,
+      "groupClicks": 23,
+      "groupCount": 1,
+      "ungrouped": 22,
+      "geocodeFailed": 0,
+      "reductionPct": 4.2
+    },
+    {
+      "date": "2026-08-28",
+      "totalOrders": 84,
+      "currentClicks": 84,
+      "groupClicks": 56,
+      "groupCount": 15,
+      "ungrouped": 41,
+      "geocodeFailed": 0,
+      "reductionPct": 33.3
+    },
+    {
+      "date": "2026-08-27",
+      "totalOrders": 108,
+      "currentClicks": 108,
+      "groupClicks": 65,
+      "groupCount": 21,
+      "ungrouped": 44,
+      "geocodeFailed": 0,
+      "reductionPct": 39.8
+    },
+    {
+      "date": "2026-08-26",
+      "totalOrders": 96,
+      "currentClicks": 96,
+      "groupClicks": 57,
+      "groupCount": 20,
+      "ungrouped": 37,
+      "geocodeFailed": 0,
+      "reductionPct": 40.6
+    }
+  ],
+  "totalOrders": 416,
+  "totalCurrentClicks": 416,
+  "totalGroupClicks": 289,
+  "overallReductionPct": 30.5,
+  "assumption": "그룹 배정 1회=클릭 1번, 미분류/지오코딩실패건은 개별 클릭 1번(보수적 상한선 추정)"
+}
