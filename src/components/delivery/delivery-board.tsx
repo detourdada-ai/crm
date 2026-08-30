@@ -150,12 +150,7 @@ export function DeliveryBoard({
       return;
     }
     startTransition(async () => {
-      const tClick0 = Date.now();
       const result = await assignDriverAction(selectedShipmentIdsInDisplayOrder, bulkDriverId);
-      // TEMP-PERF-TRACE(STEP11-4-A): 임시 계측 — 보고 후 원복 예정.
-      if (result._timings) {
-        console.log("[BULK_ASSIGN_TIMING]", JSON.stringify({ ...result._timings, clientRoundTrip: Date.now() - tClick0 }));
-      }
       if (result.ok) {
         toast.success(`${visibleSelected.size}건을 배정했습니다.`);
         setSelected(new Set());

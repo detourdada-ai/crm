@@ -22,18 +22,15 @@ import type { DeliveryStatus } from "@/types/domain";
  *     그대로 쓴다(가방/수령방식은 배송건마다 다를 수 있지만, orders 쪽은 어차피
  *     과도기 호환용 스냅샷일 뿐이라 완벽한 표현을 시도하지 않는다).
  */
-export async function syncOrdersFromShipments(orderIds: string[]): Promise<{ selectMs: number; updateMs: number }> {
-  // TEMP-PERF-TRACE(STEP11-4-A): 임시 계측 — 보고 후 원복 예정.
+export async function syncOrdersFromShipments(orderIds: string[]): Promise<void> {
   const distinctOrderIds = Array.from(new Set(orderIds));
-  if (distinctOrderIds.length === 0) return { selectMs: 0, updateMs: 0 };
+  if (distinctOrderIds.length === 0) return;
   const admin = getSupabaseAdmin();
 
-  const tSelect0 = Date.now();
   const { data: shipments, error } = await admin
     .from("order_shipments")
     .select("order_id, driver_id, delivery_status, completed_at, bag_number, bag_returned, fulfillment_method")
     .in("order_id", distinctOrderIds);
-  const selectMs = Date.now() - tSelect0;
   if (error) throw error;
 
   const byOrder = new Map<string, NonNullable<typeof shipments>>();
@@ -49,7 +46,6 @@ export async function syncOrdersFromShipments(orderIds: string[]): Promise<{ sel
   // 서로 다르지만(대표값 계산이 그 주문 소속 배송건들만 보고 끝남) 다른
   // 주문의 계산 결과에 의존하지 않으므로, order-shipments.repository.ts의
   // normalizeRouteOrderOnAssign과 동일하게 Promise.all 병렬 처리로 바꾼다.
-  const tUpdate0 = Date.now();
   await Promise.all(
     distinctOrderIds.map(async (orderId) => {
       const list = byOrder.get(orderId);
@@ -91,7 +87,4 @@ export async function syncOrdersFromShipments(orderIds: string[]): Promise<{ sel
       if (updateError) throw updateError;
     })
   );
-  const updateMs = Date.now() - tUpdate0;
-
-  return { selectMs, updateMs };
 }
