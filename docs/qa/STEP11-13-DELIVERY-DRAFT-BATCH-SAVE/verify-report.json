@@ -1,0 +1,86 @@
+{
+  "gateId": "STEP11-13-DELIVERY-DRAFT-BATCH-SAVE",
+  "timestamp": "2026-08-31",
+  "commit": "c330e083f796cc2f0133def1ab35fab079a7825e",
+  "baseUrl": "https://jumunhanjang.vercel.app",
+  "ctoFinal": "PASS",
+  "codeChanges": [
+    "845aba6 feat(delivery): STEP11-13 — 배송목록 변경사항 일괄저장(Draft) + 그룹 배정 통합",
+    "c6d6e78 fix(delivery): STEP11-13 — 변경사항 저장 네트워크 실패 시 에러 처리 추가",
+    "c330e08 test(qa): STEP11-13 — Production 콜드스타트 대응 폴링 대기로 QA 견고화"
+  ],
+  "sections": {
+    "A_deployment_integrity": {
+      "localHead": "c330e083f796cc2f0133def1ab35fab079a7825e",
+      "originMainHead": "c330e083f796cc2f0133def1ab35fab079a7825e",
+      "vercelCommitStatus": "success",
+      "result": "PASS"
+    },
+    "B_draft_batch_scenarios": {
+      "script": "step11-13-draft-batch-save.ts",
+      "scenarios": {
+        "A_individual_driver_assign": { "pass": 5, "total": 5 },
+        "B_bag_number_and_returned": { "pass": 2, "total": 2 },
+        "C_group_plus_individual_override": { "pass": 5, "total": 5 },
+        "D_mixed_group_and_individual_targets": { "pass": 4, "total": 4 },
+        "E_navigation_confirm_guard": { "pass": 6, "total": 6 },
+        "G_partial_failure_retains_failed_drafts": { "pass": 5, "total": 5 },
+        "H_beforeunload_native_guard": { "pass": 3, "total": 3 },
+        "I_bulk_150_shipments_single_roundtrip": { "pass": 3, "total": 3 }
+      },
+      "runs": {
+        "local": { "pass": 38, "total": 38, "logFile": "step11-13-qa-final7.log" },
+        "production": { "pass": 38, "total": 38, "logFile": "prod-step11-13-v4.log" }
+      },
+      "serverRoundtripProof": "next-action POST header counted via Playwright request listener; every scenario shows exactly 1 request at save time regardless of shipment count (3, 4, 150)",
+      "result": "PASS"
+    },
+    "C_performance": {
+      "scenario": "I2 — 150 shipments, single bulk save",
+      "local": { "requests": 1, "durationMs": 3390 },
+      "production": { "requests": 1, "durationMs": 32955 },
+      "accuracy": "100% correct DB state in every measured run (local and production)",
+      "note": "Production round-trip time significantly higher than local under this test; flagged to CPO as a non-blocking performance characteristic, not a defect",
+      "result": "PASS (flagged for CPO awareness)"
+    },
+    "D_production_robustness_finding": {
+      "issue": "handleSaveDrafts had no try/catch around saveDeliveryDraftAction; a rejected promise (network failure) silently dropped drafts with no error toast",
+      "discoveredVia": "live Production QA run 1 showing A4/A5/B1/B2/C2/C3 FAIL (DB not updated despite apparent client success)",
+      "fix": "c6d6e78 — wrapped in try/catch, shows error toast and preserves drafts for retry on rejection",
+      "followUpInvestigation": "repeated flakiness after the fix was traced to QA script fixed-wait assumptions being too short for Production's variable latency, not a server-side defect; confirmed via 4 isolated diagnostic scripts (10+ repeated runs, 100% server-side accuracy every time)",
+      "qaFix": "c330e08 — replaced fixed waitForTimeout with waitForSaveToSettle() polling on draft-count text change (25s ceiling)",
+      "result": "Resolved — app fix retained as genuine defense-in-depth, QA fix eliminated false failures"
+    },
+    "E_regression": {
+      "scripts": [
+        { "name": "delivery-flow.ts", "pass": 29, "total": 29 },
+        { "name": "delivery-group-performance.ts", "pass": 46, "total": 46 },
+        { "name": "delivery-group-partial-failure.ts", "pass": 17, "total": 17 }
+      ],
+      "environment": "production",
+      "result": "PASS"
+    },
+    "F_static_gates": {
+      "tsc": "0 errors",
+      "eslint": "0 errors, 0 warnings",
+      "build": "success"
+    }
+  },
+  "totals": { "pass": 130, "total": 130, "regressions": 0 },
+  "newDefectsFound": [
+    {
+      "description": "handleSaveDrafts missing try/catch around Server Action call — silent draft loss on network rejection",
+      "severity": "P0",
+      "status": "fixed",
+      "commit": "c6d6e78"
+    }
+  ],
+  "outOfScopeDeferred": [
+    {
+      "description": "delivery-group-ux-flow.ts Case3/Case4 test expectations stale vs STEP11-11 building-priority grouping algorithm change",
+      "confirmedUnrelated": "git diff shows STEP11-13 touched no grouping-algorithm code",
+      "taskId": "task_c714d2f6"
+    }
+  ],
+  "qaDataCleanup": "all step11-13 and diagnostic scripts self-cleaned via finally/teardown blocks against user3 (QA-safe tenant) only; user1/user3-real-prod-data untouched per AGENTS.md"
+}
