@@ -1,0 +1,41 @@
+{
+  "gateId": "STEP11-7-BETA-READINESS-AUDIT",
+  "runTag": "1788075247589",
+  "timestamp": "2026-08-30T07:34:19.155Z",
+  "baseUrl": "https://jumunhanjang.vercel.app",
+  "results": [
+    {
+      "step": "C-1. 비로그인 → /orders 접근 시 /login 리다이렉트",
+      "pass": true,
+      "detail": "status=307, location=/login?from=%2Forders"
+    },
+    {
+      "step": "C-2. 기사 세션 → /settings 접근 시 /driver로 강제 리다이렉트",
+      "pass": true,
+      "detail": "status=307, location=/driver"
+    },
+    {
+      "step": "C-3. 사장님 세션 → /driver 접근 시 /dashboard로 리다이렉트",
+      "pass": true,
+      "detail": "status=307, location=/dashboard"
+    },
+    {
+      "step": "A-1. admin 세션에는 모집현황/문의/공지관리 등 관리자 전용 탭이 존재함",
+      "pass": true,
+      "detail": "tabs=[\"기본정보\",\"상품관리\",\"기사관리\",\"운영관리\",\"공지관리\"]"
+    },
+    {
+      "step": "A-2. admin 세션 계정목록에 '전체' 권한 범위 표기가 보임",
+      "pass": true
+    },
+    {
+      "step": "B-1. 사장님(user4) 세션에는 모집현황/문의/공지관리 탭이 전혀 없음",
+      "pass": true,
+      "detail": "tabs=[\"기본정보\",\"상품관리\",\"기사관리\",\"고객설정\"]"
+    },
+    {
+      "step": "B-2. 사장님(user4) 세션에는 admin 전용 '전체 계정 목록' 테이블이 전혀 렌더링되지 않음",
+      "pass": true
+    }
+  ]
+}
