@@ -1,0 +1,507 @@
+{
+  "targetOwner": "user1",
+  "generatedAt": "2026-08-30T09:33:37.532Z",
+  "summaryRows": [
+    {
+      "model": "현재(A-100)",
+      "totalGroups": 68,
+      "avgCoveragePct": 36.3,
+      "avgGroupSize": 2.5,
+      "maxGroupSize": 14,
+      "mixedDongGroups": 1,
+      "mixedBuildingGroups": 13,
+      "sameComplexSplitCount": 1
+    },
+    {
+      "model": "A-200",
+      "totalGroups": 77,
+      "avgCoveragePct": 43.9,
+      "avgGroupSize": 2.7,
+      "maxGroupSize": 14,
+      "mixedDongGroups": 5,
+      "mixedBuildingGroups": 28,
+      "sameComplexSplitCount": 1
+    },
+    {
+      "model": "A-300",
+      "totalGroups": 76,
+      "avgCoveragePct": 51.3,
+      "avgGroupSize": 3,
+      "maxGroupSize": 18,
+      "mixedDongGroups": 7,
+      "mixedBuildingGroups": 36,
+      "sameComplexSplitCount": 0
+    },
+    {
+      "model": "A-500",
+      "totalGroups": 59,
+      "avgCoveragePct": 76.9,
+      "avgGroupSize": 5.7,
+      "maxGroupSize": 57,
+      "mixedDongGroups": 29,
+      "mixedBuildingGroups": 45,
+      "sameComplexSplitCount": 0
+    },
+    {
+      "model": "B(단지전용)",
+      "totalGroups": 40,
+      "avgCoveragePct": 21.5,
+      "avgGroupSize": 2.6,
+      "maxGroupSize": 14,
+      "mixedDongGroups": 0,
+      "mixedBuildingGroups": 0,
+      "sameComplexSplitCount": 0
+    },
+    {
+      "model": "C-100(단지+반경100)",
+      "totalGroups": 70,
+      "avgCoveragePct": 36.2,
+      "avgGroupSize": 2.5,
+      "maxGroupSize": 14,
+      "mixedDongGroups": 0,
+      "mixedBuildingGroups": 10,
+      "sameComplexSplitCount": 0
+    },
+    {
+      "model": "C-200(단지+반경200)",
+      "totalGroups": 82,
+      "avgCoveragePct": 43.1,
+      "avgGroupSize": 2.5,
+      "maxGroupSize": 14,
+      "mixedDongGroups": 4,
+      "mixedBuildingGroups": 20,
+      "sameComplexSplitCount": 0
+    },
+    {
+      "model": "C-300(단지+반경300)",
+      "totalGroups": 86,
+      "avgCoveragePct": 49.7,
+      "avgGroupSize": 2.7,
+      "maxGroupSize": 18,
+      "mixedDongGroups": 5,
+      "mixedBuildingGroups": 27,
+      "sameComplexSplitCount": 0
+    },
+    {
+      "model": "D-100(단지+반경100,동경계유지)",
+      "totalGroups": 70,
+      "avgCoveragePct": 36.2,
+      "avgGroupSize": 2.5,
+      "maxGroupSize": 14,
+      "mixedDongGroups": 0,
+      "mixedBuildingGroups": 10,
+      "sameComplexSplitCount": 0
+    },
+    {
+      "model": "D-300(단지+반경300,동경계유지)",
+      "totalGroups": 87,
+      "avgCoveragePct": 48.8,
+      "avgGroupSize": 2.6,
+      "maxGroupSize": 14,
+      "mixedDongGroups": 0,
+      "mixedBuildingGroups": 27,
+      "sameComplexSplitCount": 0
+    }
+  ],
+  "caseExamples": [
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-09-04",
+      "buildings": [
+        "미사강변센트럴자이",
+        "미사강변 동일하이빌"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 112
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-09-02",
+      "buildings": [
+        "효성헤링턴타워더퍼스트",
+        "미사강변파밀리에"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 262
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-09-02",
+      "buildings": [
+        "백조현대아파트",
+        "은행뉴서울아파트"
+      ],
+      "orderCount": 3,
+      "maxInternalDistanceM": 248
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-09-01",
+      "buildings": [
+        "고덕 롯데캐슬 베네루체",
+        "고덕센트럴 IPARK",
+        "고덕숲아이파크"
+      ],
+      "orderCount": 3,
+      "maxInternalDistanceM": 199
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-09-01",
+      "buildings": [
+        "미사강변리슈빌엔에이치에프",
+        "리슈빌아파트"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 0
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-31",
+      "buildings": [
+        "효성헤링턴타워더퍼스트",
+        "미사강변파밀리에"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 262
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-28",
+      "buildings": [
+        "미사푸르지오시티 A동",
+        "힐스테이트 미사역 그랑파사쥬(11-1BL",
+        "힐스테이트 미사역 그랑파사쥬(12-1BL",
+        "미사강변 호반 써밋",
+        "미사역 파라곤",
+        "미사푸르지오시티 B동"
+      ],
+      "orderCount": 8,
+      "maxInternalDistanceM": 449
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-28",
+      "buildings": [
+        "미사강변센트럴자이",
+        "미사강변 동일하이빌",
+        "미사강변센트럴풍경채"
+      ],
+      "orderCount": 7,
+      "maxInternalDistanceM": 324
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-28",
+      "buildings": [
+        "강일리버파크3단지아파트",
+        "강일리버파크7단지아파트"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 275
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-28",
+      "buildings": [
+        "미사강변 센텀팰리스(Centum Palace",
+        "미사강변도시18단지",
+        "미사강변 하우스디 더 레이크"
+      ],
+      "orderCount": 4,
+      "maxInternalDistanceM": 103
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-28",
+      "buildings": [
+        "하남유니온시티에일린의뜰",
+        "대명강변타운아파트"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 256
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-28",
+      "buildings": [
+        "고덕 롯데캐슬 베네루체",
+        "고덕롯데캐슬베네루체아파트",
+        "고덕센트럴 IPARK"
+      ],
+      "orderCount": 5,
+      "maxInternalDistanceM": 274
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-28",
+      "buildings": [
+        "미사강변도시26단지",
+        "신안인스빌",
+        "미사강변사랑으로부영아파트"
+      ],
+      "orderCount": 7,
+      "maxInternalDistanceM": 756
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-28",
+      "buildings": [
+        "고덕아르테스미소지움",
+        "명일중앙하이츠아파트"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 240
+    },
+    {
+      "type": "good_improvement_candidate",
+      "date": "2026-08-27",
+      "building": "꿈동산신안아파트",
+      "totalOrders": 3,
+      "currentA100SplitInto": 2,
+      "modelB_C_wouldMergeInto": 1
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "청아초등학교",
+        "미사푸르지오시티 A동",
+        "미사강변 골든 센트로(GOLDEN CENTRO",
+        "힐스테이트 미사역 그랑파사쥬(11-1BL",
+        "미사강변도시씨3단지",
+        "힐스테이트 미사역 그랑파사쥬(12-1BL",
+        "미사강변 호반 써밋",
+        "미사강변도시26단지",
+        "신안인스빌",
+        "미사강변아란티움",
+        "미사역 파라곤",
+        "미사 레스티아 아파트",
+        "이편한세상미사"
+      ],
+      "orderCount": 18,
+      "maxInternalDistanceM": 1280
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "미사강변센트럴자이",
+        "미사강변 동일하이빌",
+        "미사강변 더샵 센트럴포레",
+        "미사강변센트럴풍경채"
+      ],
+      "orderCount": 11,
+      "maxInternalDistanceM": 328
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "고덕 롯데캐슬 베네루체",
+        "고덕숲아이파크"
+      ],
+      "orderCount": 5,
+      "maxInternalDistanceM": 199
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "미사강변도시12단지",
+        "미사강변파밀리에",
+        "미사강변도시14단지"
+      ],
+      "orderCount": 5,
+      "maxInternalDistanceM": 665
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "한솔리치빌아파트3단지",
+        "한솔리치빌아파트2단지"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 168
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "미사강변도시18단지",
+        "미사강변 하우스디 더 레이크"
+      ],
+      "orderCount": 4,
+      "maxInternalDistanceM": 103
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "힐스테이트 리슈빌 강일",
+        "강동리버스트6단지",
+        "강동리버스트7단지"
+      ],
+      "orderCount": 4,
+      "maxInternalDistanceM": 422
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "미사강변 루나리움",
+        "미사강변도시17단지"
+      ],
+      "orderCount": 7,
+      "maxInternalDistanceM": 764
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "미사강변 센트리버",
+        "미사강변 2차 푸르지오"
+      ],
+      "orderCount": 3,
+      "maxInternalDistanceM": 182
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "대명강변타운아파트",
+        "하남유니온시티에일린의뜰",
+        "백조현대아파트"
+      ],
+      "orderCount": 4,
+      "maxInternalDistanceM": 451
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-27",
+      "buildings": [
+        "신동아아파트",
+        "고덕복합빌딩"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 260
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "이편한세상아파트",
+        "신안인스빌",
+        "미사강변도시26단지"
+      ],
+      "orderCount": 3,
+      "maxInternalDistanceM": 394
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "미사강변 센트리버",
+        "미사강변 2차 푸르지오",
+        "미사강변 더샵 리버포레"
+      ],
+      "orderCount": 5,
+      "maxInternalDistanceM": 249
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "고덕아르테온아파트",
+        "고덕아르테온",
+        "고덕센트럴푸르지오"
+      ],
+      "orderCount": 6,
+      "maxInternalDistanceM": 90
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "미사강변도시12단지",
+        "미사강변 파크뷰"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 0
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "힐스테이트 미사역 그랑파사쥬(12-1BL",
+        "미사강변 호반 써밋",
+        "미사역 파라곤"
+      ],
+      "orderCount": 4,
+      "maxInternalDistanceM": 342
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "미사강변센트럴자이",
+        "미사강변 더샵 센트럴포레",
+        "미사강변센트럴풍경채"
+      ],
+      "orderCount": 9,
+      "maxInternalDistanceM": 328
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "고덕 롯데캐슬 베네루체",
+        "고덕숲아이파크",
+        "고덕센트럴아이파크아파트"
+      ],
+      "orderCount": 9,
+      "maxInternalDistanceM": 434
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "강동리버스트7단지",
+        "강동리버스트6단지"
+      ],
+      "orderCount": 3,
+      "maxInternalDistanceM": 232
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "하남힐즈파크푸르지오 1단지",
+        "미사 힐즈파크 푸르지오"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 0
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "고덕아르테스미소지움",
+        "명일중앙하이츠아파트"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 240
+    },
+    {
+      "type": "bad_mixing_at_300m",
+      "date": "2026-08-26",
+      "buildings": [
+        "은행뉴서울아파트",
+        "백조현대아파트"
+      ],
+      "orderCount": 2,
+      "maxInternalDistanceM": 248
+    }
+  ]
+}
