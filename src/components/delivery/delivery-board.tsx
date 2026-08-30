@@ -162,22 +162,29 @@ export function DeliveryBoard({
       ...("bagReturned" in d ? { bagReturned: d.bagReturned } : {}),
     }));
     startSaveDraftTransition(async () => {
-      const result = await saveDeliveryDraftAction(changes);
-      if (result.ok) {
-        toast.success(
-          `${result.savedCount}건 저장했습니다.${result.autoReturnedCount > 0 ? ` (이전 배송 가방 ${result.autoReturnedCount}건 자동 회수 처리)` : ""}`
-        );
-        setDrafts(new Map());
-      } else {
-        const failedSet = new Set(result.failedShipmentIds);
-        setDrafts((prev) => {
-          const next = new Map<string, ShipmentDraft>();
-          for (const [id, d] of prev) {
-            if (failedSet.has(id)) next.set(id, d);
-          }
-          return next;
-        });
-        toast.error(result.error ?? "변경사항 저장 중 오류가 발생했습니다.");
+      try {
+        const result = await saveDeliveryDraftAction(changes);
+        if (result.ok) {
+          toast.success(
+            `${result.savedCount}건 저장했습니다.${result.autoReturnedCount > 0 ? ` (이전 배송 가방 ${result.autoReturnedCount}건 자동 회수 처리)` : ""}`
+          );
+          setDrafts(new Map());
+        } else {
+          const failedSet = new Set(result.failedShipmentIds);
+          setDrafts((prev) => {
+            const next = new Map<string, ShipmentDraft>();
+            for (const [id, d] of prev) {
+              if (failedSet.has(id)) next.set(id, d);
+            }
+            return next;
+          });
+          toast.error(result.error ?? "변경사항 저장 중 오류가 발생했습니다.");
+        }
+      } catch {
+        // 네트워크 오류/서버 콜드스타트 타임아웃 등으로 요청 자체가 실패한 경우 —
+        // 서버 응답을 아예 받지 못했으므로 절대 성공했다고 간주하지 않고, Draft를
+        // 그대로 남겨 재시도할 수 있게 한다(조용히 사라지는 것을 막는다).
+        toast.error("네트워크 오류로 저장에 실패했습니다. 다시 시도해주세요.");
       }
     });
   }
