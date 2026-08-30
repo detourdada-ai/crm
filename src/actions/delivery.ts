@@ -51,6 +51,8 @@ export async function getDeliveryBoardAction(dateFrom: string | null, dateTo?: s
 export interface DeliveryActionState {
   ok: boolean;
   error: string | null;
+  /** TEMP-PERF-TRACE(STEP11-4-A): 임시 계측 필드 — 보고 후 제거 예정. */
+  _timings?: Record<string, number>;
 }
 
 /**
@@ -79,11 +81,16 @@ export async function assignDriverAction(shipmentIds: string[], driverId: string
       }
     }
 
-    await orderShipmentsRepository.assignDriver(shipmentIds, driverId, session.role === "admin" ? undefined : session.username);
+    // TEMP-PERF-TRACE(STEP11-4-A): 임시 계측 — 보고 후 원복 예정.
+    const tRepo0 = Date.now();
+    const { timingsMs } = await orderShipmentsRepository.assignDriver(shipmentIds, driverId, session.role === "admin" ? undefined : session.username);
+    const repoMs = Date.now() - tRepo0;
+    const tRevalidate0 = Date.now();
     revalidatePath("/delivery");
     revalidatePath("/orders");
     revalidatePath("/driver");
-    return { ok: true, error: null };
+    const revalidateMs = Date.now() - tRevalidate0;
+    return { ok: true, error: null, _timings: { ...timingsMs, repoTotal: repoMs, revalidate: revalidateMs } };
   } catch (e) {
     return { ok: false, error: toActionError(e, "기사 배정 중 오류가 발생했습니다.") };
   }

@@ -128,7 +128,11 @@ async function normalizeRouteOrderOnAssign(
   targets: { id: string; driver_id: string | null; delivery_date: string | null }[],
   targetDriverId: string,
   shipmentIdsInDisplayOrder: string[]
-): Promise<void> {
+): Promise<{ selectMs: number; updateMs: number; compactMs: number }> {
+  // TEMP-PERF-TRACE(STEP11-4-A): 임시 계측 — 보고 후 원복 예정.
+  let selectMs = 0;
+  let updateMs = 0;
+  let compactMs = 0;
   const targetsById = new Map(targets.map((t) => [t.id, t]));
 
   const byDay = new Map<string, string[]>();
@@ -150,6 +154,7 @@ async function normalizeRouteOrderOnAssign(
 
   for (const [day, ids] of byDay) {
     const idSet = new Set(ids);
+    const tSelect0 = Date.now();
     const { data: existing, error } = await admin
       .from("order_shipments")
       .select("id")
@@ -157,6 +162,7 @@ async function normalizeRouteOrderOnAssign(
       .gte("delivery_date", kstDayStartIso(day))
       .lte("delivery_date", kstDayEndIso(day))
       .neq("delivery_status", "취소");
+    selectMs += Date.now() - tSelect0;
     if (error) throw error;
     // STEP11-2 Phase2(CPO 작업지시, 2026-08): id마다 다른 값을 매겨야 해서
     // 하나의 UPDATE 문으로 합칠 수 없지만(각 행이 서로 다른 route_order를
@@ -165,13 +171,19 @@ async function normalizeRouteOrderOnAssign(
     // 미리 확정되므로(응답 도착 순서와 무관), 병렬로 쏴도 매겨지는 순번은
     // 이전과 완전히 동일하다.
     let next = (existing ?? []).filter((r) => !idSet.has(r.id)).length + 1;
+    const tUpdate0 = Date.now();
     await Promise.all(ids.map((id) => admin.from("order_shipments").update({ route_order: next++ }).eq("id", id)));
+    updateMs += Date.now() - tUpdate0;
   }
 
+  const tCompact0 = Date.now();
   for (const key of sourceDriverDays) {
     const [srcDriverId, day] = key.split("::");
     await compactRouteOrder(admin, srcDriverId, day);
   }
+  compactMs += Date.now() - tCompact0;
+
+  return { selectMs, updateMs, compactMs };
 }
 
 export const orderShipmentsRepository = {
@@ -326,10 +338,13 @@ export const orderShipmentsRepository = {
    * 쓴다. 같은 주문의 다른 배송건은 건드리지 않는다 — 배송일이 다르면
    * 서로 독립적으로 배정 가능해야 한다(CPO 지시).
    */
-  async assignDriver(shipmentIds: string[], driverId: string, ownerUsername?: string): Promise<void> {
-    if (shipmentIds.length === 0) return;
+  async assignDriver(shipmentIds: string[], driverId: string, ownerUsername?: string): Promise<{ timingsMs: Record<string, number> }> {
+    // TEMP-PERF-TRACE(STEP11-4-A): 임시 계측 — 보고 후 원복 예정.
+    const timingsMs: Record<string, number> = {};
+    if (shipmentIds.length === 0) return { timingsMs };
     const admin = getSupabaseAdmin();
 
+    let t0 = Date.now();
     if (ownerUsername) {
       const [{ data: owned, error: shipmentsCheckError }, { data: driver, error: driverCheckError }] = await Promise.all([
         admin.from("order_shipments").select("id").in("id", shipmentIds).eq("owner_username", ownerUsername),
@@ -341,27 +356,46 @@ export const orderShipmentsRepository = {
         throw new Error("배정 권한이 없는 배송건 또는 기사가 포함되어 있습니다.");
       }
     }
+    timingsMs.ownerCheck = Date.now() - t0;
 
+    t0 = Date.now();
     const { data: targets, error: targetsError } = await admin
       .from("order_shipments")
       .select("id, order_id, delivery_status, driver_id, delivery_date")
       .in("id", shipmentIds);
+    timingsMs.targetsSelect = Date.now() - t0;
     if (targetsError) throw targetsError;
     const blocked = (targets ?? []).filter((s) => s.delivery_status === "완료" || s.delivery_status === "취소");
     if (blocked.length > 0) {
       throw new Error("이미 배송완료되었거나 취소된 배송건은 기사를 배정/변경할 수 없습니다.");
     }
 
+    t0 = Date.now();
     const { error } = await admin.from("order_shipments").update({ driver_id: driverId, delivery_status: "배송중" }).in("id", shipmentIds);
+    timingsMs.mainUpdate = Date.now() - t0;
     if (error) throw error;
 
     // S2-B: 배정된 배송건은 대상 기사의 그날 경로 맨 뒤(화면에 보이던 순서
     // 그대로)로 붙고, 기존에 다른 기사가 배정돼 있었다면 그 기사 쪽 route_order도
     // 압축(정규화)한다.
-    await normalizeRouteOrderOnAssign(admin, targets ?? [], driverId, shipmentIds);
+    t0 = Date.now();
+    const normalizeTimings = await normalizeRouteOrderOnAssign(admin, targets ?? [], driverId, shipmentIds);
+    timingsMs.normalizeTotal = Date.now() - t0;
+    timingsMs.normalizeSelect = normalizeTimings.selectMs;
+    timingsMs.normalizeUpdate = normalizeTimings.updateMs;
+    timingsMs.normalizeCompact = normalizeTimings.compactMs;
 
-    await syncOrdersFromShipments((targets ?? []).map((s) => s.order_id));
+    t0 = Date.now();
+    const syncTimings = await syncOrdersFromShipments((targets ?? []).map((s) => s.order_id));
+    timingsMs.syncTotal = Date.now() - t0;
+    timingsMs.syncSelect = syncTimings.selectMs;
+    timingsMs.syncUpdate = syncTimings.updateMs;
+
+    t0 = Date.now();
     await Promise.all((targets ?? []).map((s) => notifyCustomerDeliveryStarted(s.order_id, s.id)));
+    timingsMs.notify = Date.now() - t0;
+
+    return { timingsMs };
   },
 
   async unassignDriver(shipmentIds: string[], ownerUsername?: string): Promise<void> {
