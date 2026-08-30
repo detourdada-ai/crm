@@ -150,6 +150,14 @@ export interface Database {
         Args: { p_old_username: string; p_new_username: string };
         Returns: void;
       };
+      bulk_update_shipment_route_order: {
+        Args: { p_ids: string[]; p_route_orders: number[] };
+        Returns: void;
+      };
+      bulk_sync_orders_from_shipments: {
+        Args: { p_updates: unknown };
+        Returns: void;
+      };
     };
     Enums: Record<string, never>;
     Tables: {

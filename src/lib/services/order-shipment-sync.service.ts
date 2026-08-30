@@ -40,16 +40,17 @@ export async function syncOrdersFromShipments(orderIds: string[]): Promise<void>
     byOrder.set(s.order_id, list);
   }
 
-  // STEP11-2 Phase2(CPO 작업지시, 2026-08): 기사 일괄배정 20건에 15초가
-  //걸리던 병목의 두 번째 축 — normalizeRouteOrderOnAssign()과 별개로 이
-  // 함수도 주문마다 순차 await UPDATE를 돌고 있었다. 각 주문이 받는 patch는
-  // 서로 다르지만(대표값 계산이 그 주문 소속 배송건들만 보고 끝남) 다른
-  // 주문의 계산 결과에 의존하지 않으므로, order-shipments.repository.ts의
-  // normalizeRouteOrderOnAssign과 동일하게 Promise.all 병렬 처리로 바꾼다.
-  await Promise.all(
-    distinctOrderIds.map(async (orderId) => {
+  // STEP11-4-B(CPO 작업지시, 2026-08): "STEP11-2 Phase2에서 Promise.all
+  // 병렬화로 고쳤다"고 봤던 이 구간이 실측(STEP11-4-A)에서 여전히
+  // 주문 건수만큼(150건 기준 3.7초) 개별 PostgREST 왕복이었다 —
+  // Promise.all은 JS에서 동시에 쏘기만 할 뿐 네트워크 왕복 횟수 자체를
+  // 줄이지 않는다. 각 주문의 patch를 먼저 계산만 해두고,
+  // bulk_sync_orders_from_shipments RPC로 단일 UPDATE 문 1개로
+  // 반영한다(0046 마이그레이션).
+  const updates = distinctOrderIds
+    .map((orderId) => {
       const list = byOrder.get(orderId);
-      if (!list || list.length === 0) return;
+      if (!list || list.length === 0) return null;
 
       const distinctDrivers = new Set(list.map((s) => s.driver_id).filter((d): d is string => d !== null));
       const driverId = distinctDrivers.size === 1 ? [...distinctDrivers][0] : null;
@@ -73,18 +74,20 @@ export async function syncOrdersFromShipments(orderIds: string[]): Promise<void>
           : null;
 
       const first = list[0];
-      const { error: updateError } = await admin
-        .from("orders")
-        .update({
-          driver_id: driverId,
-          delivery_status: deliveryStatus,
-          completed_at: completedAt,
-          bag_number: first.bag_number,
-          bag_returned: first.bag_returned,
-          fulfillment_method: first.fulfillment_method as "delivery" | "direct_pickup",
-        })
-        .eq("id", orderId);
-      if (updateError) throw updateError;
+      return {
+        id: orderId,
+        driver_id: driverId ?? "",
+        delivery_status: deliveryStatus,
+        completed_at: completedAt ?? "",
+        bag_number: first.bag_number,
+        bag_returned: first.bag_returned,
+        fulfillment_method: first.fulfillment_method,
+      };
     })
-  );
+    .filter((u): u is NonNullable<typeof u> => u !== null);
+
+  if (updates.length > 0) {
+    const { error: rpcError } = await admin.rpc("bulk_sync_orders_from_shipments", { p_updates: updates });
+    if (rpcError) throw rpcError;
+  }
 }

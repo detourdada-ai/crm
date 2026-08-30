@@ -112,7 +112,16 @@ async function compactRouteOrder(admin: AdminClient, driverId: string, day: stri
     .order("route_order", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
   if (error) throw error;
-  await Promise.all((data ?? []).map((row, idx) => admin.from("order_shipments").update({ route_order: idx + 1 }).eq("id", row.id)));
+  if (!data || data.length === 0) return;
+  // STEP11-4-B(CPO 작업지시, 2026-08): 건당 개별 UPDATE를 Promise.all로
+  // "병렬" 실행해도 PostgREST 왕복은 건수만큼 그대로였다(실측: 150건
+  // 기준 이 구간만 5초 이상). bulk_update_shipment_route_order RPC로
+  // 단일 UPDATE 문 1개로 대체한다(0046 마이그레이션).
+  const { error: rpcError } = await admin.rpc("bulk_update_shipment_route_order", {
+    p_ids: data.map((row) => row.id),
+    p_route_orders: data.map((_, idx) => idx + 1),
+  });
+  if (rpcError) throw rpcError;
 }
 
 /**
@@ -148,6 +157,12 @@ async function normalizeRouteOrderOnAssign(
     sourceDriverDays.add(`${t.driver_id}::${kstDayDateStrOf(t.delivery_date)}`);
   }
 
+  // STEP11-4-B(CPO 작업지시, 2026-08): 예전엔 날짜그룹마다 Promise.all로
+  // 건당 개별 UPDATE를 쐈다(150건에 5초 이상 실측) — 이제 모든 날짜그룹의
+  // id/route_order를 먼저 계산만 해두고, 마지막에 bulk_update_shipment_
+  // route_order RPC 한 번으로 전부 반영한다(0046 마이그레이션).
+  const allIds: string[] = [];
+  const allRouteOrders: number[] = [];
   for (const [day, ids] of byDay) {
     const idSet = new Set(ids);
     const { data: existing, error } = await admin
@@ -158,14 +173,15 @@ async function normalizeRouteOrderOnAssign(
       .lte("delivery_date", kstDayEndIso(day))
       .neq("delivery_status", "취소");
     if (error) throw error;
-    // STEP11-2 Phase2(CPO 작업지시, 2026-08): id마다 다른 값을 매겨야 해서
-    // 하나의 UPDATE 문으로 합칠 수 없지만(각 행이 서로 다른 route_order를
-    // 받음), 순차 awit로 20건에 15초가 걸리던 것을 compactRouteOrder()와
-    // 동일하게 Promise.all 병렬 처리로 바꾼다 — next 값은 이 동기 map 안에서
-    // 미리 확정되므로(응답 도착 순서와 무관), 병렬로 쏴도 매겨지는 순번은
-    // 이전과 완전히 동일하다.
     let next = (existing ?? []).filter((r) => !idSet.has(r.id)).length + 1;
-    await Promise.all(ids.map((id) => admin.from("order_shipments").update({ route_order: next++ }).eq("id", id)));
+    for (const id of ids) {
+      allIds.push(id);
+      allRouteOrders.push(next++);
+    }
+  }
+  if (allIds.length > 0) {
+    const { error: rpcError } = await admin.rpc("bulk_update_shipment_route_order", { p_ids: allIds, p_route_orders: allRouteOrders });
+    if (rpcError) throw rpcError;
   }
 
   for (const key of sourceDriverDays) {
