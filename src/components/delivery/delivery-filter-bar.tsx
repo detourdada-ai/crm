@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QuickDateRange, DELIVERY_DATE_QUICK_OPTIONS, type QuickDateFilterValue } from "@/components/common/quick-date-range";
 import { kstTodayIso } from "@/lib/utils/kst-date";
+import { useDeliveryDraftGuard } from "@/lib/contexts/delivery-draft-context";
 import type { ProductSummaryEntry } from "@/lib/utils/product-summary";
 
 const PRODUCT_ALL = "all";
@@ -38,6 +39,7 @@ export function DeliveryFilterBar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+  const { confirmDiscardIfNeeded } = useDeliveryDraftGuard();
 
   const [filter, setFilter] = useState<QuickDateFilterValue>(dateFilter);
   const [from, setFrom] = useState(dateFrom);
@@ -66,10 +68,12 @@ export function DeliveryFilterBar({
   }
 
   function handleApply() {
+    if (!confirmDiscardIfNeeded()) return;
     startTransition(() => router.push(`${pathname}?${buildParams().toString()}`));
   }
 
   function handleReset() {
+    if (!confirmDiscardIfNeeded()) return;
     setFilter("today");
     const today = kstTodayIso();
     setFrom(today);

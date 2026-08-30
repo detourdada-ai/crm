@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDeliveryDraftGuard } from "@/lib/contexts/delivery-draft-context";
 
 /**
  * 배송관리 최종 IA 재정의: "배정완료"는 실제 DB 상태값이 아니라 UI 라벨일
@@ -53,6 +56,7 @@ export function DeliveryStatusFlow({
   active: DeliveryFilter;
   buildHref: (filter: DeliveryFilter) => string;
 }) {
+  const { confirmDiscardIfNeeded } = useDeliveryDraftGuard();
   return (
     <div className="flex flex-wrap items-center gap-2">
       {counts.map((c, i) => {
@@ -63,6 +67,9 @@ export function DeliveryStatusFlow({
           <div key={c.filter} className={cn("flex items-center gap-2", c.detached && "ml-2 border-l border-border pl-4")}>
             <Link
               href={buildHref(c.filter)}
+              onClick={(e) => {
+                if (!confirmDiscardIfNeeded()) e.preventDefault();
+              }}
               className={cn(
                 "flex shrink-0 items-baseline gap-2 rounded-xl border transition-colors",
                 c.emphasize ? "px-5 py-4" : "px-4 py-3",

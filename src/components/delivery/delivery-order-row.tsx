@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { AlertTriangle, Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
@@ -24,7 +24,6 @@ import { formatCurrency, formatDate } from "@/lib/constants/order-status";
 import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import { DriverAssignInline } from "@/components/delivery/driver-assign-inline";
-import { updateShipmentBagAction } from "@/actions/delivery";
 import { separateShipmentFromGroupAction, restoreShipmentToGroupingAction } from "@/actions/delivery-groups";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
@@ -57,6 +56,8 @@ export function DeliveryOrderRow({
   onSetDirectPickup,
   onUnassign,
   onClearDirectPickup,
+  onBagNumberChange,
+  onBagReturnedChange,
   itemSummary,
   bagManagementEnabled,
 }: {
@@ -76,6 +77,10 @@ export function DeliveryOrderRow({
   onUnassign: () => void;
   /** P1-B 회귀 복구: 직접수령을 일반 배송으로 되돌린다("배정 해제"와 별개 개념). */
   onClearDirectPickup: () => void;
+  /** STEP11-13: 가방번호/회수여부는 이제 이 컴포넌트가 즉시 저장하지 않고
+   *  상위(DeliveryBoard)의 Draft 상태로 올려보내기만 한다. */
+  onBagNumberChange: (value: string | null) => void;
+  onBagReturnedChange: (value: boolean) => void;
   itemSummary: OrderItemSummary | undefined;
   bagManagementEnabled: boolean;
 }) {
@@ -132,7 +137,12 @@ export function DeliveryOrderRow({
           {/* 긴급수정(2026-08): 가방번호/회수를 담당기사 배정 바로 옆으로 이동 —
               기사를 배정하면서 같은 자리에서 가방번호도 등록할 수 있게. */}
           {bagManagementEnabled ? (
-            <ShipmentBagCell shipmentId={order.rowKey} bagNumber={order.bag_number} bagReturned={order.bag_returned} />
+            <ShipmentBagCell
+              bagNumber={order.bag_number}
+              bagReturned={order.bag_returned}
+              onBagNumberChange={onBagNumberChange}
+              onBagReturnedChange={onBagReturnedChange}
+            />
           ) : null}
           {/* STEP5-D/E: 수동분리/분리해제는 그룹 소속 여부로만 노출한다 — 배송상태/기사배정과 무관하게 항상 가능하다. */}
           {order.delivery_group_locked ? (
@@ -167,43 +177,29 @@ export function DeliveryOrderRow({
  * 가방번호/회수 입력을 주문관리에서 배송관리로 옮긴다(CPO 지시) — 기사에게
  * 배정하면서 가방번호를 등록하고, 배송완료된 목록에서도 그대로 회수를
  * 체크할 수 있어야 하므로 상태와 무관하게 항상 입력 가능하게 둔다.
- * updateShipmentBagAction은 같은 가방번호의 이전 미회수 배송건을 자동으로
- * 회수 처리하므로(가방 재사용), autoReturnedCount가 있으면 안내 토스트를
- * 띄운다.
+ *
+ * STEP11-13(CPO 작업지시, 2026-08): 더 이상 이 컴포넌트가 직접 서버에
+ * 저장하지 않는다 — 값이 바뀌면 상위(DeliveryBoard)의 Draft로만 올려보내고,
+ * 실제 저장/자동회수 안내는 "변경사항 저장" 시점에 한 번에 처리된다.
  */
 export function ShipmentBagCell({
-  shipmentId,
   bagNumber,
   bagReturned,
+  onBagNumberChange,
+  onBagReturnedChange,
 }: {
-  shipmentId: string;
   bagNumber: string | null;
   bagReturned: boolean;
+  onBagNumberChange: (value: string | null) => void;
+  onBagReturnedChange: (value: boolean) => void;
 }) {
   const [number, setNumber] = useState(bagNumber ?? "");
-  const [returned, setReturned] = useState(bagReturned);
-  const [isPending, startTransition] = useTransition();
-  // 속도 개선(2026-08): 실제로 바뀐 값이 없으면(입력칸에 클릭만 하고 나가는
-  // 경우 등) 저장 요청 자체를 보내지 않는다.
-  const lastSaved = useRef({ bagNumber: bagNumber ?? "", bagReturned });
-
-  function save(next: { bagNumber: string; bagReturned: boolean }) {
-    const trimmed = next.bagNumber.trim();
-    if (trimmed === lastSaved.current.bagNumber && next.bagReturned === lastSaved.current.bagReturned) return;
-    lastSaved.current = { bagNumber: trimmed, bagReturned: next.bagReturned };
-    startTransition(async () => {
-      const result = await updateShipmentBagAction(shipmentId, {
-        bagNumber: trimmed || null,
-        bagReturned: next.bagReturned,
-      });
-      if (!result.ok) {
-        toast.error(result.error ?? "가방 정보 저장 중 오류가 발생했습니다.");
-        return;
-      }
-      if (result.autoReturnedCount > 0) {
-        toast.success(`이전 배송(${result.autoReturnedCount}건)의 가방을 자동으로 회수 처리했습니다.`);
-      }
-    });
+  // 외부에서 값이 바뀌면(전체 되돌리기, 그룹 일괄적용 등) 입력칸도 맞춘다
+  // — effect 대신 렌더 중 이전 prop과 비교하는 React 권장 패턴을 쓴다.
+  const [prevBagNumber, setPrevBagNumber] = useState(bagNumber);
+  if (bagNumber !== prevBagNumber) {
+    setPrevBagNumber(bagNumber);
+    setNumber(bagNumber ?? "");
   }
 
   return (
@@ -212,22 +208,15 @@ export function ShipmentBagCell({
         value={number}
         placeholder="가방번호"
         className="h-7 w-16 px-1.5 text-xs"
-        disabled={isPending}
         onChange={(e) => setNumber(e.target.value)}
-        onBlur={() => save({ bagNumber: number, bagReturned: returned })}
-      />
-      <button
-        type="button"
-        disabled={isPending}
-        onClick={() => {
-          const next = !returned;
-          setReturned(next);
-          save({ bagNumber: number, bagReturned: next });
+        onBlur={() => {
+          const trimmed = number.trim();
+          if (trimmed !== (bagNumber ?? "")) onBagNumberChange(trimmed || null);
         }}
-        className="disabled:opacity-60"
-      >
-        <Badge variant={returned ? "secondary" : "outline"} className="cursor-pointer px-1.5 py-0 text-[10px]">
-          {isPending ? <Loader2 className="size-2.5 animate-spin" /> : returned ? "회수완료" : "미회수"}
+      />
+      <button type="button" onClick={() => onBagReturnedChange(!bagReturned)}>
+        <Badge variant={bagReturned ? "secondary" : "outline"} className="cursor-pointer px-1.5 py-0 text-[10px]">
+          {bagReturned ? "회수완료" : "미회수"}
         </Badge>
       </button>
     </span>

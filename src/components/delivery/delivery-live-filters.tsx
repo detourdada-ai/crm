@@ -12,6 +12,7 @@ import { DeliveryFilterBar } from "@/components/delivery/delivery-filter-bar";
 import { DriverManagementDialog } from "@/components/delivery/driver-management-dialog";
 import { DeliveryStatusFlow, type DeliveryFilter, type DeliveryFlowCount } from "@/components/delivery/delivery-status-flow";
 import { DeliveryFilterStack, type DeliveryStackMode } from "@/components/delivery/delivery-filter-stack";
+import { DeliveryDraftProvider } from "@/lib/contexts/delivery-draft-context";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { DriverWithAccount } from "@/actions/drivers";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
@@ -194,6 +195,7 @@ export function DeliveryLiveFilters({
   }
 
   return (
+    <DeliveryDraftProvider>
     <div className="space-y-6">
       <PageHeader
         title="배송관리"
@@ -273,5 +275,6 @@ export function DeliveryLiveFilters({
         </Card>
       )}
     </div>
+    </DeliveryDraftProvider>
   );
 }

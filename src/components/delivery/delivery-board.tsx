@@ -1,11 +1,17 @@
 "use client";
 
-import { Fragment, useMemo, useState, useTransition, type RefObject } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition, type RefObject } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { assignDriverAction, reorderShipmentsAction, setFulfillmentMethodAction } from "@/actions/delivery";
+import {
+  reorderShipmentsAction,
+  setFulfillmentMethodAction,
+  saveDeliveryDraftAction,
+  type DraftChangeInput,
+} from "@/actions/delivery";
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
@@ -13,10 +19,19 @@ import type { GroupBuildingLabel, GroupBuildingCount, GroupStatusSubtotal } from
 import { DRIVER_UNASSIGNED_SENTINEL } from "@/lib/utils/delivery-driver-filter";
 import { sortByRouteOrder } from "@/lib/utils/route-order";
 import { useShipmentRowActions } from "@/lib/hooks/use-shipment-row-actions";
+import { useDeliveryDraftGuard } from "@/lib/contexts/delivery-draft-context";
 import { DeliveryOrderRow } from "@/components/delivery/delivery-order-row";
 import { BulkAssignBar } from "@/components/delivery/bulk-assign-bar";
 import { cn } from "@/lib/utils";
 import type { Driver, FulfillmentMethod } from "@/types/domain";
+
+/** STEP11-13(CPO 작업지시, 2026-08): 배송건 하나의 저장하지 않은 변경사항 —
+ *  키가 있으면(undefined가 아니면) 그 필드가 서버값과 달라졌다는 뜻이다. */
+interface ShipmentDraft {
+  driverId?: string | null;
+  bagNumber?: string | null;
+  bagReturned?: boolean;
+}
 
 /**
  * S2-A: 배송관리를 "조회 화면"에서 "오늘 배송을 운영하는 화면"으로 재설계 —
@@ -86,6 +101,86 @@ export function DeliveryBoard({
   const [candidateDriverIds, setCandidateDriverIds] = useState<Set<string>>(new Set());
   const [, startCandidateLookup] = useTransition();
   const rowActions = useShipmentRowActions();
+
+  // STEP11-13(CPO 작업지시, 2026-08): 기사 배정/가방번호/회수여부는 더 이상
+  // 즉시 저장하지 않는다 — rowKey별로 서버값과 달라진 필드만 여기 담아뒀다가
+  // "변경사항 저장"을 눌러야 실제 서버에 반영된다(상태/직접수령 변경은 이번
+  // 작업지시서 범위 밖이라 기존과 동일하게 즉시 저장 — rowActions 그대로 사용).
+  const [drafts, setDrafts] = useState<Map<string, ShipmentDraft>>(new Map());
+  const [isSavingDraft, startSaveDraftTransition] = useTransition();
+  const orderByRowKey = useMemo(() => new Map(orders.map((o) => [o.rowKey, o])), [orders]);
+  const { setHasUnsavedChanges } = useDeliveryDraftGuard();
+
+  useEffect(() => {
+    setHasUnsavedChanges(drafts.size > 0);
+  }, [drafts, setHasUnsavedChanges]);
+
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (drafts.size === 0) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [drafts]);
+
+  /** 값을 원래(서버) 값으로 되돌리면 그 필드는 Draft에서 자동으로 사라진다(CPO 지시 원칙). */
+  function setDraftField<K extends keyof ShipmentDraft>(shipmentId: string, field: K, value: ShipmentDraft[K], originalValue: ShipmentDraft[K]) {
+    setDrafts((prev) => {
+      const next = new Map(prev);
+      const entry: ShipmentDraft = { ...(next.get(shipmentId) ?? {}) };
+      if (value === originalValue) delete entry[field];
+      else entry[field] = value;
+      if (Object.keys(entry).length === 0) next.delete(shipmentId);
+      else next.set(shipmentId, entry);
+      return next;
+    });
+  }
+
+  /** 목록에 보여줄 값 — 저장 전이라도 Draft가 있으면 화면엔 그 값을 바로 반영한다. */
+  function applyDraftToOrder(order: OrderShipmentBoardRow): OrderShipmentBoardRow {
+    const d = drafts.get(order.rowKey);
+    if (!d) return order;
+    return {
+      ...order,
+      driver_id: d.driverId !== undefined ? d.driverId : order.driver_id,
+      bag_number: d.bagNumber !== undefined ? d.bagNumber : order.bag_number,
+      bag_returned: d.bagReturned !== undefined ? d.bagReturned : order.bag_returned,
+    };
+  }
+
+  function handleDiscardDrafts() {
+    setDrafts(new Map());
+  }
+
+  function handleSaveDrafts() {
+    const changes: DraftChangeInput[] = [...drafts.entries()].map(([shipmentId, d]) => ({
+      shipmentId,
+      ...("driverId" in d ? { driverId: d.driverId } : {}),
+      ...("bagNumber" in d ? { bagNumber: d.bagNumber } : {}),
+      ...("bagReturned" in d ? { bagReturned: d.bagReturned } : {}),
+    }));
+    startSaveDraftTransition(async () => {
+      const result = await saveDeliveryDraftAction(changes);
+      if (result.ok) {
+        toast.success(
+          `${result.savedCount}건 저장했습니다.${result.autoReturnedCount > 0 ? ` (이전 배송 가방 ${result.autoReturnedCount}건 자동 회수 처리)` : ""}`
+        );
+        setDrafts(new Map());
+      } else {
+        const failedSet = new Set(result.failedShipmentIds);
+        setDrafts((prev) => {
+          const next = new Map<string, ShipmentDraft>();
+          for (const [id, d] of prev) {
+            if (failedSet.has(id)) next.set(id, d);
+          }
+          return next;
+        });
+        toast.error(result.error ?? "변경사항 저장 중 오류가 발생했습니다.");
+      }
+    });
+  }
 
   // 배송관리 핵심 UX 재설계: 기사 필터로 특정 기사 한 명만 골랐을 때는
   // route_order(nulls last) 순으로 정렬해 ↑/↓ 재배치를 붙인다 — "기사별"
@@ -176,15 +271,14 @@ export function DeliveryBoard({
       toast.error("배정할 기사를 선택해주세요.");
       return;
     }
-    startTransition(async () => {
-      const result = await assignDriverAction(selectedShipmentIdsInDisplayOrder, bulkDriverId);
-      if (result.ok) {
-        toast.success(`${visibleSelected.size}건을 배정했습니다.`);
-        setSelected(new Set());
-      } else {
-        toast.error(result.error ?? "배정 중 오류가 발생했습니다.");
-      }
-    });
+    // STEP11-13: 그룹/일괄 기사배정도 즉시 서버 저장이 아니라 Draft에 반영한다
+    // — "변경사항 저장"을 눌러야 실제로 반영되고, 그 전엔 화면에서만 보인다.
+    for (const id of selectedShipmentIdsInDisplayOrder) {
+      const original = orderByRowKey.get(id);
+      setDraftField(id, "driverId", bulkDriverId, original?.driver_id ?? null);
+    }
+    toast.success(`${visibleSelected.size}건을 기사 변경사항에 반영했습니다. "변경사항 저장"을 눌러야 실제로 배정됩니다.`);
+    setSelected(new Set());
   }
 
   /** S2-B STEP3: ↑/↓ 버튼 → 그 기사 리스트 전체를 새 순서로 서버에 반영. */
@@ -217,10 +311,12 @@ export function DeliveryBoard({
   }
 
   function renderRow(order: OrderShipmentBoardRow) {
+    // order는 서버 원본값(원래값 비교용) — 화면 표시는 Draft가 반영된 값을 쓴다.
+    const effectiveOrder = applyDraftToOrder(order);
     return (
       <DeliveryOrderRow
         key={order.rowKey}
-        order={order}
+        order={effectiveOrder}
         drivers={drivers}
         driverNames={driverNames}
         driverCounts={driverCounts}
@@ -230,10 +326,12 @@ export function DeliveryBoard({
         isPending={rowActions.isPending}
         showSpinner={rowActions.isPending && rowActions.pendingRowId === order.rowKey}
         onSetStatus={(next) => rowActions.setStatus(order.rowKey, next)}
-        onAssign={(id) => rowActions.assign(order.rowKey, id)}
+        onAssign={(id) => setDraftField(order.rowKey, "driverId", id, order.driver_id)}
         onSetDirectPickup={() => rowActions.setDirectPickup(order.rowKey)}
-        onUnassign={() => rowActions.unassign(order.rowKey)}
+        onUnassign={() => setDraftField(order.rowKey, "driverId", null, order.driver_id)}
         onClearDirectPickup={() => rowActions.clearDirectPickup(order.rowKey)}
+        onBagNumberChange={(value) => setDraftField(order.rowKey, "bagNumber", value, order.bag_number)}
+        onBagReturnedChange={(value) => setDraftField(order.rowKey, "bagReturned", value, order.bag_returned)}
         itemSummary={itemSummaries[order.rowKey]}
         bagManagementEnabled={bagManagementEnabled}
       />
@@ -335,6 +433,21 @@ export function DeliveryBoard({
         isPending={isPending}
         onApply={handleBulkApply}
       />
+
+      {drafts.size > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning bg-warning-soft px-3 py-2.5">
+          <span className="text-sm font-medium text-warning">변경사항 {drafts.size}건</span>
+          <span className="text-xs text-muted-foreground">저장하지 않으면 서버에 반영되지 않습니다.</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={isSavingDraft} onClick={handleDiscardDrafts}>
+              전체 되돌리기
+            </Button>
+            <Button type="button" size="sm" disabled={isSavingDraft} onClick={handleSaveDrafts}>
+              {isSavingDraft ? "저장하는 중..." : "변경사항 저장"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         {currentlyDisplayedOrders.length > 1 ? (

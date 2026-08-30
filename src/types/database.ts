@@ -158,6 +158,10 @@ export interface Database {
         Args: { p_updates: unknown };
         Returns: void;
       };
+      bulk_update_shipment_bag: {
+        Args: { p_ids: string[]; p_bag_numbers: (string | null)[]; p_bag_returned: boolean[] };
+        Returns: void;
+      };
     };
     Enums: Record<string, never>;
     Tables: {

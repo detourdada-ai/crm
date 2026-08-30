@@ -700,6 +700,68 @@ export const orderShipmentsRepository = {
     return { autoReturnedCount };
   },
 
+  /**
+   * STEP11-13(CPO 작업지시, 2026-08): 배송목록 "변경사항 일괄저장"에서
+   * 여러 배송건의 가방번호/회수여부를 한 번에 반영한다. updateBag()과 같은
+   * 자동회수 규칙(같은 가방번호가 아직 미회수인 채 더 늦은 배송일에 다시
+   * 쓰이면 이전 배송건을 자동 회수 처리)을 유지하되, 메인 UPDATE 자체는
+   * bulk_update_shipment_bag RPC(0047) 단일 호출로 끝낸다 — 자동회수는
+   * 가방번호가 실제로 바뀐 항목에 대해서만, 항목 수만큼 병렬 조회한다(건수가
+   * 적고 조건이 배송건마다 달라 단일 SQL로 합치기 어렵다 — 메인 쓰기 경로는
+   * 이미 배치 1회로 줄었으므로 전체 목표는 달성한다).
+   */
+  async updateBagBatch(
+    items: { shipmentId: string; bagNumber: string | null; bagReturned: boolean }[],
+    ownerUsername?: string
+  ): Promise<{ autoReturnedCount: number }> {
+    if (items.length === 0) return { autoReturnedCount: 0 };
+    const admin = getSupabaseAdmin();
+    const ids = items.map((i) => i.shipmentId);
+
+    let selectQ = admin.from("order_shipments").select("id, order_id, owner_username, delivery_date, bag_number").in("id", ids);
+    if (ownerUsername) selectQ = selectQ.eq("owner_username", ownerUsername);
+    const { data: current, error: selectError } = await selectQ;
+    if (selectError) throw selectError;
+    if ((current?.length ?? 0) !== items.length) {
+      throw new Error("가방 정보를 수정할 권한이 없는 배송건이 포함되어 있습니다.");
+    }
+    const currentById = new Map((current ?? []).map((c) => [c.id, c]));
+
+    const { error: rpcError } = await admin.rpc("bulk_update_shipment_bag", {
+      p_ids: items.map((i) => i.shipmentId),
+      p_bag_numbers: items.map((i) => i.bagNumber),
+      p_bag_returned: items.map((i) => i.bagReturned),
+    });
+    if (rpcError) throw rpcError;
+
+    const orderIdsToSync = items.map((i) => currentById.get(i.shipmentId)!.order_id);
+    const autoReturnLists = await Promise.all(
+      items.map(async (item) => {
+        const cur = currentById.get(item.shipmentId)!;
+        if (!item.bagNumber || item.bagNumber === cur.bag_number || !cur.delivery_date) return [];
+        const { data: priorReturned, error } = await admin
+          .from("order_shipments")
+          .update({ bag_returned: true })
+          .eq("owner_username", cur.owner_username)
+          .eq("bag_number", item.bagNumber)
+          .eq("bag_returned", false)
+          .neq("id", item.shipmentId)
+          .lt("delivery_date", cur.delivery_date)
+          .select("id, order_id");
+        if (error) throw error;
+        return priorReturned ?? [];
+      })
+    );
+
+    let autoReturnedCount = 0;
+    for (const list of autoReturnLists) {
+      autoReturnedCount += list.length;
+      orderIdsToSync.push(...list.map((r) => r.order_id));
+    }
+    await syncOrdersFromShipments(orderIdsToSync);
+    return { autoReturnedCount };
+  },
+
   /** 기사 세션에서 배송건 하나를 완료 처리한다. driverId가 주어지면 본인에게 배정된 배송건만 대상이 된다. */
   async markDelivered(shipmentId: string, driverId?: string): Promise<OrderShipment> {
     let q = getSupabaseAdmin()

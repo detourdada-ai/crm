@@ -319,6 +319,144 @@ export async function setFulfillmentMethodAction(shipmentIds: string[], method: 
   }
 }
 
+export interface DraftChangeInput {
+  shipmentId: string;
+  /** undefined = 안 바뀜, null = 배정 해제, 문자열 = 그 기사로 배정/변경. */
+  driverId?: string | null;
+  bagNumber?: string | null;
+  bagReturned?: boolean;
+}
+
+export interface SaveDeliveryDraftResult {
+  ok: boolean;
+  error: string | null;
+  savedCount: number;
+  failedShipmentIds: string[];
+  autoReturnedCount: number;
+}
+
+/**
+ * STEP11-13(CPO 작업지시, 2026-08): 배송목록 "변경사항 일괄저장" — 화면에서
+ * 모은 변경사항(기사 배정/변경/해제, 가방번호, 회수여부)을 한 번의 호출로
+ * 서버에 반영한다. 개별 필드마다 즉시 저장하던 기존 흐름(assignDriverAction/
+ * updateShipmentBagAction을 배송건마다 호출)을 대체하는 새 진입점이며, 기존
+ * 액션들은 그대로 남겨둔다(배송상태 전환/직접수령은 이번 범위 밖 — 여전히
+ * 즉시 저장).
+ *
+ * 기사 변경은 대상 기사별로 묶어 기존 assignDriver()/unassignDriver()를
+ * 그대로 재사용한다 — 이미 "여러 배송건을 한 번의 UPDATE로" 처리하도록
+ * STEP11-6/STEP11-4-B에서 검증된 경로라, 여기서 새로 만들 이유가 없다(같은
+ * 배송건 묶음이 서로 다른 기사로 나뉘어도 "기사 수"만큼만 호출한다 — 배송건
+ * 수만큼이 아니다). 가방번호/회수여부는 새 배치 RPC(updateBagBatch)로
+ * 한 번에 반영한다.
+ *
+ * 부분 실패 처리: 기사 그룹 하나 또는 가방 배치 하나가 실패해도 나머지는
+ * 계속 시도한다 — 실패한 배송건 id만 failedShipmentIds로 돌려줘 클라이언트가
+ * Draft에 남기고 나머지만 비우게 한다(그룹 단위 원자성 — 같은 기사로 묶인
+ * 배송건들은 이미 assignDriver 내부에서 하나의 UPDATE로 처리되므로 그
+ * 그룹 안에서는 전부 성공하거나 전부 실패한다).
+ */
+export async function saveDeliveryDraftAction(changes: DraftChangeInput[]): Promise<SaveDeliveryDraftResult> {
+  try {
+    const session = await requireSession();
+    if (changes.length === 0) return { ok: true, error: null, savedCount: 0, failedShipmentIds: [], autoReturnedCount: 0 };
+    const ids = changes.map((c) => c.shipmentId);
+    const ownerUsername = session.role === "admin" ? undefined : session.username;
+
+    const currentShipments = await orderShipmentsRepository.findByIds(ids);
+    if (session.role !== "admin") {
+      const allOwned = currentShipments.length === ids.length && currentShipments.every((s) => s.owner_username === session.username);
+      if (!allOwned) {
+        return {
+          ok: false,
+          error: "권한이 없는 배송건이 포함되어 있습니다.",
+          savedCount: 0,
+          failedShipmentIds: ids,
+          autoReturnedCount: 0,
+        };
+      }
+    }
+    const currentById = new Map(currentShipments.map((s) => [s.id, s]));
+
+    const failedShipmentIds: string[] = [];
+
+    const assignGroups = new Map<string, string[]>();
+    const unassignIds: string[] = [];
+    for (const c of changes) {
+      if (c.driverId === undefined) continue;
+      if (c.driverId === null) unassignIds.push(c.shipmentId);
+      else {
+        const list = assignGroups.get(c.driverId) ?? [];
+        list.push(c.shipmentId);
+        assignGroups.set(c.driverId, list);
+      }
+    }
+
+    await Promise.all(
+      [...assignGroups.entries()].map(async ([driverId, shipmentIds]) => {
+        try {
+          await orderShipmentsRepository.assignDriver(shipmentIds, driverId, ownerUsername);
+        } catch (e) {
+          console.warn(`[saveDeliveryDraftAction] 기사(${driverId}) 배정 실패:`, e instanceof Error ? e.message : e);
+          failedShipmentIds.push(...shipmentIds);
+        }
+      })
+    );
+
+    if (unassignIds.length > 0) {
+      try {
+        await orderShipmentsRepository.unassignDriver(unassignIds, ownerUsername);
+      } catch (e) {
+        console.warn("[saveDeliveryDraftAction] 배정 해제 실패:", e instanceof Error ? e.message : e);
+        failedShipmentIds.push(...unassignIds);
+      }
+    }
+
+    let autoReturnedCount = 0;
+    const bagChanges = changes.filter((c) => c.bagNumber !== undefined || c.bagReturned !== undefined);
+    if (bagChanges.length > 0) {
+      const bagItems = bagChanges.map((c) => {
+        const cur = currentById.get(c.shipmentId)!;
+        return {
+          shipmentId: c.shipmentId,
+          bagNumber: c.bagNumber !== undefined ? c.bagNumber : cur.bag_number,
+          bagReturned: c.bagReturned !== undefined ? c.bagReturned : cur.bag_returned,
+        };
+      });
+      try {
+        const result = await orderShipmentsRepository.updateBagBatch(bagItems, ownerUsername);
+        autoReturnedCount = result.autoReturnedCount;
+      } catch (e) {
+        console.warn("[saveDeliveryDraftAction] 가방정보 일괄저장 실패:", e instanceof Error ? e.message : e);
+        failedShipmentIds.push(...bagChanges.map((c) => c.shipmentId));
+      }
+    }
+
+    revalidatePath("/delivery");
+    revalidatePath("/orders");
+    revalidatePath("/driver");
+
+    const failedSet = new Set(failedShipmentIds);
+    const changedIdSet = new Set(changes.map((c) => c.shipmentId));
+    const savedCount = changedIdSet.size - failedSet.size;
+    return {
+      ok: failedSet.size === 0,
+      error: failedSet.size > 0 ? `${failedSet.size}건 저장에 실패했습니다. 다시 시도해주세요.` : null,
+      savedCount,
+      failedShipmentIds: [...failedSet],
+      autoReturnedCount,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: toActionError(e, "변경사항 저장 중 오류가 발생했습니다."),
+      savedCount: 0,
+      failedShipmentIds: changes.map((c) => c.shipmentId),
+      autoReturnedCount: 0,
+    };
+  }
+}
+
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
