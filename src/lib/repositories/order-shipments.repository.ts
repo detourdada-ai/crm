@@ -342,10 +342,8 @@ export const orderShipmentsRepository = {
    * 쓴다. 같은 주문의 다른 배송건은 건드리지 않는다 — 배송일이 다르면
    * 서로 독립적으로 배정 가능해야 한다(CPO 지시).
    */
-  async assignDriver(shipmentIds: string[], driverId: string, ownerUsername?: string): Promise<{ timingsMs: Record<string, number> }> {
-    // TEMP-PERF-TRACE(STEP11-6): 임시 계측 — 보고 후 원복 예정.
-    const timingsMs: Record<string, number> = {};
-    if (shipmentIds.length === 0) return { timingsMs };
+  async assignDriver(shipmentIds: string[], driverId: string, ownerUsername?: string): Promise<void> {
+    if (shipmentIds.length === 0) return;
     const admin = getSupabaseAdmin();
 
     // STEP11-6(CPO 작업지시, 2026-08): 개별(단건) 배정 실측 결과 이 함수
@@ -358,7 +356,6 @@ export const orderShipmentsRepository = {
     //   2) route_order 정규화(normalizeRouteOrderOnAssign)와 orders 동기화
     //      (syncOrdersFromShipments)는 서로 다른 컬럼을 다루는 독립적인
     //      작업이라 순서를 강제할 이유가 없다 — Promise.all로 동시 실행한다.
-    let t0 = Date.now();
     const [
       { data: targets, error: targetsError },
       driverCheck,
@@ -368,7 +365,6 @@ export const orderShipmentsRepository = {
         ? admin.from("drivers").select("id").eq("id", driverId).eq("owner_username", ownerUsername).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
     ]);
-    timingsMs.mergedTargetsAndDriverCheck = Date.now() - t0;
     if (targetsError) throw targetsError;
     if (driverCheck.error) throw driverCheck.error;
     if (ownerUsername) {
@@ -382,27 +378,19 @@ export const orderShipmentsRepository = {
       throw new Error("이미 배송완료되었거나 취소된 배송건은 기사를 배정/변경할 수 없습니다.");
     }
 
-    t0 = Date.now();
     const { error } = await admin.from("order_shipments").update({ driver_id: driverId, delivery_status: "배송중" }).in("id", shipmentIds);
-    timingsMs.mainUpdate = Date.now() - t0;
     if (error) throw error;
 
     // S2-B: 배정된 배송건은 대상 기사의 그날 경로 맨 뒤(화면에 보이던 순서
     // 그대로)로 붙고, 기존에 다른 기사가 배정돼 있었다면 그 기사 쪽 route_order도
     // 압축(정규화)한다. orders 동기화는 route_order와 무관한 별개 컬럼을
     // 다루므로 동시에 실행해도 안전하다.
-    t0 = Date.now();
     await Promise.all([
       normalizeRouteOrderOnAssign(admin, targets ?? [], driverId, shipmentIds),
       syncOrdersFromShipments((targets ?? []).map((s) => s.order_id)),
     ]);
-    timingsMs.parallelNormalizeAndSync = Date.now() - t0;
 
-    t0 = Date.now();
     await Promise.all((targets ?? []).map((s) => notifyCustomerDeliveryStarted(s.order_id, s.id)));
-    timingsMs.notify = Date.now() - t0;
-
-    return { timingsMs };
   },
 
   async unassignDriver(shipmentIds: string[], ownerUsername?: string): Promise<void> {
