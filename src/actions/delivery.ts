@@ -51,6 +51,8 @@ export async function getDeliveryBoardAction(dateFrom: string | null, dateTo?: s
 export interface DeliveryActionState {
   ok: boolean;
   error: string | null;
+  /** TEMP-PERF-TRACE(STEP11-6): 임시 계측 필드 — 보고 후 제거 예정. */
+  _timings?: Record<string, number>;
 }
 
 /**
@@ -67,6 +69,8 @@ export async function assignDriverAction(shipmentIds: string[], driverId: string
     const session = await requireSession();
     if (shipmentIds.length === 0) return { ok: false, error: "배정할 배송건을 선택해주세요." };
 
+    // TEMP-PERF-TRACE(STEP11-6): 임시 계측 — 보고 후 원복 예정.
+    let tActionCheck0 = Date.now();
     if (session.role !== "admin") {
       const driver = await driversRepository.findById(driverId);
       if (!driver || driver.owner_username !== session.username) {
@@ -78,12 +82,17 @@ export async function assignDriverAction(shipmentIds: string[], driverId: string
         return { ok: false, error: "배정 권한이 없는 배송건이 포함되어 있습니다." };
       }
     }
+    const actionCheckMs = Date.now() - tActionCheck0;
 
-    await orderShipmentsRepository.assignDriver(shipmentIds, driverId, session.role === "admin" ? undefined : session.username);
+    const tRepo0 = Date.now();
+    const { timingsMs } = await orderShipmentsRepository.assignDriver(shipmentIds, driverId, session.role === "admin" ? undefined : session.username);
+    const repoMs = Date.now() - tRepo0;
+    tActionCheck0 = Date.now();
     revalidatePath("/delivery");
     revalidatePath("/orders");
     revalidatePath("/driver");
-    return { ok: true, error: null };
+    const revalidateMs = Date.now() - tActionCheck0;
+    return { ok: true, error: null, _timings: { ...timingsMs, actionCheck: actionCheckMs, repoTotal: repoMs, revalidate: revalidateMs } };
   } catch (e) {
     return { ok: false, error: toActionError(e, "기사 배정 중 오류가 발생했습니다.") };
   }

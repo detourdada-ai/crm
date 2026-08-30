@@ -342,42 +342,67 @@ export const orderShipmentsRepository = {
    * 쓴다. 같은 주문의 다른 배송건은 건드리지 않는다 — 배송일이 다르면
    * 서로 독립적으로 배정 가능해야 한다(CPO 지시).
    */
-  async assignDriver(shipmentIds: string[], driverId: string, ownerUsername?: string): Promise<void> {
-    if (shipmentIds.length === 0) return;
+  async assignDriver(shipmentIds: string[], driverId: string, ownerUsername?: string): Promise<{ timingsMs: Record<string, number> }> {
+    // TEMP-PERF-TRACE(STEP11-6): 임시 계측 — 보고 후 원복 예정.
+    const timingsMs: Record<string, number> = {};
+    if (shipmentIds.length === 0) return { timingsMs };
     const admin = getSupabaseAdmin();
 
+    // STEP11-6(CPO 작업지시, 2026-08): 개별(단건) 배정 실측 결과 이 함수
+    // 하나가 항상 5개의 순차 왕복(권한확인→대상조회→상태UPDATE→route_order
+    // 조회→orders동기화조회)을 거쳤고, 이게 건수와 무관한 고정비용이라 단건
+    // 배정도 5초 이상 걸렸다. 두 가지로 줄인다:
+    //   1) 소유권 확인용 조회와 "대상 배송건 상세" 조회가 사실상 같은 테이블의
+    //      겹치는 데이터였다 — 필요한 컬럼을 전부 포함한 조회 1번으로 합치고,
+    //      기사 소유권 확인과 함께 Promise.all로 병렬 실행한다(왕복 1회 절감).
+    //   2) route_order 정규화(normalizeRouteOrderOnAssign)와 orders 동기화
+    //      (syncOrdersFromShipments)는 서로 다른 컬럼을 다루는 독립적인
+    //      작업이라 순서를 강제할 이유가 없다 — Promise.all로 동시 실행한다.
+    let t0 = Date.now();
+    const [
+      { data: targets, error: targetsError },
+      driverCheck,
+    ] = await Promise.all([
+      admin.from("order_shipments").select("id, order_id, delivery_status, driver_id, delivery_date, owner_username").in("id", shipmentIds),
+      ownerUsername
+        ? admin.from("drivers").select("id").eq("id", driverId).eq("owner_username", ownerUsername).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+    timingsMs.mergedTargetsAndDriverCheck = Date.now() - t0;
+    if (targetsError) throw targetsError;
+    if (driverCheck.error) throw driverCheck.error;
     if (ownerUsername) {
-      const [{ data: owned, error: shipmentsCheckError }, { data: driver, error: driverCheckError }] = await Promise.all([
-        admin.from("order_shipments").select("id").in("id", shipmentIds).eq("owner_username", ownerUsername),
-        admin.from("drivers").select("id").eq("id", driverId).eq("owner_username", ownerUsername).maybeSingle(),
-      ]);
-      if (shipmentsCheckError) throw shipmentsCheckError;
-      if (driverCheckError) throw driverCheckError;
-      if ((owned?.length ?? 0) !== shipmentIds.length || !driver) {
+      const allOwned = (targets ?? []).length === shipmentIds.length && (targets ?? []).every((t) => t.owner_username === ownerUsername);
+      if (!allOwned || !driverCheck.data) {
         throw new Error("배정 권한이 없는 배송건 또는 기사가 포함되어 있습니다.");
       }
     }
-
-    const { data: targets, error: targetsError } = await admin
-      .from("order_shipments")
-      .select("id, order_id, delivery_status, driver_id, delivery_date")
-      .in("id", shipmentIds);
-    if (targetsError) throw targetsError;
     const blocked = (targets ?? []).filter((s) => s.delivery_status === "완료" || s.delivery_status === "취소");
     if (blocked.length > 0) {
       throw new Error("이미 배송완료되었거나 취소된 배송건은 기사를 배정/변경할 수 없습니다.");
     }
 
+    t0 = Date.now();
     const { error } = await admin.from("order_shipments").update({ driver_id: driverId, delivery_status: "배송중" }).in("id", shipmentIds);
+    timingsMs.mainUpdate = Date.now() - t0;
     if (error) throw error;
 
     // S2-B: 배정된 배송건은 대상 기사의 그날 경로 맨 뒤(화면에 보이던 순서
     // 그대로)로 붙고, 기존에 다른 기사가 배정돼 있었다면 그 기사 쪽 route_order도
-    // 압축(정규화)한다.
-    await normalizeRouteOrderOnAssign(admin, targets ?? [], driverId, shipmentIds);
+    // 압축(정규화)한다. orders 동기화는 route_order와 무관한 별개 컬럼을
+    // 다루므로 동시에 실행해도 안전하다.
+    t0 = Date.now();
+    await Promise.all([
+      normalizeRouteOrderOnAssign(admin, targets ?? [], driverId, shipmentIds),
+      syncOrdersFromShipments((targets ?? []).map((s) => s.order_id)),
+    ]);
+    timingsMs.parallelNormalizeAndSync = Date.now() - t0;
 
-    await syncOrdersFromShipments((targets ?? []).map((s) => s.order_id));
+    t0 = Date.now();
     await Promise.all((targets ?? []).map((s) => notifyCustomerDeliveryStarted(s.order_id, s.id)));
+    timingsMs.notify = Date.now() - t0;
+
+    return { timingsMs };
   },
 
   async unassignDriver(shipmentIds: string[], ownerUsername?: string): Promise<void> {

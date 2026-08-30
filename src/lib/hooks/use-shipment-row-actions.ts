@@ -29,7 +29,12 @@ export function useShipmentRowActions() {
   function assign(shipmentId: string, targetDriverId: string) {
     setPendingRowId(shipmentId);
     startTransition(async () => {
+      const tClick0 = Date.now();
       const result = await assignDriverAction([shipmentId], targetDriverId);
+      // TEMP-PERF-TRACE(STEP11-6): 임시 계측 — 보고 후 원복 예정.
+      if (result._timings) {
+        console.log("[INDIVIDUAL_ASSIGN_TIMING]", JSON.stringify({ ...result._timings, clientRoundTrip: Date.now() - tClick0 }));
+      }
       if (result.ok) toast.success("기사를 배정했습니다.");
       else toast.error(result.error ?? "기사 배정 중 오류가 발생했습니다.");
       setPendingRowId(null);
