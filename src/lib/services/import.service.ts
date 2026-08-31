@@ -410,7 +410,6 @@ export async function runImport({
   // 있었다. Phase 1부터 Phase 3까지 파이프라인 전체를 하나의 try로 넓혀서,
   // 어느 단계에서 실패하든 반드시 rollback + status="failed" + 실제 원인이
   // error_log에 남도록 한다.
-  let existingOrderNumbers: Set<string>;
   // STEP2(누적 스마트스토어 엑셀 중복판정 재설계, 2026-08 CPO 작업지시): 이
   // tenant에 이미 존재하는 부모 주문(order_number -> Order) — 신규
   // 상품주문을 어느 order_id에 붙일지 결정하는 데 쓴다(§2-2/§8 Case B/D).
@@ -433,7 +432,6 @@ export async function runImport({
   // error_log에 남긴다 — 완료 조건이 요구하는 "실패 단계" 항목.
   let currentStage: "배치 조회" | "고객/주문 생성" | "좌표 처리" | "주문번호 채번" | "DB 저장" = "배치 조회";
 
-  let crossTenantConflicts: Set<string>;
   // §CPO 작업지시(누적 표준 엑셀 중복방지): 주문번호 없는 그룹의 확정중복/
   // 후보 판정에 쓰는 후보 풀 — Phase 1에서 한 번만 조회한다.
   let dedupCandidateOrders: Order[];
@@ -441,15 +439,12 @@ export async function runImport({
   try {
     // ---------- Phase 1: batch-fetch everything the per-row logic used to query individually ----------
     let ownerCustomers: Customer[];
-    let globallyExistingOrderNumbers: Set<string>;
     const realGroupKeys = Array.from(groups.keys()).filter((k) => !k.startsWith(NO_ORDER_NUMBER_PREFIX));
-    [existingParentOrders, globallyExistingOrderNumbers, ownerCustomers, dedupCandidateOrders] = await Promise.all([
+    [existingParentOrders, ownerCustomers, dedupCandidateOrders] = await Promise.all([
       ordersRepository.findOrdersByOrderNumbersForTenant(realGroupKeys, tenant.id),
-      ordersRepository.findGloballyExistingOrderNumbers(realGroupKeys),
       customersRepository.findAllByOwner(ownerUsername),
       ordersRepository.findByPhonesForDedup(tenant.id, [...noOrderNumberPhones]),
     ]);
-    existingOrderNumbers = new Set(existingParentOrders.keys());
     const dedupCandidateItems = await ordersRepository.findItemsByOrderIds(dedupCandidateOrders.map((o) => o.id));
     dedupCandidateItemsByOrderId = new Map();
     for (const item of dedupCandidateItems) {
@@ -457,14 +452,11 @@ export async function runImport({
       list.push(item);
       dedupCandidateItemsByOrderId.set(item.order_id, list);
     }
-    // 베타 런칭 전 핵심 시나리오 최종 정리 PART 9-11: orders.order_number는
-    // tenant 무관 전역 UNIQUE라, 이 테넌트에는 없지만(existingOrderNumbers
-    // 밖) 다른 테넌트에는 이미 있는(globallyExistingOrderNumbers 안) 번호는
-    // INSERT 시점에 그대로 제약 위반으로 터진다. 그 값들만 걸러내 DB 저장을
-    // 시도하기 전에 미리 실패 처리한다 — "이미 등록된 주문번호"(같은 테넌트,
-    // existingOrderNumbers)와는 원인이 다르므로 아래 루프에서 메시지를
-    // 구분한다.
-    crossTenantConflicts = new Set([...globallyExistingOrderNumbers].filter((n) => !existingOrderNumbers.has(n)));
+    // 0048(STEP12-7, CPO 작업지시): orders.order_number의 UNIQUE는 이제
+    // tenant 단위로 스코프되어 있으므로(§전역 사고 재발방지), 다른 tenant가
+    // 이미 쓰고 있는 order_number라도 이 tenant 기준으로는 충돌이 아니다 —
+    // 별도의 사전 필터링 없이 tenant 범위 조회(existingParentOrders)만으로
+    // 신규/기존을 판정한다.
     pool = new CustomerPoolIndex(ownerCustomers);
 
     // STEP2(누적 스마트스토어 엑셀 중복판정 재설계, 2026-08 CPO 작업지시 §7/§8):
@@ -681,22 +673,6 @@ export async function runImport({
         continue;
       }
 
-      // PART 9-12: 다른 테넌트가 이미 쓰고 있는 주문번호 — 이 계정 기준으로는
-      // "이미 등록된 주문"이 아니므로(그래서 위 existingOrderNumbers 체크를
-      // 통과했다) 그렇게 안내하면 안 된다. INSERT를 시도하지 않고 이 자리에서
-      // 바로 실패 처리해, DB 저장 단계에서 전체가 취소되는 대신 이 주문만
-      // 건너뛰고 나머지는 정상 등록되게 한다.
-      if (hasRealOrderNumber && crossTenantConflicts.has(groupKey)) {
-        errors.push({
-          row: firstIndex + 2,
-          code: "order_number_conflict",
-          reason: `[${orderNumber}] 이 주문번호는 이미 다른 계정의 주문에 등록되어 있어 시스템 제약상 등록할 수 없습니다. 엑셀 원본의 주문번호를 확인해주세요.`,
-          raw: rows[0],
-        });
-        failedRowCount += rows.length;
-        continue;
-      }
-
       const first = rows[0];
       const rawPhone = cellToString(getMapped(first, mapping, "phone")) || null;
       const rawAddress = cellToString(getMapped(first, mapping, "address")) || null;
@@ -867,7 +843,7 @@ export async function runImport({
       if (!deliveryDate) missingDeliveryDateOrderCount += 1;
 
       // §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08): 주문번호가 있는 그룹은
-      // 이미 위(existingOrderNumbers)에서 확정중복 처리됐다 — 여기서는 주문번호가
+      // 이미 위(existingParentOrders)에서 확정중복 처리됐다 — 여기서는 주문번호가
       // 없는 그룹만 다룬다. Confirm 직전 서버 재검증(§14/§15) 원칙에 따라 Analyze
       // 단계(import-dedup.service.ts)와 동일한 규칙을 여기서도 다시 계산한다:
       // 고객(전화+이름+정규화주소 완전일치) + 배송일이 같은 기존 주문이 있고,

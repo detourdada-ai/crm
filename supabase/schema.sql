@@ -381,9 +381,16 @@ create table if not exists orders (
   discount_amount numeric(12, 2) not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (order_number),
   unique (tenant_id, internal_order_number)
 );
+
+-- 0048(STEP12-7, 2026-08-31): order_number의 UNIQUE 범위는 전역이 아니라
+-- 테넌트 단위여야 한다 — 서로 다른 사장님이 같은 주문번호를 갖는 것은
+-- 정상이다(internal_order_number와 동일한 원칙). NULL(수동 등록 등
+-- order_number 없는 주문)은 partial index로 제외한다.
+create unique index if not exists uq_orders_tenant_order_number
+  on orders (tenant_id, order_number)
+  where order_number is not null;
 
 create index if not exists idx_orders_customer_id on orders (customer_id);
 create index if not exists idx_orders_order_date on orders (order_date desc);

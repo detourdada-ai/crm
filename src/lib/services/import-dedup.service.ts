@@ -107,12 +107,10 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername, dateF
   // STEP2: existingParentOrders가 findExistingOrderNumbers를 대체한다 —
   // "이 order_number가 이 tenant에 이미 있는가"와 "그 주문 객체 자체"를
   // 한 번의 조회로 같이 얻는다(불필요한 중복 쿼리 제거).
-  const [existingParentOrders, globallyExistingOrderNumbers, candidateOrders] = await Promise.all([
+  const [existingParentOrders, candidateOrders] = await Promise.all([
     ordersRepository.findOrdersByOrderNumbersForTenant(realGroupKeys, tenant.id),
-    ordersRepository.findGloballyExistingOrderNumbers(realGroupKeys),
     ordersRepository.findByPhonesForDedup(tenant.id, [...noOrderNumberPhones]),
   ]);
-  const crossTenantConflicts = new Set([...globallyExistingOrderNumbers].filter((n) => !existingParentOrders.has(n)));
   const candidateItems = await ordersRepository.findItemsByOrderIds(candidateOrders.map((o) => o.id));
   const itemsByOrderId = new Map<string, typeof candidateItems>();
   for (const item of candidateItems) {
@@ -281,19 +279,9 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername, dateF
       const existingParent = existingParentOrders.get(orderNumber!);
 
       if (!existingParent) {
-        // Case A(§8): 부모 주문 자체가 이 tenant에 없다 — 새로 만들어야 하므로
-        // orders.order_number 전역 UNIQUE와의 충돌만 확인하면 된다. 부모가
-        // 없다는 건 그 안의 상품주문 전부가 확실히 신규라는 뜻이라 개별
-        // product_order_number 조회는 필요 없다.
-        if (crossTenantConflicts.has(orderNumber!)) {
-          results.push({
-            groupKey,
-            status: "error",
-            reason: `[${orderNumber}] 이 주문번호는 이미 다른 계정의 주문에 등록되어 있어 등록할 수 없습니다.`,
-            upload,
-          });
-          continue;
-        }
+        // Case A(§8): 부모 주문 자체가 이 tenant에 없다 — orders.order_number의
+        // UNIQUE 범위가 tenant 단위로 스코프되어 있으므로(0048), 다른 tenant가
+        // 같은 order_number를 쓰고 있어도 이 tenant 기준으로는 신규 주문이다.
         results.push({ groupKey, status: "new", reason: "신규 주문입니다.", upload });
         continue;
       }
