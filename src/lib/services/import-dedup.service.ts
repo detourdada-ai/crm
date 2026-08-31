@@ -155,18 +155,40 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername, dateF
   // 필터에 맞지 않는 그룹은 신규/중복 판정 자체를 하지 않는다 — 미리보기
   // 화면(Analyze)이 실제 등록 결과(Confirm)와 어긋나지 않도록 여기서도
   // dedup 로직 진입 전에 걸러낸다.
+  //
+  // STEP12-8(CPO 작업지시, 2026-08-31) 버그 수정: import.service.ts와 동일하게
+  // 그룹 전체가 아니라 (product_order_number가 있는 파일에 한해) 행 단위로
+  // 걸러낸다 — 한 주문번호 안에 배송일이 다른 상품이 섞여 있을 때 그룹이
+  // 통과하면서 미래 배송 상품까지 끌려 들어오는 것을 막는다. 부분적으로
+  // 걸러진 그룹의 실제 남은 행 수는 survivingEntriesByGroupKey에 기록해
+  // 아래 최종 집계 루프에서 정확한 totalProductOrders/dateExcludedCount를
+  // 계산하는 데 쓴다.
   const dateExcludedGroupKeys = new Set<string>();
+  const survivingEntriesByGroupKey = new Map<string, { row: Record<string, unknown>; index: number }[]>();
+  let partialDateExcludedRows = 0;
   const results: DedupGroupResult[] = [];
-  for (const [groupKey, entries] of groups) {
-    const rows = entries.map((e) => e.row);
+  for (const [groupKey, rawEntries] of groups) {
     const hasRealOrderNumber = !groupKey.startsWith(NO_ORDER_NUMBER_PREFIX);
     const orderNumber = hasRealOrderNumber ? groupKey : null;
-    const first = rows[0];
 
-    if (isRowExcludedByDateFilter(first, mapping, dateFilter)) {
+    let entries = rawEntries;
+    if (hasRealOrderNumber && hasProductOrderNumberColumn) {
+      entries = rawEntries.filter((e) => !isRowExcludedByDateFilter(e.row, mapping, dateFilter));
+      if (entries.length === 0) {
+        dateExcludedGroupKeys.add(groupKey);
+        continue;
+      }
+      if (entries.length < rawEntries.length) {
+        partialDateExcludedRows += rawEntries.length - entries.length;
+        survivingEntriesByGroupKey.set(groupKey, entries);
+      }
+    } else if (isRowExcludedByDateFilter(rawEntries[0].row, mapping, dateFilter)) {
       dateExcludedGroupKeys.add(groupKey);
       continue;
     }
+
+    const rows = entries.map((e) => e.row);
+    const first = rows[0];
 
     const rawPhone = cellToString(getMapped(first, mapping, "phone")) || null;
     const rawAddress = cellToString(getMapped(first, mapping, "address")) || null;
@@ -416,7 +438,7 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername, dateF
   // 벗어난다) — newCount+confirmedDuplicateCount+candidateCount+errorCount+
   // repeatConfirmCount === totalProductOrders 불변식을 이룬다.
   let repeatConfirmCount = 0;
-  let dateExcludedCount = 0;
+  let dateExcludedCount = partialDateExcludedRows;
   const resultByGroupKey = new Map(results.map((r) => [r.groupKey, r]));
   for (const [groupKey, entries] of groups) {
     if (dateExcludedGroupKeys.has(groupKey)) {
@@ -424,7 +446,10 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername, dateF
       continue;
     }
     const result = resultByGroupKey.get(groupKey)!;
-    const rowCount = entries.length;
+    // STEP12-8: 그룹이 부분적으로만 날짜 필터를 통과했다면(survivingEntriesByGroupKey에
+    // 기록됨) 실제로 판정에 쓰인 남은 행 수만 센다 — 걸러진 나머지는 이미
+    // 위에서 partialDateExcludedRows로 집계했다.
+    const rowCount = survivingEntriesByGroupKey.get(groupKey)?.length ?? entries.length;
     totalProductOrders += rowCount;
     if (result.status === "partial" && result.productOrderItems) {
       for (const item of result.productOrderItems) {

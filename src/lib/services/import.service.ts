@@ -126,13 +126,18 @@ export function parseOptionalDate(value: unknown): string | null {
  * STEP11-2 Phase4(2026-08 CPO 작업지시): "오늘 주문만 접수" 같은 특정 사업장
  * 요구를 하드코딩하지 않고, "어떤 날짜 컬럼을 기준으로 어떤 날짜의 주문을
  * 가져올 것인가"로 일반화한 정책의 핵심 판단 함수. mode="all"(기본값)이면
- * 기존 동작과 완전히 동일(필터 없음). "today"/"specific_date"는 실제
- * 매핑된 날짜 컬럼(dateFilter.field)의 원본 셀 값만 본다 — 옵션정보에서
- * 파생되는 상품별 배송일(parseDeliveryDateFromOption)처럼 이 시점 이후에
- * 계산되는 값은 쓰지 않는다(그룹 단위로 한 번만 판단해야 dedup 이전에
- * 적용할 수 있다는 CPO 지시와 일치). 기준 컬럼 값 자체가 비어 있거나
- * 해석 불가능하면 "그 날짜인지 확인할 수 없다"는 뜻이므로 안전하게
- * 제외한다(임의로 포함시키지 않는다).
+ * 기존 동작과 완전히 동일(필터 없음). 그룹 단위로 첫 행만 보고 한 번만
+ * 판단한다(dedup 이전에 적용해야 한다는 원래 설계와 동일).
+ *
+ * STEP12-8(CPO 작업지시, 2026-08-31) 버그 수정: field가 "delivery_date"일 때
+ * 매핑된 원본 컬럼 셀 값만 보던 것을 옵션정보 파싱값 우선으로 바꾼다. 실제
+ * 스마트스토어 "전체주문발주발송관리" 리포트는 배송일로 매핑되는 컬럼(예:
+ * "발송일")에 리포트 생성 시각이 찍혀 있어 모든 행이 같은 값을 갖고, 진짜
+ * 상품별 배송(희망)일은 옵션정보 텍스트 안에("메인추가08월31일" 등) 있다 —
+ * 이 경우 원본 컬럼만 보면 "오늘만 접수"가 사실상 전체 통과(무필터)로
+ * 동작해버린다(118건이어야 할 것이 210건이 되는 실사고, CPO 확인).
+ * order_date/shipped_at 필터는 옵션정보에 대응하는 개념이 없으므로 기존
+ * 그대로 매핑된 컬럼 값을 쓴다.
  */
 export function isRowExcludedByDateFilter(
   row: Record<string, unknown>,
@@ -142,7 +147,17 @@ export function isRowExcludedByDateFilter(
   if (!dateFilter || dateFilter.mode === "all") return false;
   const targetDay = dateFilter.mode === "today" ? kstTodayIso() : dateFilter.date;
   if (!targetDay) return false;
-  const raw = parseOptionalDate(getMapped(row, mapping, dateFilter.field));
+
+  let raw: string | null;
+  if (dateFilter.field === "delivery_date") {
+    const orderDateRaw = parseOptionalDate(getMapped(row, mapping, "order_date"));
+    const referenceDate = orderDateRaw ? new Date(orderDateRaw) : new Date();
+    const optionName = cellToString(getMapped(row, mapping, "option_name"));
+    const fromOption = optionName ? parseDeliveryDateFromOption(optionName, referenceDate) : null;
+    raw = fromOption ?? parseOptionalDate(getMapped(row, mapping, "delivery_date"));
+  } else {
+    raw = parseOptionalDate(getMapped(row, mapping, dateFilter.field));
+  }
   if (!raw) return true;
   return kstDayDateStrOf(raw) !== targetDay;
 }
@@ -509,23 +524,41 @@ export async function runImport({
     const pendingOrderGeocode: { insert: OrderInsert; addressKey: string }[] = [];
     const pendingCustomerGeocode: { insert: CustomerInsert; addressKey: string }[] = [];
 
-  for (const [groupKey, entries] of groups) {
-    const rows = entries.map((e) => e.row);
-    const firstIndex = entries[0].index;
+  for (const [groupKey, rawEntries] of groups) {
     // 주문번호가 없는 행(합성 키)은 다른 테넌트/기존 주문과 대조할 실제
     // 값이 없으므로 항상 신규 주문으로 취급한다 — order_number는 null로 저장.
     const hasRealOrderNumber = !groupKey.startsWith(NO_ORDER_NUMBER_PREFIX);
     const orderNumber = hasRealOrderNumber ? groupKey : null;
-    try {
-      // STEP11-2 Phase4(2026-08 CPO 작업지시): 날짜 필터는 dedup보다 먼저,
-      // 그룹의 첫 행만으로 판단한다 — 날짜 제외는 중복/신규/오류 판정
-      // 자체에 도달하지 않아야 하므로 이 try 블록의 가장 첫 검사여야 한다.
-      if (isRowExcludedByDateFilter(rows[0], mapping, dateFilter)) {
-        dateExcludedRows += rows.length;
+
+    // STEP12-8(CPO 작업지시, 2026-08-31) 버그 수정: 원래 그룹(주문번호)의
+    // 첫 행만 보고 그룹 전체를 포함/제외했는데, 스마트스토어처럼 한
+    // 주문번호 안에 배송일이 서로 다른 상품(옵션정보 기준)이 섞여 있으면
+    // 그룹이 통과할 때 미래 배송 상품까지 함께 끌려 들어왔다("오늘만
+    // 접수" 정책의 취지가 깨짐 — CPO 확인). product_order_number 컬럼이
+    // 있는 파일은 상품(행) 단위로 걸러낸 뒤 남은 행만으로 진행한다 —
+    // 오늘 상품은 지금 등록되고, 나머지(미래분)는 그 배송일이 "오늘"이
+    // 되는 날 별도 업로드에서 기존 부모 주문에 신규 상품주문으로 자연스럽게
+    // 추가된다(§8 Case B/D가 이미 지원하는 흐름). product_order_number가
+    // 없는 파일은 상품 단위로 쪼갤 근거가 없으므로 기존과 동일하게 그룹
+    // (첫 행) 단위로만 판단한다.
+    let entries = rawEntries;
+    if (hasRealOrderNumber && hasProductOrderNumberColumn) {
+      entries = rawEntries.filter((e) => !isRowExcludedByDateFilter(e.row, mapping, dateFilter));
+      if (entries.length === 0) {
+        dateExcludedRows += rawEntries.length;
         dateExcludedOrders += 1;
         continue;
       }
+      if (entries.length < rawEntries.length) dateExcludedRows += rawEntries.length - entries.length;
+    } else if (isRowExcludedByDateFilter(rawEntries[0].row, mapping, dateFilter)) {
+      dateExcludedRows += rawEntries.length;
+      dateExcludedOrders += 1;
+      continue;
+    }
+    const rows = entries.map((e) => e.row);
+    const firstIndex = entries[0].index;
 
+    try {
       // 주문관리·표준엑셀·배송관리 UX 개선(2026-08 CPO 작업지시) §3-2/§4 Phase1
       // Confirm 시점 재검증: import-dedup.service.ts(Analyze)와 동일한 검사를
       // 여기서도 독립적으로 수행한다(브라우저 판단을 신뢰하지 않는다 — §14/§15
