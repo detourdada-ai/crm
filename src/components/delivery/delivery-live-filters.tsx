@@ -224,6 +224,16 @@ export function DeliveryLiveFilters({
         }
       />
 
+      {/* STEP12-1(CPO 작업지시, 2026-08-31): 신규 사장님이 기사 등록 없이
+          배송관리에 처음 들어왔을 때 "먼저 기사를 등록해야 한다"는 걸
+          스스로 알아채야 하는 상태였다 — 헤더의 "배송기사 관리" 버튼은
+          항상 떠 있었지만 그게 지금 필요한 행동이라는 안내는 없었다. */}
+      {allDrivers.length === 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning bg-warning-soft px-3 py-2.5 text-sm text-warning">
+          아직 등록된 배송기사가 없습니다. 위의 &ldquo;배송기사 관리&rdquo;에서 기사를 먼저 등록해주세요.
+        </div>
+      ) : null}
+
       <DeliveryStatusFlow counts={flowCounts} active={activeFilter} buildHref={buildFilterHref} />
 
       <DeliveryFilterBar dateFilter={dateFilter} dateFrom={dateFrom} dateTo={dateTo} productOptions={productOptions} />
