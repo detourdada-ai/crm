@@ -85,6 +85,14 @@ export interface SearchOrdersResult {
    * 이미 주문 수이므로 별도 표기가 필요 없다.
    */
   distinctOrderCount?: number;
+  /**
+   * STEP12-8A(CPO 작업지시, 2026-09): "주문 117건 · 상품주문 119건"처럼
+   * 주문(또는 배송건) 수와 상품주문(=order_items 행) 수를 나란히 보여주기
+   * 위한 값 — 한 주문에 상품이 여러 개면 자연스럽게 total보다 커진다(오류가
+   * 아니라 다상품 주문). productSummary와 동일하게 includeProductSummary가
+   * true일 때만 계산된다.
+   */
+  totalProductOrders?: number;
 }
 
 function summarize(items: OrderItem[]): OrderItemSummary {
@@ -178,11 +186,15 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
     // 전체 배송건 기준이어야 "오늘 배송 23건, 제육볶음 12개..." 같은 정확한
     // 합계가 나온다 — allShipmentIds는 페이지네이션 전 전체 목록. 카운트만
     // 필요한 호출(상태칩/EmptyState용)은 이 추가 쿼리를 건너뛴다.
-    const productSummary = params.includeProductSummary
-      ? aggregateProductSummary(await ordersRepository.findItemsByShipmentIds(allShipmentIds), "shipment_id")
-      : [];
+    let productSummary: ProductSummaryEntry[] = [];
+    let totalProductOrders: number | undefined;
+    if (params.includeProductSummary) {
+      const allItems = await ordersRepository.findItemsByShipmentIds(allShipmentIds);
+      productSummary = aggregateProductSummary(allItems, "shipment_id");
+      totalProductOrders = allItems.length;
+    }
 
-    return { orders, total, itemSummaries, driverNames, productSummary, distinctOrderCount };
+    return { orders, total, itemSummaries, driverNames, productSummary, distinctOrderCount, totalProductOrders };
   }
 
   const productOrderIds = params.productName
@@ -197,13 +209,15 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
   const driverNames = Object.fromEntries(drivers.map((d) => [d.id, d.name]));
 
   let productSummary: ProductSummaryEntry[] = [];
+  let totalProductOrders: number | undefined;
   if (params.includeProductSummary) {
     const allOrderIds = await ordersRepository.findAllMatchingOrderIds({ ...params, ownerUsername });
     const allItems = await ordersRepository.findItemsByOrderIds(allOrderIds);
     productSummary = aggregateProductSummary(allItems, "order_id");
+    totalProductOrders = allItems.length;
   }
 
-  return { orders, total, itemSummaries, driverNames, productSummary };
+  return { orders, total, itemSummaries, driverNames, productSummary, totalProductOrders };
 }
 
 export interface OrderDetail {

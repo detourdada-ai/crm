@@ -86,6 +86,19 @@ export function cellToString(value: unknown): string {
   return String(value).trim();
 }
 
+/**
+ * STEP12-8A(CPO 작업지시, 2026-09): 구매자연락처가 매핑돼 있으면 그 값을
+ * 우선 쓴다 — 스마트스토어 "수취인 연락처"는 배송 종료 후 만료되는 안심번호
+ * (임시 중계번호)일 때가 많아, 기사가 실제로 통화 가능한 번호는 대부분
+ * 구매자 본인 번호다. 구매자연락처 컬럼이 없는 파일(전화주문 등 일반
+ * 엑셀)은 기존과 동일하게 수취인 연락처를 그대로 쓴다. Import 실행
+ * (import.service.ts)과 Analyze 미리보기(import-dedup.service.ts)가 서로
+ * 다른 번호로 고객을 매칭하면 안 되므로 두 경로가 이 함수 하나를 공유한다.
+ */
+export function resolvePhoneCell(row: Record<string, unknown>, mapping: ColumnMapping): string {
+  return cellToString(getMapped(row, mapping, "buyer_phone")) || cellToString(getMapped(row, mapping, "phone"));
+}
+
 export function parseNumber(value: unknown): number {
   if (value == null) return 0;
   if (typeof value === "number") return value;
@@ -396,7 +409,7 @@ export async function runImport({
   const noOrderNumberPhones = new Set<string>();
   for (const [key, entries] of groups) {
     if (!key.startsWith(NO_ORDER_NUMBER_PREFIX)) continue;
-    const rawPhone = cellToString(getMapped(entries[0].row, mapping, "phone"));
+    const rawPhone = resolvePhoneCell(entries[0].row, mapping);
     const formatted = formatPhoneNumber(rawPhone);
     if (formatted) noOrderNumberPhones.add(formatted);
   }
@@ -697,7 +710,7 @@ export async function runImport({
       }
 
       const first = rows[0];
-      const rawPhone = cellToString(getMapped(first, mapping, "phone")) || null;
+      const rawPhone = resolvePhoneCell(first, mapping) || null;
       const rawAddress = cellToString(getMapped(first, mapping, "address")) || null;
       const deliveryMemo = cellToString(getMapped(first, mapping, "delivery_memo")) || null;
       const orderDate = parseOrderDate(getMapped(first, mapping, "order_date"));

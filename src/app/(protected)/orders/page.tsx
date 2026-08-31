@@ -98,7 +98,7 @@ export default async function OrdersPage({
     features,
     savedColumnView,
     availableExtraColumns,
-    { orders, total, itemSummaries, driverNames, productSummary },
+    { orders, total, itemSummaries, driverNames, productSummary, totalProductOrders },
     { total: allTimeTotal },
     ...statusCounts
   ] = await Promise.all([
@@ -215,23 +215,36 @@ export default async function OrdersPage({
         }
       />
 
-      {isShipmentMode && distinctOrderCountForFilter !== undefined ? (
+      {total > 0 ? (
         <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <span>
-            주문 <span className="font-semibold text-text-strong">{distinctOrderCountForFilter.toLocaleString()}건</span> · 배송{" "}
-            <span className="font-semibold text-text-strong">{statusCounts[0].total.toLocaleString()}건</span>
+            {isShipmentMode && distinctOrderCountForFilter !== undefined ? (
+              <>
+                주문 <span className="font-semibold text-text-strong">{distinctOrderCountForFilter.toLocaleString()}건</span> · 배송{" "}
+                <span className="font-semibold text-text-strong">{statusCounts[0].total.toLocaleString()}건</span>
+              </>
+            ) : (
+              <>
+                주문 <span className="font-semibold text-text-strong">{total.toLocaleString()}건</span>
+              </>
+            )}
+            {totalProductOrders !== undefined ? (
+              <>
+                {" · "}상품주문 <span className="font-semibold text-text-strong">{totalProductOrders.toLocaleString()}건</span>
+              </>
+            ) : null}
           </span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" aria-label="주문/배송 건수 차이 안내" className="text-muted-foreground/70 hover:text-foreground">
+              <button type="button" aria-label="주문/배송/상품주문 건수 차이 안내" className="text-muted-foreground/70 hover:text-foreground">
                 <Info className="size-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent>
               <div className="space-y-0.5">
                 <p>주문: 고객의 주문 건수</p>
-                <p>배송: 실제 배송해야 하는 건수</p>
-                <p>한 주문이 여러 날짜로 나뉘면 배송이 여러 건으로 생성됩니다.</p>
+                {isShipmentMode ? <p>배송: 실제 배송해야 하는 건수(한 주문이 여러 날짜로 나뉘면 여러 건)</p> : null}
+                <p>상품주문: 주문에 포함된 상품 각각의 건수. 한 주문에 상품이 여러 개면 주문 수보다 많아질 수 있습니다(오류 아님).</p>
               </div>
             </TooltipContent>
           </Tooltip>

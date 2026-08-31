@@ -49,6 +49,11 @@ export const FIELD_ALIASES: Record<MappableField, string[]> = {
     "mobile",
     "tel",
   ],
+  // STEP12-8A: "구매자연락처"를 "수취인연락처"와 분리된 별도 컬럼으로
+  // 인식한다 — 둘 다 phone 별칭에 섞여 있으면 파일 안의 컬럼 순서에 따라
+  // 어느 쪽이 매핑될지 들쭉날쭉해진다. import.service.ts에서 이 값을
+  // 우선순위 1순위로 쓴다.
+  buyer_phone: ["구매자연락처", "구매자전화번호", "구매자휴대폰번호", "주문자연락처", "buyerphone", "buyertel"],
   address: [
     "배송지",
     "수취인주소",

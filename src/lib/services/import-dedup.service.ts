@@ -9,6 +9,7 @@ import { kstDayDateStrOf } from "@/lib/utils/kst-date";
 import {
   getMapped,
   cellToString,
+  resolvePhoneCell,
   parseNumber,
   parseOptionalDate,
   parseOrderDate,
@@ -100,7 +101,7 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername, dateF
   const noOrderNumberPhones = new Set<string>();
   for (const [key, entries] of groups) {
     if (!key.startsWith(NO_ORDER_NUMBER_PREFIX)) continue;
-    const formatted = formatPhoneNumber(cellToString(getMapped(entries[0].row, mapping, "phone")));
+    const formatted = formatPhoneNumber(resolvePhoneCell(entries[0].row, mapping));
     if (formatted) noOrderNumberPhones.add(formatted);
   }
 
@@ -190,7 +191,7 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername, dateF
     const rows = entries.map((e) => e.row);
     const first = rows[0];
 
-    const rawPhone = cellToString(getMapped(first, mapping, "phone")) || null;
+    const rawPhone = resolvePhoneCell(first, mapping) || null;
     const rawAddress = cellToString(getMapped(first, mapping, "address")) || null;
     const buyerName = cellToString(getMapped(first, mapping, "buyer_name")) || null;
     const buyerId = cellToString(getMapped(first, mapping, "buyer_id")) || null;
@@ -238,7 +239,7 @@ export async function classifyDuplicates({ parsed, mapping, ownerUsername, dateF
       // 데이터 유실 결함).
       if (!hasProductOrderNumberColumn && rows.length > 1) {
         const rowIdentities = rows.map((row) => {
-          const rPhoneRaw = cellToString(getMapped(row, mapping, "phone")) || null;
+          const rPhoneRaw = resolvePhoneCell(row, mapping) || null;
           const rAddressRaw = cellToString(getMapped(row, mapping, "address")) || null;
           const rBuyerName = cellToString(getMapped(row, mapping, "buyer_name")) || null;
           const rBuyerId = cellToString(getMapped(row, mapping, "buyer_id")) || null;

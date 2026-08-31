@@ -222,7 +222,9 @@ export function OrderFilterBar({
                 <SelectItem value={PRODUCT_ALL}>전체</SelectItem>
                 {productOptions.map((p) => (
                   <SelectItem key={p.productName} value={p.productName} className="max-w-64">
-                    <span className="truncate">{p.productName}</span>
+                    <span className="truncate">
+                      {p.productName} <span className="text-muted-foreground">· {p.orderCount.toLocaleString()}건</span>
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>

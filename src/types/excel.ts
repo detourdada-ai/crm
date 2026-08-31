@@ -8,6 +8,7 @@ export type MappableField =
   | "order_date"
   | "recipient_name"
   | "phone"
+  | "buyer_phone"
   | "address"
   | "zipcode"
   | "delivery_memo"
@@ -53,7 +54,13 @@ export const MAPPABLE_FIELDS: { key: MappableField; label: string; required: boo
   // 검증에서만 표현 가능하고, 이미 그렇게 동작한다). 표준 템플릿 가이드가
   // 실제 검증과 어긋나지 않도록 UI 표시만 실제 동작에 맞춰 완화한다.
   { key: "recipient_name", label: "수취인명", required: false, category: "고객" },
+  // STEP12-8A(CPO 작업지시, 2026-09): 스마트스토어 "수취인 연락처"는 안심번호
+  // (임시 중계번호, 배송 종료 후 만료)일 때가 많다 — 기사가 실제로 통화할 수
+  // 있는 번호는 대부분 구매자 본인 번호다. 구매자연락처가 매핑돼 있으면
+  // import.service.ts가 그 값을 우선 사용하고, 없을 때만 수취인 연락처로
+  // 폴백한다.
   { key: "phone", label: "수취인 연락처", required: false, category: "고객" },
+  { key: "buyer_phone", label: "구매자 연락처", required: false, category: "고객" },
   { key: "address", label: "배송지 주소", required: false, category: "배송" },
   { key: "zipcode", label: "우편번호", required: false, category: "배송" },
   { key: "delivery_memo", label: "배송메모", required: false, category: "배송" },

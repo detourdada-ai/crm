@@ -66,8 +66,14 @@ export function ImportResultCards({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          총 <span className="font-semibold text-text-strong">{summary.totalRawRows.toLocaleString()}개</span> 상품주문
+          주문 <span className="font-semibold text-text-strong">{summary.totalOrderGroups.toLocaleString()}건</span> · 상품주문{" "}
+          <span className="font-semibold text-text-strong">{summary.totalRawRows.toLocaleString()}건</span>
         </p>
+        {summary.totalRawRows !== summary.totalOrderGroups ? (
+          <p className="text-xs text-muted-foreground">
+            한 주문에 상품이 여러 개 포함된 경우 상품주문 수가 주문 수보다 많습니다(오류 아님).
+          </p>
+        ) : null}
         {summary.dateExcludedRows > 0 ? (
           <p className="text-sm text-muted-foreground">
             날짜 조건 제외 <span className="font-semibold text-text-strong">{summary.dateExcludedRows.toLocaleString()}건</span>
