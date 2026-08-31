@@ -20,8 +20,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
-import { formatCurrency, formatDate } from "@/lib/constants/order-status";
-import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
+import { formatDate } from "@/lib/constants/order-status";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import { DriverAssignInline } from "@/components/delivery/driver-assign-inline";
 import { separateShipmentFromGroupAction, restoreShipmentToGroupingAction } from "@/actions/delivery-groups";
@@ -88,9 +87,13 @@ export function DeliveryOrderRow({
   const locked = order.delivery_status === "완료";
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:bg-muted/40 md:flex-row md:items-start md:gap-4 md:rounded-lg md:p-3">
+    <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface p-3 text-sm transition-colors hover:bg-muted/40 md:flex-row md:items-start md:gap-3 md:rounded-lg md:p-2.5">
       <Checkbox className="mt-1 md:mt-2" checked={selected} onCheckedChange={(checked) => onToggleSelect(checked === true)} />
-      <div className="min-w-0 flex-1 space-y-2">
+      {/* STEP12-8F Phase2(R13): 배송관리 카드는 "배송 실무" 우선순위로 정보를
+          배치한다 — 배송순서/이름 → 주소 → 담당기사/가방/override → 상품
+          순(CPO 목업 순서). 주문번호/출처/전화/금액 등 주문관리 성격의
+          메타정보는 이 카드에서 빼고 주문상세 링크 하나로만 남긴다. */}
+      <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             {/* STEP5-C: route_order는 그대로 표시만 한다 — 값이 없으면(미배정 등) 임의로 번호를 만들지 않는다. */}
@@ -109,7 +112,14 @@ export function DeliveryOrderRow({
             ) : (
               <Badge variant="secondary">{groupLabel ?? "미그룹"}</Badge>
             )}
-            <span className="font-semibold text-text-strong">{order.buyer_name ?? order.recipient_name}</span>
+            {/* STEP12-8F Phase2(R13): 구매자와 수취인이 다르면 둘 다, 같으면
+                중복 없이 하나만 — 기사가 아니라 사장님이 "누가 시켰고 누구에게
+                가는지"를 카드 하나로 파악해야 한다. */}
+            <span className="font-semibold text-text-strong">
+              {order.buyer_name && order.buyer_name !== order.recipient_name
+                ? `${order.buyer_name} → ${order.recipient_name}`
+                : order.recipient_name}
+            </span>
           </div>
           <DeliveryStatusControl
             status={order.delivery_status}
@@ -119,6 +129,8 @@ export function DeliveryOrderRow({
             onChange={onSetStatus}
           />
         </div>
+
+        <DeliveryAddressBlock order={order} />
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">담당기사</span>
@@ -155,20 +167,13 @@ export function DeliveryOrderRow({
           ) : null}
         </div>
 
-        <DeliveryAddressBlock order={order} />
-
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <ItemSummaryBlock summary={itemSummary} />
           <div className="flex flex-wrap items-center gap-2">
-            <Link href={`/orders/${order.id}`} className="hover:underline">
-              {order.internal_order_number}
-            </Link>
-            <Badge variant="outline" className="text-muted-foreground">
-              {ORDER_SOURCE_LABELS[order.order_source]}
-            </Badge>
             <DeliveryDateLabel isoDate={order.delivery_date} />
-            <span className="hidden lg:inline">{order.phone_snapshot ?? "-"}</span>
-            <span className="hidden lg:inline">{formatCurrency(Number(order.total_amount))}</span>
+            <Link href={`/orders/${order.id}`} className="hover:underline">
+              주문상세
+            </Link>
           </div>
         </div>
       </div>

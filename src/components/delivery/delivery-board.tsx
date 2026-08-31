@@ -12,6 +12,7 @@ import {
   saveDeliveryDraftAction,
   type DraftChangeInput,
 } from "@/actions/delivery";
+import { reorderGroupsAction } from "@/actions/delivery-groups";
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
@@ -31,6 +32,53 @@ interface ShipmentDraft {
   driverId?: string | null;
   bagNumber?: string | null;
   bagReturned?: boolean;
+}
+
+/** STEP12-8F Phase2(R11): 화면에 지금 보이는 배송건 순서에서 그룹 id를
+ *  처음 등장한 순서대로 뽑는다 — "지금 이 화면에 보이는 그룹만" 정렬
+ *  대상이 되고, 다른 배송일/테넌트의 그룹은 애초에 이 배열에 없다. */
+function extractGroupOrder(orders: OrderShipmentBoardRow[]): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const o of orders) {
+    if (o.delivery_group_id && !seen.has(o.delivery_group_id)) {
+      seen.add(o.delivery_group_id);
+      ids.push(o.delivery_group_id);
+    }
+  }
+  return ids;
+}
+
+/** STEP12-8F Phase2(R11): groupOrder가 정한 순서대로 그룹 소속 배송건을
+ *  재배열한다 — 그룹 안의 배송건끼리 상대 순서는 그대로 유지하고(안정 정렬),
+ *  미그룹 배송건은 원래 자리(맨 뒤)를 그대로 지킨다. */
+function reorderByGroupOrder(orders: OrderShipmentBoardRow[], groupOrder: string[]): OrderShipmentBoardRow[] {
+  const indexById = new Map(groupOrder.map((id, i) => [id, i]));
+  const grouped = orders.filter((o) => o.delivery_group_id && indexById.has(o.delivery_group_id));
+  const rest = orders.filter((o) => !o.delivery_group_id || !indexById.has(o.delivery_group_id));
+  const sorted = [...grouped].sort((a, b) => indexById.get(a.delivery_group_id!)! - indexById.get(b.delivery_group_id!)!);
+  return [...sorted, ...rest];
+}
+
+/** STEP12-8F Phase2(R10): rowKey 순서대로 배송건을 재배열한다(드래그 결과 반영). */
+function reorderByRowKeys(orders: OrderShipmentBoardRow[], rowKeyOrder: string[]): OrderShipmentBoardRow[] {
+  const byRowKey = new Map(orders.map((o) => [o.rowKey, o]));
+  const known = new Set(rowKeyOrder);
+  const ordered = rowKeyOrder.map((k) => byRowKey.get(k)).filter((o): o is OrderShipmentBoardRow => !!o);
+  const rest = orders.filter((o) => !known.has(o.rowKey));
+  return [...ordered, ...rest];
+}
+
+/** STEP12-8F Phase2(R10/R11): 저장 전 "실제로 몇 건의 순서가 바뀌었는지"를
+ *  변경사항 배너 카운트에 반영하기 위한 diff — 되돌리면(원래 순서와 같아지면)
+ *  0건이 되어 자동으로 변경사항에서 빠진다(CPO 지시 원칙과 동일). */
+function countPositionChanges(natural: string[], draft: string[] | null): number {
+  if (!draft) return 0;
+  let count = 0;
+  for (let i = 0; i < draft.length; i++) {
+    if (draft[i] !== natural[i]) count++;
+  }
+  return count;
 }
 
 /**
@@ -104,6 +152,13 @@ export function DeliveryBoard({
   // 담아둔다(빈 Set = 전부 접힘). 그룹 순서 재배열(R11)도 이 배열 순서를
   // 그대로 쓴다.
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // STEP12-8F Phase2(R10/R11): 순서 Drag&Drop도 기사배정과 같은 Draft
+  // 정책 — 드래그 즉시 서버에 반영하지 않고, "변경사항 저장"을 눌러야
+  // reorderShipmentsAction/reorderGroupsAction이 호출된다. null이면 순서를
+  // 아직 안 바꿨다는 뜻(자연 순서 그대로 보여준다).
+  const [rowOrderDraft, setRowOrderDraft] = useState<string[] | null>(null);
+  const [groupOrderDraft, setGroupOrderDraft] = useState<string[] | null>(null);
+  const [groupDragIndex, setGroupDragIndex] = useState<number | null>(null);
   const [bulkDriverId, setBulkDriverId] = useState("");
   const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
   const [isPending, startTransition] = useTransition();
@@ -120,19 +175,21 @@ export function DeliveryBoard({
   const orderByRowKey = useMemo(() => new Map(orders.map((o) => [o.rowKey, o])), [orders]);
   const { setHasUnsavedChanges } = useDeliveryDraftGuard();
 
+  const hasAnyPendingChange = drafts.size > 0 || rowOrderDraft !== null || groupOrderDraft !== null;
+
   useEffect(() => {
-    setHasUnsavedChanges(drafts.size > 0);
-  }, [drafts, setHasUnsavedChanges]);
+    setHasUnsavedChanges(hasAnyPendingChange);
+  }, [hasAnyPendingChange, setHasUnsavedChanges]);
 
   useEffect(() => {
     function handleBeforeUnload(e: BeforeUnloadEvent) {
-      if (drafts.size === 0) return;
+      if (!hasAnyPendingChange) return;
       e.preventDefault();
       e.returnValue = "";
     }
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [drafts]);
+  }, [hasAnyPendingChange]);
 
   /** 값을 원래(서버) 값으로 되돌리면 그 필드는 Draft에서 자동으로 사라진다(CPO 지시 원칙). */
   function setDraftField<K extends keyof ShipmentDraft>(shipmentId: string, field: K, value: ShipmentDraft[K], originalValue: ShipmentDraft[K]) {
@@ -161,8 +218,17 @@ export function DeliveryBoard({
 
   function handleDiscardDrafts() {
     setDrafts(new Map());
+    setRowOrderDraft(null);
+    setGroupOrderDraft(null);
   }
 
+  /**
+   * STEP12-8F Phase2(R10/R11): 기사/가방 변경(drafts)과 배송순서/그룹순서
+   * 변경(rowOrderDraft/groupOrderDraft)을 "변경사항 저장" 한 번으로 함께
+   * 반영한다. 세 가지는 서로 다른 서버 액션이라 부분 실패가 있을 수 있다 —
+   * 조용히 일부만 저장되면 안 되므로(작업지시서 §9) 각각의 성공/실패를
+   * 구분해서 실패한 부분만 Draft에 남기고, 실패 내역을 명시적으로 알린다.
+   */
   function handleSaveDrafts() {
     const changes: DraftChangeInput[] = [...drafts.entries()].map(([shipmentId, d]) => ({
       shipmentId,
@@ -170,16 +236,28 @@ export function DeliveryBoard({
       ...("bagNumber" in d ? { bagNumber: d.bagNumber } : {}),
       ...("bagReturned" in d ? { bagReturned: d.bagReturned } : {}),
     }));
+    const hasFieldChanges = changes.length > 0;
+    const hasRowOrderChange = rowOrderDraft !== null && rowOrderChangeCount > 0;
+    const hasGroupOrderChange = groupOrderDraft !== null && groupOrderChangeCount > 0;
+    if (!hasFieldChanges && !hasRowOrderChange && !hasGroupOrderChange) return;
+
     startSaveDraftTransition(async () => {
       try {
-        const result = await saveDeliveryDraftAction(changes);
-        if (result.ok) {
-          toast.success(
-            `${result.savedCount}건 저장했습니다.${result.autoReturnedCount > 0 ? ` (이전 배송 가방 ${result.autoReturnedCount}건 자동 회수 처리)` : ""}`
-          );
+        const [fieldResult, rowOrderResult, groupOrderResult] = await Promise.all([
+          hasFieldChanges ? saveDeliveryDraftAction(changes) : Promise.resolve(null),
+          hasRowOrderChange ? reorderShipmentsAction(rowOrderDraft!) : Promise.resolve(null),
+          hasGroupOrderChange ? reorderGroupsAction(groupOrderDraft!) : Promise.resolve(null),
+        ]);
+
+        const errors: string[] = [];
+        if (fieldResult && !fieldResult.ok) errors.push(fieldResult.error ?? "기사/가방 변경사항 저장 실패");
+        if (rowOrderResult && !rowOrderResult.ok) errors.push(rowOrderResult.error ?? "배송순서 저장 실패");
+        if (groupOrderResult && !groupOrderResult.ok) errors.push(groupOrderResult.error ?? "그룹순서 저장 실패");
+
+        if (!fieldResult || fieldResult.ok) {
           setDrafts(new Map());
         } else {
-          const failedSet = new Set(result.failedShipmentIds);
+          const failedSet = new Set(fieldResult.failedShipmentIds);
           setDrafts((prev) => {
             const next = new Map<string, ShipmentDraft>();
             for (const [id, d] of prev) {
@@ -187,7 +265,18 @@ export function DeliveryBoard({
             }
             return next;
           });
-          toast.error(result.error ?? "변경사항 저장 중 오류가 발생했습니다.");
+        }
+        if (!rowOrderResult || rowOrderResult.ok) setRowOrderDraft(null);
+        if (!groupOrderResult || groupOrderResult.ok) setGroupOrderDraft(null);
+
+        if (errors.length === 0) {
+          const savedCount =
+            (fieldResult?.savedCount ?? 0) + (hasRowOrderChange ? rowOrderChangeCount : 0) + (hasGroupOrderChange ? groupOrderChangeCount : 0);
+          toast.success(
+            `${savedCount}건 저장했습니다.${fieldResult && fieldResult.autoReturnedCount > 0 ? ` (이전 배송 가방 ${fieldResult.autoReturnedCount}건 자동 회수 처리)` : ""}`
+          );
+        } else {
+          toast.error(`일부 변경사항 저장에 실패했습니다 — ${errors.join(" / ")}`);
         }
       } catch {
         // 네트워크 오류/서버 콜드스타트 타임아웃 등으로 요청 자체가 실패한 경우 —
@@ -203,7 +292,29 @@ export function DeliveryBoard({
   // 탭이 없어진 뒤에도 배송 순서 조정 기능(S2-B) 자체는 유지해야 한다(PART 12).
   const isSingleDriverSelected = !!activeDriverId && activeDriverId !== DRIVER_UNASSIGNED_SENTINEL;
   const showReorderControls = isSingleDriverSelected && reorderEnabled;
-  const currentlyDisplayedOrders = showReorderControls ? sortByRouteOrder(orders) : orders;
+  const naturalRowOrder = showReorderControls ? sortByRouteOrder(orders) : orders;
+  const naturalGroupOrder = extractGroupOrder(naturalRowOrder);
+  // STEP12-8F Phase2(R10/R11): 드래그로 아직 저장하지 않은 순서가 있으면
+  // 그 순서를 화면에 그대로 보여준다("저장하지 않으면 새로고침 시 원래
+  // 순서로 돌아간다"는 원칙은 서버에 반영 안 함 = 다음 조회 때 자연 순서로
+  // 돌아오는 것으로 이미 만족된다 — 로컬 state이므로 새로고침하면 사라진다).
+  const currentlyDisplayedOrders =
+    showReorderControls && rowOrderDraft
+      ? reorderByRowKeys(naturalRowOrder, rowOrderDraft)
+      : showGroupCards && !showReorderControls && groupOrderDraft
+        ? reorderByGroupOrder(naturalRowOrder, groupOrderDraft)
+        : naturalRowOrder;
+  const rowOrderChangeCount = showReorderControls
+    ? countPositionChanges(
+        naturalRowOrder.map((o) => o.rowKey),
+        rowOrderDraft
+      )
+    : 0;
+  const groupOrderChangeCount = countPositionChanges(naturalGroupOrder, groupOrderDraft);
+  // STEP12-8F Phase2: "변경사항 N건" 배너는 기사/가방(drafts) + 배송순서 +
+  // 그룹순서를 모두 합친 하나의 숫자로 보여준다(작업지시서 §8 — 세부 종류를
+  // 전부 나눠 보여줄 필요는 없다는 CPO 지시).
+  const totalPendingChanges = drafts.size + rowOrderChangeCount + groupOrderChangeCount;
 
   // P14-A 원칙 유지: "화면에 지금 보이는 집합"(currentlyDisplayedOrders) 기준으로
   // 선택을 좁힌다 — 필터/그룹/기사 변경으로 화면에서 사라진 항목은 선택에서도
@@ -348,12 +459,14 @@ export function DeliveryBoard({
     setSelected(new Set());
   }
 
-  /** S2-B STEP3: ↑/↓ 버튼 → 그 기사 리스트 전체를 새 순서로 서버에 반영. */
-  function handleReorder(orderedShipmentIds: string[]) {
-    startTransition(async () => {
-      const result = await reorderShipmentsAction(orderedShipmentIds);
-      if (!result.ok) toast.error(result.error ?? "순서 변경 중 오류가 발생했습니다.");
-    });
+  /**
+   * STEP12-8F Phase2(R10): ↑/↓·Drag가 서버를 즉시 호출하던 것을 Draft로
+   * 바꿨다 — "변경사항 저장"을 눌러야 reorderShipmentsAction이 호출된다
+   * (원래 순서로 되돌리면 rowOrderDraft가 자동으로 사라지는 것도 동일 원칙).
+   */
+  function commitRowOrder(nextRowKeys: string[]) {
+    const natural = naturalRowOrder.map((o) => o.rowKey);
+    setRowOrderDraft(natural.every((k, i) => k === nextRowKeys[i]) ? null : nextRowKeys);
   }
 
   if (orders.length === 0) {
@@ -363,18 +476,32 @@ export function DeliveryBoard({
   function handleMoveRow(index: number, direction: -1 | 1) {
     const targetIndex = index + direction;
     if (targetIndex < 0 || targetIndex >= currentlyDisplayedOrders.length) return;
-    const next = currentlyDisplayedOrders.slice();
+    const next = currentlyDisplayedOrders.map((o) => o.rowKey);
     [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
-    handleReorder(next.map((o) => o.rowKey));
+    commitRowOrder(next);
   }
 
   /** PART 12: ↑/↓(한 칸 미세조정)과 별개로, 순서를 원하는 위치로 한 번에 이동시킨다. */
   function handleJumpToPosition(fromIndex: number, toIndex: number) {
     if (fromIndex === toIndex) return;
-    const next = currentlyDisplayedOrders.slice();
+    const next = currentlyDisplayedOrders.map((o) => o.rowKey);
     const [item] = next.splice(fromIndex, 1);
     next.splice(toIndex, 0, item);
-    handleReorder(next.map((o) => o.rowKey));
+    commitRowOrder(next);
+  }
+
+  /** STEP12-8F Phase2(R11): 그룹 카드 자체의 순서 — 배송건 순서(R10)와 동일하게
+   *  Draft에만 쌓고 "변경사항 저장"에서 reorderGroupsAction으로 반영한다. */
+  const currentGroupOrder = groupOrderDraft ?? naturalGroupOrder;
+  function commitGroupOrder(nextGroupIds: string[]) {
+    setGroupOrderDraft(naturalGroupOrder.every((id, i) => id === nextGroupIds[i]) ? null : nextGroupIds);
+  }
+  function handleGroupJumpToPosition(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    const next = currentGroupOrder.slice();
+    const [item] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, item);
+    commitGroupOrder(next);
   }
 
   function renderRow(order: OrderShipmentBoardRow) {
@@ -449,7 +576,7 @@ export function DeliveryBoard({
     const driverInfo = groupDriverInfo.get(groupId);
     const isExpanded = expandedGroups.has(groupId);
     return (
-      <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+      <div className="min-w-0 flex-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <span className="text-sm font-semibold text-text-strong">{label}</span>
           {subtotal ? (
@@ -551,9 +678,9 @@ export function DeliveryBoard({
         onClearSelection={() => setSelected(new Set())}
       />
 
-      {drafts.size > 0 ? (
+      {totalPendingChanges > 0 ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning bg-warning-soft px-3 py-2.5">
-          <span className="text-sm font-medium text-warning">변경사항 {drafts.size}건</span>
+          <span className="text-sm font-medium text-warning">변경사항 {totalPendingChanges}건</span>
           <span className="text-xs text-muted-foreground">저장하지 않으면 서버에 반영되지 않습니다.</span>
           <div className="ml-auto flex items-center gap-2">
             <Button type="button" size="sm" variant="outline" disabled={isSavingDraft} onClick={handleDiscardDrafts}>
@@ -590,9 +717,44 @@ export function DeliveryBoard({
           // 좁힌 화면)에는 그룹 카드 자체가 없으므로 영향 없다.
           const belongsToCollapsedGroup =
             showGroupCards && !showReorderControls && !!o.delivery_group_id && !expandedGroups.has(o.delivery_group_id);
+          const groupIndex = isNewGroup ? currentGroupOrder.indexOf(o.delivery_group_id!) : -1;
           return (
             <Fragment key={o.rowKey}>
-              {isNewGroup ? renderGroupHeader(o.delivery_group_id!) : null}
+              {isNewGroup ? (
+                <div
+                  className={cn("flex items-start gap-2 transition-opacity", groupDragIndex === groupIndex && "opacity-50")}
+                  onDragOver={(e) => {
+                    if (groupDragIndex === null) return;
+                    e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (groupDragIndex === null || groupDragIndex === groupIndex) return;
+                    handleGroupJumpToPosition(groupDragIndex, groupIndex);
+                    setGroupDragIndex(null);
+                  }}
+                >
+                  {/* STEP12-8F Phase2(R11): 배송건 순서(R10)와 동일한 드래그
+                      상호작용 — 손잡이를 잡고 끌면 handleGroupJumpToPosition이
+                      currentGroupOrder를 재배열해 groupOrderDraft에 담는다. */}
+                  <div className="flex shrink-0 flex-col items-center gap-1 pt-2">
+                    <span
+                      draggable
+                      onDragStart={() => setGroupDragIndex(groupIndex)}
+                      onDragEnd={() => setGroupDragIndex(null)}
+                      className="flex size-6 cursor-grab items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-text-strong active:cursor-grabbing"
+                      aria-label="그룹 순서 드래그해서 변경"
+                      title="그룹 순서 드래그해서 변경"
+                    >
+                      <GripVertical className="size-3.5" />
+                    </span>
+                    <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
+                      {groupIndex + 1}
+                    </span>
+                  </div>
+                  {renderGroupHeader(o.delivery_group_id!)}
+                </div>
+              ) : null}
               {belongsToCollapsedGroup ? null : showReorderControls ? (
                 <div
                   className={cn("flex items-start gap-2 rounded-xl transition-colors", dragIndex === idx && "opacity-50")}

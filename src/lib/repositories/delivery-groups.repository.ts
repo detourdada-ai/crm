@@ -38,7 +38,12 @@ export const deliveryGroupsRepository = {
   async findByOwnerAndDate(dateStr: string, ownerUsername?: string): Promise<DeliveryGroup[]> {
     let q = getSupabaseAdmin().from("delivery_groups").select("*").eq("delivery_date", dateStr);
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
-    const { data, error } = await q.order("group_no", { ascending: true });
+    // STEP12-8F Phase2(R11): 사장님이 Drag&Drop으로 정한 그룹 순서(group_order)가
+    // 있으면 그 순서를 우선한다 — 아직 한 번도 순서를 바꾸지 않은 그룹은
+    // group_order가 null이라 group_no(그룹 계산 순서) 순으로 뒤에 붙는다.
+    const { data, error } = await q
+      .order("group_order", { ascending: true, nullsFirst: false })
+      .order("group_no", { ascending: true });
     if (error) throw error;
     return (data as DeliveryGroup[]) ?? [];
   },
