@@ -278,6 +278,10 @@ create table if not exists delivery_groups (
   representative_eupmyeondong text,
   driver_id uuid references drivers (id) on delete set null,
   radius_meters int not null default 50,
+  -- 0049(STEP12-8B, 2026-09): 그룹 카드의 Drag & Drop 표시 순서. group_no는
+  -- 재계산 시 재할당되는 값이라 사장님이 정한 순서를 못 담는다 — null이면
+  -- group_no 순서로 폴백.
+  group_order int,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (tenant_id, delivery_date, group_no)
@@ -286,6 +290,7 @@ create table if not exists delivery_groups (
 create index if not exists idx_delivery_groups_tenant_date on delivery_groups (tenant_id, delivery_date);
 create index if not exists idx_delivery_groups_owner_username on delivery_groups (owner_username);
 create index if not exists idx_delivery_groups_driver_id on delivery_groups (driver_id);
+create index if not exists idx_delivery_groups_order on delivery_groups (tenant_id, delivery_date, group_order);
 
 create trigger trg_delivery_groups_updated_at
   before update on delivery_groups
@@ -490,6 +495,12 @@ create table if not exists order_shipments (
   -- 자체에서 제외되어, 다음 재계산에도 조용히 원래 그룹으로 되돌아가지
   -- 않는다. 100m 반경/알고리즘 자체는 그대로이고 사전 필터링만 추가된 것.
   delivery_group_locked boolean not null default false,
+  -- 0049(STEP12-8B, 2026-09): 이 배송건이 소속 그룹의 기본 기사와 의도적으로
+  -- 다르다는 표시. null이면 그룹 기본 기사를 그대로 따른다는 뜻 — driver_id
+  -- 자체는 항상 "실제 담당기사"를 담으므로(단일 진실 소스 유지) 기사 앱/
+  -- 배송현황/정산 등 기존 읽기 경로는 이 컬럼을 몰라도 된다. 자세한 배정
+  -- 갱신 규칙은 0049_delivery_group_order_driver_override.sql 참고.
+  override_driver_id uuid references drivers (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -502,6 +513,7 @@ create index if not exists idx_order_shipments_delivery_status on order_shipment
 create index if not exists idx_order_shipments_delivery_date on order_shipments (delivery_date desc);
 create index if not exists idx_order_shipments_delivery_group_id on order_shipments (delivery_group_id);
 create index if not exists idx_order_shipments_driver_date_route on order_shipments (driver_id, delivery_date, route_order);
+create index if not exists idx_order_shipments_override_driver_id on order_shipments (override_driver_id);
 
 drop trigger if exists trg_order_shipments_updated_at on order_shipments;
 create trigger trg_order_shipments_updated_at
