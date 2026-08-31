@@ -301,6 +301,12 @@ export async function createManualOrderAction(
   const deliveryDate = new Date(deliveryDateRaw).toISOString();
   const amount = quantity * unitPrice;
 
+  // STEP12-7(CPO 지적): 고객 생성과 주문 생성이 하나의 트랜잭션이 아니라서,
+  // 신규 고객까지는 저장됐는데 그 뒤(채번/주문 INSERT 등) 단계에서 실패하면
+  // 주문 없는 "고아 고객"만 남는 사고가 실제로 발생했다(user2에서 확인).
+  // 이 함수 안에서 새로 만든 고객의 id만 추적해뒀다가, catch에서 주문 생성이
+  // 끝내 실패했을 때 그 고객만 되돌린다(기존 고객 선택 시에는 대상이 아님).
+  let newlyCreatedCustomerId: string | null = null;
   try {
     const tenantId = await tenantScopeFor(session);
 
@@ -326,6 +332,7 @@ export async function createManualOrderAction(
         detailAddress,
         ownerUsername: session.username,
       });
+      newlyCreatedCustomerId = customer.id;
     }
 
     const [internalOrderNumber] = await allocateOrderNumbers(tenantId, [orderDate]);
@@ -419,6 +426,9 @@ export async function createManualOrderAction(
     revalidatePath("/");
     return { ok: true, error: null, internalOrderNumber };
   } catch (e) {
+    if (newlyCreatedCustomerId) {
+      await customersRepository.deleteMany([newlyCreatedCustomerId]).catch(() => {});
+    }
     return { ok: false, error: toActionError(e, "주문 등록 중 오류가 발생했습니다.") };
   }
 }
