@@ -134,8 +134,15 @@ async function main() {
     const ownerAccountSelectVisible = await page.getByLabel("담당 계정").count();
     record("C1. 일반 사장님 계정에는 '담당 계정'(admin 전용) 선택란이 없음 — 자기 tenant로 자동 스코프", ownerAccountSelectVisible === 0, `count=${ownerAccountSelectVisible}`);
     await page.getByRole("button", { name: "등록", exact: true }).last().click();
-    await page.waitForTimeout(1500);
-    const { data: createdDriver } = await admin.from("drivers").select("id").eq("owner_username", OWNER).eq("name", driverName).maybeSingle();
+    // Production은 Server Action 콜드스타트 등으로 로컬보다 응답이 여러 초 더
+    // 걸릴 수 있다(STEP11-13에서 이미 관측된 패턴) — 고정 대기 대신 DB에 실제
+    // 반영될 때까지 최대 15초 폴링한다.
+    let createdDriver: { id: string } | null = null;
+    for (let i = 0; i < 30 && !createdDriver; i++) {
+      const { data } = await admin.from("drivers").select("id").eq("owner_username", OWNER).eq("name", driverName).maybeSingle();
+      createdDriver = data;
+      if (!createdDriver) await page.waitForTimeout(500);
+    }
     driverId = createdDriver?.id ?? null;
     record("A4. 배송기사 관리 UI로 실제 기사 등록 성공(DB 반영)", !!driverId, JSON.stringify(createdDriver));
     if (driverId) driverAccountUsername = driverUsername;
