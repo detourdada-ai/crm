@@ -66,8 +66,18 @@ async function toggleBagReturned(page: Page, rowKey: string) {
   await rowLocator(page, rowKey).locator("text=/미회수|회수완료/").click();
 }
 
+/**
+ * STEP12-3(CPO 작업지시, 2026-08-31): `.textContent()`는 0개 매치일 때
+ * Playwright 기본 30초 auto-wait로 재시도하다 타임아웃 후에야 catch로
+ * 빠진다 — 이 파일의 H1/H2 측정치(~31-34초)가 실제로는 이 auto-wait
+ * 타임아웃 그 자체였고, 실제 저장은 서버/DOM 기준 ~1-1.5초 내에 끝난다는
+ * 것이 STEP12-3 조사로 확인됐다. `.count()`는 auto-wait 없이 즉시
+ * 반환하므로 먼저 존재 여부를 확인한 뒤에만 textContent를 읽는다.
+ */
 async function draftCountText(page: Page): Promise<string> {
-  return (await page.locator("text=/변경사항 [0-9]+건/").first().textContent().catch(() => "")) ?? "";
+  const loc = page.locator("text=/변경사항 [0-9]+건/").first();
+  if ((await loc.count()) === 0) return "";
+  return (await loc.textContent().catch(() => "")) ?? "";
 }
 
 function attachServerActionCounter(page: Page): { count: () => number; reset: () => void } {

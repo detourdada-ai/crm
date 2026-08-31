@@ -59,8 +59,11 @@ async function setBagNumber(page: Page, rowKey: string, value: string) {
   await input.blur();
 }
 
+/** STEP12-3(CPO 작업지시, 2026-08-31): textContent()의 기본 30초 auto-wait로 인한 거짓 지연 측정 방지 — count()로 존재를 먼저 확인. */
 async function draftCountText(page: Page): Promise<string> {
-  return (await page.locator("text=/변경사항 [0-9]+건/").first().textContent().catch(() => "")) ?? "";
+  const loc = page.locator("text=/변경사항 [0-9]+건/").first();
+  if ((await loc.count()) === 0) return "";
+  return (await loc.textContent().catch(() => "")) ?? "";
 }
 
 function attachServerActionCounter(page: Page): { count: () => number; reset: () => void } {

@@ -75,8 +75,18 @@ async function toggleBagReturned(page: Page, rowKey: string) {
   await rowLocator(page, rowKey).locator("text=/미회수|회수완료/").click();
 }
 
+/**
+ * STEP12-3(CPO 작업지시, 2026-08-31): `.textContent()`는 요소가 0개 매치일 때
+ * Playwright 기본 30초 auto-wait로 재시도하다 타임아웃난 뒤에야 catch로
+ * 빠진다 — 저장 직후 이 표시가 완전히 사라지는 정상 케이스에서마다 매번
+ * ~30초씩 "느려 보이는" 결과가 나온 원인이 바로 이것이었다(실제 서버/DOM
+ * 반영은 ~1초 내). `.count()`는 auto-wait 없이 즉시 반환하므로 먼저 존재
+ * 여부를 확인한 뒤에만 textContent를 읽는다.
+ */
 async function draftCountText(page: Page): Promise<string> {
-  return (await page.locator("text=/변경사항 [0-9]+건/").first().textContent().catch(() => "")) ?? "";
+  const loc = page.locator("text=/변경사항 [0-9]+건/").first();
+  if ((await loc.count()) === 0) return "";
+  return (await loc.textContent().catch(() => "")) ?? "";
 }
 
 /** Next.js Server Action 호출(=실제 서버 왕복 1회)만 카운트한다 — 일반 페이지 리소스/텔레메트리 요청은 제외. */

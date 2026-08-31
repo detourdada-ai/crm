@@ -1,0 +1,52 @@
+{
+  "gateId": "STEP12-3-DELIVERY-SAVE-PERFORMANCE-ROOT-CAUSE",
+  "timestamp": "2026-08-31",
+  "commit": "ea0d880 (no app code change this Gate; docs/QA scripts only)",
+  "baseUrl": "https://jumunhanjang.vercel.app",
+  "ctoFinal": "PASS",
+  "conclusion": "NO_APP_PERFORMANCE_ISSUE_FOUND — root cause was a Playwright QA-script measurement bug, not a real save latency problem",
+  "appCodeChanges": [],
+  "qaScriptChanges": [
+    "scripts/qa/step11-13-draft-batch-save.ts: draftCountText() count()-first fix",
+    "scripts/qa/step11-14-delivery-assignment-ux.ts: draftCountText() count()-first fix",
+    "scripts/qa/step12-1-beta-open-ready.ts: draftCountText() count()-first fix",
+    "scripts/qa/step12-2-final-operation-audit.ts: draftCountText() count()-first fix"
+  ],
+  "instrumentationUsed": {
+    "note": "임시 콘솔 타임스탬프 계측을 src/actions/delivery.ts, src/app/(protected)/delivery/page.tsx, src/components/delivery/delivery-board.tsx에 추가해 실측 후 전부 원복(git diff 결과 3개 파일 변경 없음 확인)",
+    "measuredBreakdown": {
+      "serverActionEntry_to_findByIds_ms": "~100-140",
+      "assignDriver_rpc_ms": "~550-730",
+      "revalidatePath_call_ms": "즉시(캐시 마킹만)",
+      "deliveryPage_rerender_ms": "~550-940",
+      "clientDomCommit_after_click_ms": "~865-1031",
+      "networkFetch_wallTime_ms": "251-1533"
+    }
+  },
+  "rootCause": {
+    "buggyPattern": "page.locator(...).textContent() has Playwright's default ~30s actionTimeout auto-wait when 0 elements match, before falling through to .catch()",
+    "affectedHelper": "draftCountText() — identical implementation duplicated across 4 QA scripts since STEP11-13",
+    "impact": "Every 'draft indicator disappeared' check after a successful save silently waited out the full ~30s Playwright timeout, producing a flat ~30-34s 'save time' regardless of actual batch size or actual server/DOM completion time (~1-1.5s)",
+    "verification": "Same scenario re-measured with .count() (no auto-wait) instead of .textContent() — settle time dropped to 1.0-1.2s, matching independently-measured server+client timings"
+  },
+  "correctedMeasurements": {
+    "H1_5_item_mixed_save_ms": { "local_1": 2436, "local_2": 2282, "production": 5790 },
+    "H2_150_item_bulk_save_ms": { "local_1": 4513, "local_2": 3349, "production": 4244 },
+    "regressionRuns": { "local_1": { "pass": 12, "total": 12 }, "local_2": { "pass": 12, "total": 12 }, "production": { "pass": 12, "total": 12 } }
+  },
+  "retraction": {
+    "target": "docs/qa/STEP12-2-BETA-OPEN-FINAL-OPERATION-AUDIT/",
+    "retractedClaim": "5건과 150건 저장이 배치 크기와 무관하게 ~30-34초 고정비용을 가진다는 STEP12-2의 Section H 결론",
+    "reason": "QA measurement bug (see rootCause above), not a real app performance characteristic",
+    "action": "docs/qa/STEP12-2-BETA-OPEN-FINAL-OPERATION-AUDIT/CORRECTION.md 추가"
+  },
+  "qaDataCleanup": {
+    "thisGateRuns": "전량 자동 원복 확인 (finally 블록)",
+    "tempProbeScript": "scripts/qa/_tmp-step12-3-perf-probe.ts 및 그 생성 데이터(주문/기사/고객 각 1건) 전량 삭제/원복 완료, 스크립트 파일 삭제 완료"
+  },
+  "buildGate": {
+    "tsc": "PASS",
+    "eslint": "PASS"
+  },
+  "ctoFinalVerdict": "PASS"
+}
