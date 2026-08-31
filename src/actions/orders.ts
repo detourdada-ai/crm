@@ -34,6 +34,8 @@ export interface OrderItemSummary {
   totalAmount: number;
   /** UX11: "표시 컬럼"에서 선택한 엑셀 원본 컬럼 값 — 첫 번째 상품주문 행 기준(여러 상품이면 그중 하나만 대표로 보여준다, 이미 상품명 자체도 같은 규칙). */
   extra: Record<string, unknown>;
+  /** STEP12-8C(CPO 작업지시): 배송관리 카드는 "상품A 외 N건" 축약 대신 상품 전체를 보여줘야 한다 — productSummary는 그대로 두고(다른 화면 하위호환), 이 필드로 상품별 줄을 따로 제공한다. */
+  productLines: { productName: string; quantity: number }[];
 }
 
 export interface SearchOrdersParams {
@@ -101,7 +103,16 @@ function summarize(items: OrderItem[]): OrderItemSummary {
   const productSummary =
     items.length === 0 ? "-" : items.length === 1 ? items[0].product_name : `${items[0].product_name} 외 ${items.length - 1}건`;
   const extra = items.length > 0 && items[0].extra ? Object.fromEntries(extraDisplayEntries(items[0].extra)) : {};
-  return { productSummary, totalQuantity, totalAmount, extra };
+
+  // STEP12-8C: 같은 상품명이 옵션 차이 등으로 여러 행에 나뉘어 있어도 카드에는
+  // 하나로 합쳐서 보여준다(수량만 더한다) — 순서는 처음 등장한 순서를 유지.
+  const linesByName = new Map<string, number>();
+  for (const item of items) {
+    linesByName.set(item.product_name, (linesByName.get(item.product_name) ?? 0) + item.quantity);
+  }
+  const productLines = Array.from(linesByName, ([productName, quantity]) => ({ productName, quantity }));
+
+  return { productSummary, totalQuantity, totalAmount, extra, productLines };
 }
 
 /**

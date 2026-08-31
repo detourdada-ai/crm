@@ -13,6 +13,7 @@ import { startShiftAction, endShiftAction, updateMyLocationAction } from "@/acti
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import { getDeliveryProgress } from "@/lib/utils/delivery-progress";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
+import type { OrderItemSummary } from "@/actions/orders";
 import type { DriverShift } from "@/types/domain";
 
 /** 운행 중일 때만 위치를 갱신한다 — 백그라운드 추적 없음, 앱이 열려 있는 동안만 이 주기로 참고용 위치 하나만 덮어쓴다. */
@@ -40,10 +41,13 @@ const LOCATION_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
  */
 export function MyDeliveriesList({
   orders: initialOrders,
+  itemSummaries,
   initialShift,
   selectedDate,
 }: {
   orders: OrderShipmentBoardRow[];
+  /** STEP12-8E: 배송건별 상품 요약(구매자명/수취인명/가방번호는 order 자체 필드라 별도 전달 불필요, 상품만 여기서 받는다). */
+  itemSummaries: Record<string, OrderItemSummary>;
   /** S2-C: 오늘 운행시작/종료 여부 + 최근 위치. 배송 상태와 무관 — 없어도(운행시작 전이어도) 배송완료 처리는 그대로 가능하다. */
   initialShift: DriverShift | null;
   /** 배송날짜 필터로 지금 보고 있는 날짜(YYYY-MM-DD) — 운행시작/종료는 이 날짜와 무관하게 항상 실제 "오늘" 기준이다. */
@@ -287,6 +291,7 @@ export function MyDeliveriesList({
         <FocusDeliveryCard
           title="현재 배송"
           order={current}
+          itemSummary={itemSummaries[current.rowKey]}
           sequenceNumber={sequenceByRowKey.get(current.rowKey)}
           emphasized
           isHighlighted={highlightedRowKey === current.rowKey}
@@ -316,6 +321,7 @@ export function MyDeliveriesList({
         <FocusDeliveryCard
           title="다음 배송"
           order={next}
+          itemSummary={itemSummaries[next.rowKey]}
           sequenceNumber={sequenceByRowKey.get(next.rowKey)}
           emphasized={false}
           isHighlighted={highlightedRowKey === next.rowKey}
@@ -345,6 +351,7 @@ export function MyDeliveriesList({
               <UpcomingDeliveryCard
                 key={o.rowKey}
                 order={o}
+                itemSummary={itemSummaries[o.rowKey]}
                 sequenceNumber={sequenceByRowKey.get(o.rowKey)}
                 isHighlighted={highlightedRowKey === o.rowKey}
                 registerRef={registerRowRef}
@@ -365,6 +372,7 @@ export function MyDeliveriesList({
               <UpcomingDeliveryCard
                 key={o.rowKey}
                 order={o}
+                itemSummary={itemSummaries[o.rowKey]}
                 sequenceNumber={sequenceByRowKey.get(o.rowKey)}
                 isHighlighted={highlightedRowKey === o.rowKey}
                 registerRef={registerRowRef}
@@ -432,10 +440,53 @@ function DeliveryAddress({ order }: { order: OrderShipmentBoardRow }) {
   );
 }
 
+/**
+ * STEP12-8E(CPO 작업지시): 기사 카드에 구매자명과 수취인명을 모두 보여준다
+ * — 선물주문처럼 둘이 다를 때 기사가 "누구 이름으로 불러야 하는지"와
+ * "실제 받는 사람이 누구인지"를 헷갈리지 않게 한다. 같으면 한 번만 표시.
+ */
+function DeliveryNames({ order }: { order: OrderShipmentBoardRow }) {
+  const recipient = order.recipient_name;
+  const buyer = order.buyer_name;
+  if (recipient && buyer && recipient !== buyer) {
+    return (
+      <span>
+        {recipient}
+        <span className="ml-1 text-xs font-normal text-muted-foreground">(구매자 {buyer})</span>
+      </span>
+    );
+  }
+  return <span>{recipient || buyer || "-"}</span>;
+}
+
+/** STEP12-8E: 상품 전체 + 가방번호 — 기사가 물건을 챙길 때/전달할 때 바로 확인해야 하는 정보라 주소 바로 아래에 둔다. */
+function DeliveryItemsAndBag({ order, itemSummary }: { order: OrderShipmentBoardRow; itemSummary: OrderItemSummary | undefined }) {
+  if ((!itemSummary || itemSummary.productLines.length === 0) && !order.bag_number) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+      {itemSummary && itemSummary.productLines.length > 0 ? (
+        <span className="text-text-strong">
+          {itemSummary.productLines.map((line, idx) => (
+            <span key={`${line.productName}-${idx}`}>
+              {idx > 0 ? ", " : ""}
+              {line.productName}
+              {line.quantity > 1 ? ` x${line.quantity}` : ""}
+            </span>
+          ))}
+        </span>
+      ) : null}
+      {order.bag_number ? (
+        <span className="rounded-full bg-muted px-1.5 py-0.5 font-medium text-text-strong">가방 {order.bag_number}번</span>
+      ) : null}
+    </div>
+  );
+}
+
 /** 현재/다음 배송 — 기사 앱에서 가장 중요한 두 카드(§PART10~11), 시각적으로 가장 강조된다. 배송완료 버튼 노출 자체는 제한하지 않는다(현장 상황에 따라 어떤 순서든 완료 가능). */
 function FocusDeliveryCard({
   title,
   order,
+  itemSummary,
   sequenceNumber,
   emphasized,
   isHighlighted,
@@ -445,6 +496,7 @@ function FocusDeliveryCard({
 }: {
   title: string;
   order: OrderShipmentBoardRow;
+  itemSummary: OrderItemSummary | undefined;
   sequenceNumber?: number;
   emphasized: boolean;
   isHighlighted: boolean;
@@ -473,7 +525,7 @@ function FocusDeliveryCard({
         >
           {sequenceNumber}
         </span>
-        {order.recipient_name || order.buyer_name || "-"}
+        <DeliveryNames order={order} />
       </p>
       <DeliveryAddress order={order} />
       {order.phone_snapshot ? (
@@ -482,6 +534,7 @@ function FocusDeliveryCard({
           {order.phone_snapshot}
         </a>
       ) : null}
+      <DeliveryItemsAndBag order={order} itemSummary={itemSummary} />
       {order.delivery_memo ? <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">💬 {order.delivery_memo}</p> : null}
       {action ? <div onClick={(e) => e.stopPropagation()}>{action}</div> : null}
     </div>
@@ -492,6 +545,7 @@ function FocusDeliveryCard({
  *  완료 정책상 미완료 건이면 여기도 배송완료 버튼을 그대로 제공한다(onComplete). */
 function UpcomingDeliveryCard({
   order,
+  itemSummary,
   sequenceNumber,
   isHighlighted,
   registerRef,
@@ -501,6 +555,7 @@ function UpcomingDeliveryCard({
   done = false,
 }: {
   order: OrderShipmentBoardRow;
+  itemSummary: OrderItemSummary | undefined;
   sequenceNumber?: number;
   isHighlighted: boolean;
   registerRef: (rowKey: string, el: HTMLDivElement | null) => void;
@@ -524,9 +579,16 @@ function UpcomingDeliveryCard({
         <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-text-strong">
           {sequenceNumber}
         </span>
-        {order.recipient_name || order.buyer_name || "-"}
+        <DeliveryNames order={order} />
       </p>
       <DeliveryAddress order={order} />
+      {order.phone_snapshot ? (
+        <a href={`tel:${order.phone_snapshot}`} className="flex items-center gap-1.5 text-xs text-primary" onClick={(e) => e.stopPropagation()}>
+          <Phone className="size-3" />
+          {order.phone_snapshot}
+        </a>
+      ) : null}
+      <DeliveryItemsAndBag order={order} itemSummary={itemSummary} />
       {order.delivery_memo ? <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">💬 {order.delivery_memo}</p> : null}
       {!done && onComplete ? (
         <Button

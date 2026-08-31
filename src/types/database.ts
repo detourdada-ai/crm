@@ -444,6 +444,7 @@ export interface Database {
           representative_eupmyeondong: string | null;
           driver_id: string | null;
           radius_meters: number;
+          group_order: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -461,6 +462,7 @@ export interface Database {
           representative_eupmyeondong?: string | null;
           driver_id?: string | null;
           radius_meters?: number;
+          group_order?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -684,6 +686,7 @@ export interface Database {
           delivery_group_id: string | null;
           route_order: number | null;
           delivery_group_locked: boolean;
+          override_driver_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -703,6 +706,7 @@ export interface Database {
           delivery_group_id?: string | null;
           route_order?: number | null;
           delivery_group_locked?: boolean;
+          override_driver_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };

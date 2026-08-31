@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { orderShipmentsRepository, type OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import { deliveryGroupsRepository } from "@/lib/repositories/delivery-groups.repository";
+import { driversRepository } from "@/lib/repositories/drivers.repository";
 import { regenerateDeliveryGroupsForTenant, triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
+import type { DeliveryActionState } from "@/actions/delivery";
 import type { DeliveryGroup } from "@/types/domain";
 
 export type UngroupedReason = "no_coordinates" | "no_nearby_orders" | "manually_separated";
@@ -34,12 +36,14 @@ export interface DeliveryGroupActionState {
 }
 
 /**
- * P5: 배송그룹은 "가까운 배송지를 묶어 보여주는 참고 정보"일 뿐, 배정 단위가
- * 아니다(작업지시서 14-21번) — 그룹과 기사배정은 완전히 독립된 데이터라
- * 그룹 단위 일괄배정 액션(구 assignGroupDriverAction)은 이번 라운드에서
- * 제거했다. 개별 배송건 배정은 기존 assignDriverAction(actions/delivery.ts)을
- * 그대로 쓴다 — 같은 그룹 안에서도 배송건마다 다른 기사/직접수령/미배정이
- * 모두 정상이다.
+ * STEP12-8B(CPO 작업지시, 2026-09): P5 라운드에서는 "그룹과 기사배정은 완전히
+ * 독립된 데이터"로 보고 그룹 단위 일괄배정 액션을 제거했었다. 이번 재설계는
+ * 그 전제를 CPO가 명시적으로 뒤집은 것 — 그룹을 "배정의 유일한 단위"로
+ * 되돌리는 게 아니라 "기본값(default)"으로 쓰고, 개별 배송건은 언제든
+ * override로 그룹 기본값과 다르게 지정할 수 있다(아래 assignGroupDriverAction
+ * 참고). 개별 override는 기존 assignDriverAction(actions/delivery.ts)이 아니라
+ * setShipmentOverrideDriverAction을 쓴다 — override_driver_id 마커를 함께
+ * 남겨야 그룹 기본기사 변경 시 이 배송건을 건드리지 않을 수 있기 때문이다.
  *
  * 특정 배송일의 배송 그룹을 계산/갱신한다. Idempotent — 같은 입력으로 다시
  * 실행해도 그룹 구성이 같으면 group_no가 그대로 유지된다. 배송관리 페이지가
@@ -140,5 +144,71 @@ export async function restoreShipmentToGroupingAction(shipmentId: string): Promi
     return { ok: true, error: null, regroupFailed: !regrouped };
   } catch (e) {
     return { ok: false, error: toActionError(e, "배송건을 그룹 자동계산 대상으로 되돌리는 중 오류가 발생했습니다.") };
+  }
+}
+
+/**
+ * STEP12-8B: 그룹에 기본기사를 지정한다 — 그룹 레코드의 driver_id를 갱신하고,
+ * override가 없는 소속 배송건들만 그 기사로 일괄 배정한다(이미 override로
+ * 다른 기사가 지정된 배송건, 완료/취소된 배송건은 건드리지 않는다).
+ */
+export async function assignGroupDriverAction(groupId: string, driverId: string): Promise<DeliveryActionState> {
+  try {
+    const session = await requireSession();
+    const ownerScope = ownerScopeFor(session);
+
+    const group = await deliveryGroupsRepository.findById(groupId);
+    if (!group) return { ok: false, error: "그룹을 찾을 수 없습니다." };
+    if (ownerScope && group.owner_username !== ownerScope) {
+      return { ok: false, error: "권한이 없는 그룹입니다." };
+    }
+    if (ownerScope) {
+      const driver = await driversRepository.findById(driverId);
+      if (!driver || driver.owner_username !== ownerScope) {
+        return { ok: false, error: "본인의 기사만 배정할 수 있습니다." };
+      }
+    }
+
+    await deliveryGroupsRepository.updateDriver(groupId, driverId);
+
+    const members = await orderShipmentsRepository.findByGroupIds([groupId]);
+    const targetIds = members
+      .filter((m) => !m.override_driver_id && m.delivery_status !== "완료" && m.delivery_status !== "취소")
+      .map((m) => m.id);
+    if (targetIds.length > 0) {
+      await orderShipmentsRepository.assignDriver(targetIds, driverId, ownerScope);
+    }
+
+    revalidatePath("/delivery");
+    revalidatePath("/orders");
+    revalidatePath("/driver");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "그룹 기본기사 배정 중 오류가 발생했습니다.") };
+  }
+}
+
+/**
+ * STEP12-8D: 그룹 Drag&Drop 순서를 저장한다. orderedGroupIds는 같은
+ * 배송일의 그룹 전체를 새 순서대로 담고 있어야 한다(1..N으로 재정규화).
+ */
+export async function reorderGroupsAction(orderedGroupIds: string[]): Promise<DeliveryGroupActionState> {
+  try {
+    const session = await requireSession();
+    const ownerScope = ownerScopeFor(session);
+    if (orderedGroupIds.length < 2) return { ok: true, error: null };
+
+    const groups = await Promise.all(orderedGroupIds.map((id) => deliveryGroupsRepository.findById(id)));
+    if (groups.some((g) => !g)) return { ok: false, error: "존재하지 않는 그룹이 포함되어 있습니다." };
+    if (ownerScope && groups.some((g) => g!.owner_username !== ownerScope)) {
+      return { ok: false, error: "권한이 없는 그룹이 포함되어 있습니다." };
+    }
+
+    const orderById = new Map(orderedGroupIds.map((id, idx) => [id, idx + 1]));
+    await deliveryGroupsRepository.updateGroupOrder(groups as DeliveryGroup[], orderById);
+    revalidatePath("/delivery");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "그룹 순서 변경 중 오류가 발생했습니다.") };
   }
 }

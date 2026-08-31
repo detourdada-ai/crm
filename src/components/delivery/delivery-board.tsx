@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState, useTransition, type RefObject } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +12,7 @@ import {
   saveDeliveryDraftAction,
   type DraftChangeInput,
 } from "@/actions/delivery";
+import { assignGroupDriverAction } from "@/actions/delivery-groups";
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
@@ -95,6 +96,11 @@ export function DeliveryBoard({
   onSelectOrder?: (rowKey: string) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // STEP12-8D: ↑/↓ 버튼(기존, 유지)에 더해 드래그로도 순서를 바꿀 수 있게
+  // 한다 — 둘 다 결국 handleJumpToPosition(같은 reorderShipmentsAction 경로)을
+  // 호출하므로 서버 로직/정규화는 완전히 동일하다(CPO 지시: 충돌 없이 교체
+  // 겸 추가 — 기존 QA가 의존하는 ↑/↓ 버튼은 그대로 남겨 회귀 위험을 없앤다).
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [bulkDriverId, setBulkDriverId] = useState("");
   const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
   const [isPending, startTransition] = useTransition();
@@ -220,6 +226,39 @@ export function DeliveryBoard({
     }
     return map;
   }, [currentlyDisplayedOrders]);
+
+  // STEP12-8C: 그룹 헤더의 "담당기사" select에 보여줄 현재값 — 멤버 전원이
+  // 같은 기사면 그 기사, 아니면(배정 전 섞임/override로 갈림) 비워서
+  // "혼합"으로 보이게 한다. override 건수도 함께 세어 헤더에 안내한다.
+  const groupDriverInfo = useMemo(() => {
+    const map = new Map<string, { driverId: string; overrideCount: number } | { driverId: null; overrideCount: number }>();
+    for (const [groupId, memberIds] of groupMemberRowKeys) {
+      const members = memberIds.map((id) => orderByRowKey.get(id)).filter((o): o is OrderShipmentBoardRow => !!o);
+      const overrideCount = members.filter((m) => m.override_driver_id).length;
+      const distinctDriverIds = new Set(members.map((m) => m.driver_id));
+      const driverId = distinctDriverIds.size === 1 ? [...distinctDriverIds][0] : null;
+      map.set(groupId, { driverId, overrideCount } as never);
+    }
+    return map;
+  }, [groupMemberRowKeys, orderByRowKey]);
+
+  const [groupAssignPending, setGroupAssignPending] = useState<string | null>(null);
+
+  function handleAssignGroupDriver(groupId: string, driverId: string) {
+    setGroupAssignPending(groupId);
+    startTransition(async () => {
+      try {
+        const result = await assignGroupDriverAction(groupId, driverId);
+        if (result.ok) {
+          toast.success("그룹 기본기사를 배정했습니다.");
+        } else {
+          toast.error(result.error ?? "그룹 기본기사 배정 중 오류가 발생했습니다.");
+        }
+      } finally {
+        setGroupAssignPending(null);
+      }
+    });
+  }
 
   function toggleGroupSelection(groupId: string, checked: boolean) {
     const memberIds = groupMemberRowKeys.get(groupId) ?? [];
@@ -386,6 +425,7 @@ export function DeliveryBoard({
     // 기존 일괄배정 흐름을 그대로 재사용한다.
     const memberIds = groupMemberRowKeys.get(groupId) ?? [];
     const allSelected = memberIds.length > 0 && memberIds.every((id) => visibleSelected.has(id));
+    const driverInfo = groupDriverInfo.get(groupId);
     return (
       <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -396,6 +436,38 @@ export function DeliveryBoard({
             </span>
           ) : null}
         </div>
+        {/*
+          STEP12-8C(CPO 작업지시): "그룹 잡고 → 기사 넣고"의 핵심 — 그룹 헤더에서
+          바로 담당기사를 지정한다. override(개별로 다르게 지정된 배송건)가 있는
+          멤버는 이 select로 덮어써도 건드리지 않는다(assignGroupDriverAction이
+          서버에서 override_driver_id가 있는 멤버를 자동으로 제외한다).
+        */}
+        {memberIds.length > 0 ? (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">담당기사</span>
+            <Select
+              value={driverInfo?.driverId ?? ""}
+              onValueChange={(v) => handleAssignGroupDriver(groupId, v)}
+              disabled={groupAssignPending === groupId}
+            >
+              <SelectTrigger size="sm" className="h-7 w-32 bg-surface text-xs" aria-label={`${label} 담당기사 선택`}>
+                <SelectValue placeholder={groupAssignPending === groupId ? "배정하는 중..." : "미배정 (혼합)"} />
+              </SelectTrigger>
+              <SelectContent>
+                {drivers.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {driverInfo && driverInfo.overrideCount > 0 ? (
+              <span className="text-xs text-muted-foreground" title="개별로 다른 기사가 지정된 배송건 — 그룹 기본기사를 바꿔도 유지됩니다.">
+                (개별지정 {driverInfo.overrideCount}건 제외)
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="text-xs text-muted-foreground">{subtotal?.total ?? 0}건</span>
           {/*
@@ -484,8 +556,34 @@ export function DeliveryBoard({
             <Fragment key={o.rowKey}>
               {isNewGroup ? renderGroupHeader(o.delivery_group_id!) : null}
               {showReorderControls ? (
-                <div className="flex items-start gap-2">
+                <div
+                  className={cn("flex items-start gap-2 rounded-xl transition-colors", dragIndex === idx && "opacity-50")}
+                  onDragOver={(e) => {
+                    if (dragIndex === null) return;
+                    e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (dragIndex === null || dragIndex === idx) return;
+                    handleJumpToPosition(dragIndex, idx);
+                    setDragIndex(null);
+                  }}
+                >
                   <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
+                    {/* STEP12-8D: 그룹 순서 Drag&Drop과 같은 상호작용 방식 —
+                        이 손잡이를 잡고 끌면 handleJumpToPosition(기존 ↑/↓·
+                        바로가기 Select와 동일한 reorderShipmentsAction 경로)이
+                        호출된다. */}
+                    <span
+                      draggable
+                      onDragStart={() => setDragIndex(idx)}
+                      onDragEnd={() => setDragIndex(null)}
+                      className="flex size-6 cursor-grab items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-text-strong active:cursor-grabbing"
+                      aria-label="드래그해서 순서 변경"
+                      title="드래그해서 순서 변경"
+                    >
+                      <GripVertical className="size-3.5" />
+                    </span>
                     <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
                       {idx + 1}
                     </span>

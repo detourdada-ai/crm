@@ -43,6 +43,19 @@ export const deliveryGroupsRepository = {
     return (data as DeliveryGroup[]) ?? [];
   },
 
+  async findById(id: string): Promise<DeliveryGroup | null> {
+    const { data, error } = await getSupabaseAdmin().from("delivery_groups").select("*").eq("id", id).maybeSingle();
+    if (error) throw error;
+    return (data as DeliveryGroup) ?? null;
+  },
+
+  async findByIds(ids: string[]): Promise<DeliveryGroup[]> {
+    if (ids.length === 0) return [];
+    const { data, error } = await getSupabaseAdmin().from("delivery_groups").select("*").in("id", ids);
+    if (error) throw error;
+    return (data as DeliveryGroup[]) ?? [];
+  },
+
   async findByTenantAndDate(tenantId: string, dateStr: string): Promise<DeliveryGroup[]> {
     const { data, error } = await getSupabaseAdmin()
       .from("delivery_groups")
@@ -97,6 +110,31 @@ export const deliveryGroupsRepository = {
   async deleteByIds(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
     const { error } = await getSupabaseAdmin().from("delivery_groups").delete().in("id", ids);
+    if (error) throw error;
+  },
+
+  /**
+   * STEP12-8B: 그룹에 기본기사를 지정/해제한다. 그룹 레코드의 driver_id만
+   * 갱신한다 — 소속 배송건들의 driver_id 일괄 갱신(override 없는 멤버만)은
+   * 액션 레이어가 orderShipmentsRepository.assignDriver()로 별도 수행한다
+   * (그룹 레코드 갱신과 배송건 배정은 서로 다른 실패 지점을 가질 수 있어
+   * 하나로 묶지 않는다).
+   */
+  async updateDriver(id: string, driverId: string | null): Promise<void> {
+    const { error } = await getSupabaseAdmin().from("delivery_groups").update({ driver_id: driverId }).eq("id", id);
+    if (error) throw error;
+  },
+
+  /**
+   * STEP12-8D: 그룹 Drag&Drop 표시순서 저장 — recomputeMany와 동일한 이유로
+   * (upsert가 Supabase 타입상 Insert의 필수 컬럼을 요구) 호출자가 조회해둔
+   * 그룹 원본 레코드 전체를 받아 group_order 필드만 바꿔 그대로 되돌려
+   * 보낸다 — 다른 필드는 값이 그대로라 사실상 group_order만 바뀐다.
+   */
+  async updateGroupOrder(groups: DeliveryGroup[], orderById: Map<string, number>): Promise<void> {
+    if (groups.length === 0) return;
+    const rows = groups.map((g) => ({ ...g, group_order: orderById.get(g.id) ?? g.group_order }));
+    const { error } = await getSupabaseAdmin().from("delivery_groups").upsert(rows, { onConflict: "id" });
     if (error) throw error;
   },
 };

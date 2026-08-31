@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { orderShipmentsRepository, type OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { driversRepository } from "@/lib/repositories/drivers.repository";
+import { deliveryGroupsRepository } from "@/lib/repositories/delivery-groups.repository";
 import { driverShiftsRepository } from "@/lib/repositories/driver-shifts.repository";
 import { settlementsRepository } from "@/lib/repositories/settlements.repository";
 import { buildShipmentItemSummaries, type OrderItemSummary } from "@/actions/orders";
@@ -110,6 +111,56 @@ export async function unassignDriverAction(shipmentIds: string[]): Promise<Deliv
     return { ok: true, error: null };
   } catch (e) {
     return { ok: false, error: toActionError(e, "배정 해제 중 오류가 발생했습니다.") };
+  }
+}
+
+/**
+ * STEP12-8B: 배송건 하나를 소속 그룹의 기본기사와 다르게 지정한다(override
+ * 성립). assignDriverAction과 동일한 이중검증 패턴이되, override 마커를
+ * 함께 남겨 그룹 기본기사가 바뀌어도 이 배송건은 영향받지 않게 한다.
+ */
+export async function setShipmentOverrideDriverAction(shipmentId: string, driverId: string): Promise<DeliveryActionState> {
+  try {
+    const session = await requireSession();
+    if (session.role !== "admin") {
+      const driver = await driversRepository.findById(driverId);
+      if (!driver || driver.owner_username !== session.username) {
+        return { ok: false, error: "본인의 기사만 배정할 수 있습니다." };
+      }
+      const [shipment] = await orderShipmentsRepository.findByIds([shipmentId]);
+      if (!shipment || shipment.owner_username !== session.username) {
+        return { ok: false, error: "배정 권한이 없는 배송건입니다." };
+      }
+    }
+
+    await orderShipmentsRepository.setShipmentOverride(shipmentId, driverId, session.role === "admin" ? undefined : session.username);
+    revalidatePath("/delivery");
+    revalidatePath("/orders");
+    revalidatePath("/driver");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "개별 기사 지정 중 오류가 발생했습니다.") };
+  }
+}
+
+/** STEP12-8B: override를 해제하고 소속 그룹의 현재 기본기사로 되돌린다(그룹 기본기사가 없으면 배정 해제). */
+export async function clearShipmentOverrideAction(shipmentId: string): Promise<DeliveryActionState> {
+  try {
+    const session = await requireSession();
+    if (session.role !== "admin") {
+      const [shipment] = await orderShipmentsRepository.findByIds([shipmentId]);
+      if (!shipment || shipment.owner_username !== session.username) {
+        return { ok: false, error: "권한이 없는 배송건입니다." };
+      }
+    }
+
+    await orderShipmentsRepository.clearShipmentOverride(shipmentId, session.role === "admin" ? undefined : session.username);
+    revalidatePath("/delivery");
+    revalidatePath("/orders");
+    revalidatePath("/driver");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "override 해제 중 오류가 발생했습니다.") };
   }
 }
 
@@ -380,32 +431,75 @@ export async function saveDeliveryDraftAction(changes: DraftChangeInput[]): Prom
 
     const failedShipmentIds: string[] = [];
 
-    const assignGroups = new Map<string, string[]>();
-    const unassignIds: string[] = [];
+    // STEP12-8B: 그룹에 속한 배송건을 그룹의 현재 기본기사와 "다른" 기사로
+    // 바꾸는 것은 override 성립이다(그룹 기본기사가 나중에 바뀌어도 이
+    // 배송건은 그대로 유지돼야 한다) — 그 외(그룹이 없거나, 그룹 기본기사와
+    // 같은 값으로 맞추는 경우)는 기존 방식(assignDriver 일괄배정)을 그대로
+    // 쓴다. 그룹 기본기사와 같은 값으로 되돌리는 경우는 override를 확실히
+    // 지우기 위해 clearShipmentOverride(그룹 현재값으로 재동기화)를 쓴다.
+    const groupIds = Array.from(
+      new Set(currentShipments.map((s) => s.delivery_group_id).filter((id): id is string => !!id))
+    );
+    const groups = await deliveryGroupsRepository.findByIds(groupIds);
+    const groupDriverById = new Map(groups.map((g) => [g.id, g.driver_id]));
+
+    const plainAssignGroups = new Map<string, string[]>();
+    const overrideAssigns: { shipmentId: string; driverId: string }[] = [];
+    const resyncToGroupIds: string[] = [];
     for (const c of changes) {
-      if (c.driverId === undefined) continue;
-      if (c.driverId === null) unassignIds.push(c.shipmentId);
-      else {
-        const list = assignGroups.get(c.driverId) ?? [];
+      if (c.driverId === undefined || c.driverId === null) continue;
+      const cur = currentById.get(c.shipmentId);
+      const groupId = cur?.delivery_group_id ?? null;
+      const groupDriverId = groupId ? (groupDriverById.get(groupId) ?? null) : null;
+      if (groupId && groupDriverId !== c.driverId) {
+        overrideAssigns.push({ shipmentId: c.shipmentId, driverId: c.driverId });
+      } else if (groupId && cur?.override_driver_id) {
+        // 그룹 기본기사와 같은 값으로 되돌렸다 — override 마커를 지워야 다음
+        // 그룹 기본기사 변경 때 이 배송건도 다시 따라간다.
+        resyncToGroupIds.push(c.shipmentId);
+      } else {
+        const list = plainAssignGroups.get(c.driverId) ?? [];
         list.push(c.shipmentId);
-        assignGroups.set(c.driverId, list);
+        plainAssignGroups.set(c.driverId, list);
       }
     }
 
-    await Promise.all(
-      [...assignGroups.entries()].map(async ([driverId, shipmentIds]) => {
+    const unassignIds: string[] = [];
+    for (const c of changes) {
+      if (c.driverId === null) unassignIds.push(c.shipmentId);
+    }
+
+    await Promise.all([
+      ...[...plainAssignGroups.entries()].map(async ([driverId, shipmentIds]) => {
         try {
           await orderShipmentsRepository.assignDriver(shipmentIds, driverId, ownerUsername);
         } catch (e) {
           console.warn(`[saveDeliveryDraftAction] 기사(${driverId}) 배정 실패:`, e instanceof Error ? e.message : e);
           failedShipmentIds.push(...shipmentIds);
         }
-      })
-    );
+      }),
+      ...overrideAssigns.map(async ({ shipmentId, driverId }) => {
+        try {
+          await orderShipmentsRepository.setShipmentOverride(shipmentId, driverId, ownerUsername);
+        } catch (e) {
+          console.warn(`[saveDeliveryDraftAction] 개별 기사 지정(override) 실패(${shipmentId}):`, e instanceof Error ? e.message : e);
+          failedShipmentIds.push(shipmentId);
+        }
+      }),
+      ...resyncToGroupIds.map(async (shipmentId) => {
+        try {
+          await orderShipmentsRepository.clearShipmentOverride(shipmentId, ownerUsername);
+        } catch (e) {
+          console.warn(`[saveDeliveryDraftAction] 그룹 기본기사 재동기화 실패(${shipmentId}):`, e instanceof Error ? e.message : e);
+          failedShipmentIds.push(shipmentId);
+        }
+      }),
+    ]);
 
     if (unassignIds.length > 0) {
       try {
         await orderShipmentsRepository.unassignDriver(unassignIds, ownerUsername);
+        await orderShipmentsRepository.clearOverrideMarkers(unassignIds);
       } catch (e) {
         console.warn("[saveDeliveryDraftAction] 배정 해제 실패:", e instanceof Error ? e.message : e);
         failedShipmentIds.push(...unassignIds);
@@ -469,10 +563,18 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * 때문에 날짜를 파라미터로 받도록 확장 — 형식이 이상하면 조용히 오늘로
  * 폴백한다(URL을 직접 조작한 경우 등).
  */
-export async function listMyDeliveriesAction(date?: string): Promise<OrderShipmentBoardRow[]> {
+export interface MyDeliveriesResult {
+  orders: OrderShipmentBoardRow[];
+  /** STEP12-8E(CPO 작업지시): 기사 카드에 상품 전체를 보여주기 위한 배송건별 요약. */
+  itemSummaries: Record<string, OrderItemSummary>;
+}
+
+export async function listMyDeliveriesAction(date?: string): Promise<MyDeliveriesResult> {
   const { driverId } = await requireDriverSession();
   const targetDate = date && ISO_DATE_RE.test(date) ? date : kstTodayIso();
-  return orderShipmentsRepository.findByDriverIdAndDeliveryDate(driverId, targetDate);
+  const orders = await orderShipmentsRepository.findByDriverIdAndDeliveryDate(driverId, targetDate);
+  const itemSummaries = await buildShipmentItemSummaries(orders);
+  return { orders, itemSummaries };
 }
 
 export interface MarkDeliveredResult extends DeliveryActionState {

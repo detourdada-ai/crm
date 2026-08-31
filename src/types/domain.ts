@@ -265,6 +265,8 @@ export interface DeliveryGroup {
   representative_eupmyeondong: string | null;
   driver_id: UUID | null;
   radius_meters: number;
+  /** STEP12-8B: 그룹 표시순서(Drag&Drop). null이면 group_no 순서로 폴백. */
+  group_order: number | null;
   created_at: ISODateString;
   updated_at: ISODateString;
 }
@@ -291,6 +293,8 @@ export interface OrderShipment {
   route_order: number | null;
   /** P4C Phase3 STEP5: true면 배송그룹 재계산(클러스터링) 대상에서 제외된다(수동분리). */
   delivery_group_locked: boolean;
+  /** STEP12-8B: null이 아니면 이 배송건이 소속 그룹의 기본기사와 의도적으로 다르다는 표시(override). driver_id가 실제 담당기사 단일 진실 소스인 건 동일. */
+  override_driver_id: UUID | null;
   created_at: ISODateString;
   updated_at: ISODateString;
 }

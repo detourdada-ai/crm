@@ -28,6 +28,8 @@ export interface OrderShipmentBoardRow extends Order {
   route_order: number | null;
   /** P4C Phase3 STEP5: 수동분리(그룹 재계산 대상 제외) 여부. */
   delivery_group_locked: boolean;
+  /** STEP12-8B: null이 아니면 그룹 기본기사와 의도적으로 다르게 지정된 override. */
+  override_driver_id: string | null;
 }
 
 function toBoardRows(shipments: OrderShipment[], orders: Order[]): OrderShipmentBoardRow[] {
@@ -51,6 +53,7 @@ function toBoardRows(shipments: OrderShipment[], orders: Order[]): OrderShipment
       delivery_group_id: s.delivery_group_id,
       route_order: s.route_order,
       delivery_group_locked: s.delivery_group_locked,
+      override_driver_id: s.override_driver_id,
     });
   }
   return rows;
@@ -760,6 +763,58 @@ export const orderShipmentsRepository = {
     }
     await syncOrdersFromShipments(orderIdsToSync);
     return { autoReturnedCount };
+  },
+
+  /**
+   * STEP12-8B: 배송건 하나를 그룹 기본기사와 다르게 지정한다(override 성립).
+   * 기존 assignDriver()의 route_order 정규화/알림/이중검증을 그대로 재사용
+   * 하고, override 마커(override_driver_id)만 추가로 남긴다.
+   */
+  async setShipmentOverride(shipmentId: string, driverId: string, ownerUsername?: string): Promise<void> {
+    await this.assignDriver([shipmentId], driverId, ownerUsername);
+    const { error } = await getSupabaseAdmin().from("order_shipments").update({ override_driver_id: driverId }).eq("id", shipmentId);
+    if (error) throw error;
+  },
+
+  /**
+   * STEP12-8B: override를 해제하고 소속 그룹의 현재 기본기사로 재동기화한다.
+   * 그룹에 기본기사가 없거나 그룹 자체가 없으면 배정을 해제한다
+   * (unassignDriver와 동일한 규칙 — 완료/취소 건은 그대로 막힌다).
+   */
+  async clearShipmentOverride(shipmentId: string, ownerUsername?: string): Promise<void> {
+    const admin = getSupabaseAdmin();
+    let q = admin.from("order_shipments").select("id, delivery_group_id, owner_username").eq("id", shipmentId);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data: shipment, error: shipmentError } = await q.maybeSingle();
+    if (shipmentError) throw shipmentError;
+    if (!shipment) throw new Error("배송건을 찾을 수 없거나 권한이 없습니다.");
+
+    let groupDriverId: string | null = null;
+    if (shipment.delivery_group_id) {
+      const { data: group, error: groupError } = await admin
+        .from("delivery_groups")
+        .select("driver_id")
+        .eq("id", shipment.delivery_group_id)
+        .maybeSingle();
+      if (groupError) throw groupError;
+      groupDriverId = group?.driver_id ?? null;
+    }
+
+    if (groupDriverId) {
+      await this.assignDriver([shipmentId], groupDriverId, ownerUsername);
+    } else {
+      await this.unassignDriver([shipmentId], ownerUsername);
+    }
+
+    const { error } = await admin.from("order_shipments").update({ override_driver_id: null }).eq("id", shipmentId);
+    if (error) throw error;
+  },
+
+  /** STEP12-8B: 배정 해제(unassignDriver)된 배송건의 override 마커를 함께 지운다 — driver_id는 이미 null이라 override_driver_id를 남겨두면 다음 그룹 기본기사 배정 때 혼란을 준다. */
+  async clearOverrideMarkers(shipmentIds: string[]): Promise<void> {
+    if (shipmentIds.length === 0) return;
+    const { error } = await getSupabaseAdmin().from("order_shipments").update({ override_driver_id: null }).in("id", shipmentIds);
+    if (error) throw error;
   },
 
   /** 기사 세션에서 배송건 하나를 완료 처리한다. driverId가 주어지면 본인에게 배정된 배송건만 대상이 된다. */

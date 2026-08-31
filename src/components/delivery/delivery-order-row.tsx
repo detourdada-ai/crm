@@ -25,6 +25,7 @@ import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
 import { kstTodayIso } from "@/lib/utils/kst-date";
 import { DriverAssignInline } from "@/components/delivery/driver-assign-inline";
 import { separateShipmentFromGroupAction, restoreShipmentToGroupingAction } from "@/actions/delivery-groups";
+import { clearShipmentOverrideAction } from "@/actions/delivery";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 import type { Driver, DeliveryStatus } from "@/types/domain";
@@ -144,6 +145,8 @@ export function DeliveryOrderRow({
               onBagReturnedChange={onBagReturnedChange}
             />
           ) : null}
+          {/* STEP12-8B: 그룹 기본기사와 다르게 개별 지정된 배송건임을 표시하고, 되돌릴 수 있게 한다. */}
+          {order.delivery_group_id && order.override_driver_id ? <RestoreToGroupDriverControl shipmentId={order.rowKey} /> : null}
           {/* STEP5-D/E: 수동분리/분리해제는 그룹 소속 여부로만 노출한다 — 배송상태/기사배정과 무관하게 항상 가능하다. */}
           {order.delivery_group_locked ? (
             <RestoreFromSeparationControl shipmentId={order.rowKey} />
@@ -318,15 +321,51 @@ function RestoreFromSeparationControl({ shipmentId }: { shipmentId: string }) {
   );
 }
 
-/** F-P4UX: 상품명(1순위, 1줄 말줄임) + 수량(2순위, 항상 보임). */
-function ItemSummaryBlock({ summary }: { summary: OrderItemSummary | undefined }) {
-  if (!summary) return <span className="text-sm text-muted-foreground">-</span>;
+/** STEP12-8B: 개별 override를 해제하고 그룹의 현재 기본기사로 되돌린다 — 되돌릴 수 있는 가벼운 조작이라 확인 없이 바로 실행한다(RestoreFromSeparationControl과 동일한 원칙). */
+function RestoreToGroupDriverControl({ shipmentId }: { shipmentId: string }) {
+  const [isPending, startTransition] = useTransition();
+
+  function restore() {
+    startTransition(async () => {
+      const result = await clearShipmentOverrideAction(shipmentId);
+      if (!result.ok) {
+        toast.error(result.error ?? "그룹 기본기사로 되돌리는 중 오류가 발생했습니다.");
+        return;
+      }
+      toast.success("그룹 기본기사로 되돌렸습니다.");
+    });
+  }
+
   return (
-    <span className="flex items-baseline gap-1.5">
-      <span className="max-w-48 truncate text-text-strong" title={summary.productSummary}>
-        {summary.productSummary}
-      </span>
-      <span>· 총 {summary.totalQuantity}개</span>
+    <button
+      type="button"
+      disabled={isPending}
+      onClick={restore}
+      className="text-xs text-primary underline-offset-2 hover:underline disabled:opacity-60"
+      title="이 배송건은 그룹 기본기사와 다르게 개별 지정되어 있습니다."
+    >
+      {isPending ? "되돌리는 중..." : "개별지정 · 그룹기사로 되돌리기"}
+    </button>
+  );
+}
+
+/**
+ * STEP12-8C(CPO 작업지시): "상품A 외 N건" 축약 대신 상품 전체를 보여준다 —
+ * 배송기사에게 물건을 넘길 때 카드만 보고 몇 개를 챙겨야 하는지 바로 알아야
+ * 하기 때문(축약된 정보는 결국 주문상세를 다시 열어 확인해야 했다).
+ */
+function ItemSummaryBlock({ summary }: { summary: OrderItemSummary | undefined }) {
+  if (!summary || summary.productLines.length === 0) return <span className="text-sm text-muted-foreground">-</span>;
+  return (
+    <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+      {summary.productLines.map((line, idx) => (
+        <span key={`${line.productName}-${idx}`} className="text-text-strong">
+          {line.productName}
+          {line.quantity > 1 ? <span className="text-muted-foreground"> x{line.quantity}</span> : null}
+          {idx < summary.productLines.length - 1 ? <span className="text-muted-foreground">,</span> : null}
+        </span>
+      ))}
+      <span className="text-muted-foreground">· 총 {summary.totalQuantity}개</span>
     </span>
   );
 }
