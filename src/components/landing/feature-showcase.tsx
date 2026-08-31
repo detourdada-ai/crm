@@ -16,7 +16,7 @@ const ORDER_ROWS: PreviewTableRow[] = [
 /** 실제 화면 — 주문관리. */
 function OrdersPreview() {
   return (
-    <ProductPreview screen="주문관리" showPreviewLabel>
+    <ProductPreview screen="주문관리">
       <div className="flex flex-wrap gap-2 text-xs">
         <span className="rounded-full bg-primary px-3 py-1.5 font-medium text-primary-foreground">전체</span>
         <span className="rounded-full bg-muted px-3 py-1.5 font-medium text-muted-foreground">신규</span>
@@ -40,7 +40,7 @@ function CustomersPreview() {
   const customer = CUSTOMERS[selected];
 
   return (
-    <ProductPreview screen="고객관리" showPreviewLabel>
+    <ProductPreview screen="고객관리">
       <div className="flex gap-2">
         {CUSTOMERS.map((c, i) => (
           <button
@@ -90,7 +90,7 @@ function DeliveryPreview() {
   const [groupChecked, setGroupChecked] = useState(true);
 
   return (
-    <ProductPreview screen="배송관리" showPreviewLabel>
+    <ProductPreview screen="배송관리">
       <div className="grid grid-cols-3 gap-2 text-center">
         <PreviewStat label="배송 대기" value="8" />
         <PreviewStat label="배송중" value="5" />
@@ -168,7 +168,7 @@ function DriverAppPreview() {
   const [running, setRunning] = useState(false);
 
   return (
-    <ProductPreview screen="기사 앱" showPreviewLabel>
+    <ProductPreview screen="기사 앱">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground">오늘 배송 5건 · 남음 3건</p>
         <Button size="sm" variant={running ? "outline" : "default"} className="h-7 gap-1.5 text-xs" onClick={() => setRunning((v) => !v)}>
@@ -214,7 +214,7 @@ const DRIVER_LOCATIONS = [
  */
 function DeliveryStatusPreview() {
   return (
-    <ProductPreview screen="배송 현황" showPreviewLabel>
+    <ProductPreview screen="배송 현황">
       <div className="grid grid-cols-3 gap-2 text-center">
         <PreviewStat label="배송 대기" value="8" />
         <PreviewStat label="배송중" value="5" />
@@ -245,7 +245,7 @@ function SettlementPreview() {
   const [selected, setSelected] = useState<string | null>(null);
 
   return (
-    <ProductPreview screen="정산관리" showPreviewLabel>
+    <ProductPreview screen="정산관리">
       <div className="grid grid-cols-2 gap-3">
         <PreviewStat label="정산 대기" value="₩1,240,000" />
         <PreviewStat label="정산 완료" value="₩3,820,000" />
@@ -289,48 +289,79 @@ function SettlementPreview() {
 
 interface SubScreen {
   label: string;
+  /** 화면 위에 붙는 한 줄 소개. */
+  lead: string;
+  /** 화면 아래 붙는 한 줄 업무 효과("→"로 시작). */
+  result: string;
   node: ReactNode;
 }
 
 interface WorkflowGroup {
   label: string;
-  headline: string;
-  description: string;
   screens: SubScreen[];
 }
 
 /**
- * STEP12-5(CPO 작업지시, 2026-08-31) — STEP12-4에서 6개 기능을 3개로
- * "압축"했더니 첫 방문자에게 "고객관리는? 정산은?" 처럼 기능이 사라진
- * 것처럼 보인다는 CPO 2차 검수 지적을 반영한다. 큰 구조는 3개 업무
- * 흐름으로 유지하되, 그 안에서 6개 실제 화면을 전부 다시 노출한다
- * (탭으로 전환). 배송관리는 가장 중요한 화면이라 단독으로 크게 보여주고,
- * 나머지 그룹은 화면 2~3개를 작은 서브탭으로 오갈 수 있게 한다.
+ * STEP12-6(CPO 작업지시, 2026-08-31) — STEP12-5에서 6개 화면을 전부
+ * 복구한 판단은 맞았지만, 그룹마다 고정된 긴 설명 문단(headline+
+ * description)이 화면이 바뀌어도 그대로 남아있어 "화면당 텍스트 반복"
+ * 이라는 새로운 문제가 생겼다는 CPO 2차 검수 지적을 반영한다. 그룹
+ * 단위 설명 문단을 없애고, 화면 하나마다 "한 줄 소개 + 실제 화면 +
+ * 한 줄 결과"로 통일한다(CPO 예시: "오늘 보낼 주문을 바로 정리합니다 /
+ * [배송관리 화면] / → 기사 배정과 가방번호를 한 번에 입력하고, 확인 후
+ * 한 번에 저장합니다"). 큰 구조(3개 업무 흐름 탭 + 그 안의 서브탭)는
+ * 그대로 유지 — 문제는 6개 기능이 아니라 화면당 반복되는 설명 분량이었다.
  */
 const WORKFLOW_GROUPS: WorkflowGroup[] = [
   {
     label: "주문이 모입니다",
-    headline: "주문 접수 + 고객 관리",
-    description: "여러 곳에서 들어오는 주문을 한곳에 모으고, 주문할수록 고객 정보와 주문 이력이 함께 쌓입니다.",
     screens: [
-      { label: "주문관리", node: <OrdersPreview /> },
-      { label: "고객관리", node: <CustomersPreview /> },
+      {
+        label: "주문관리",
+        lead: "여러 곳에서 들어오는 주문을 한 화면에 모읍니다.",
+        result: "→ 신규/처리중 상태별로 바로 확인하고 처리합니다.",
+        node: <OrdersPreview />,
+      },
+      {
+        label: "고객관리",
+        lead: "주문할수록 고객 정보와 주문 이력이 함께 쌓입니다.",
+        result: "→ 재주문 고객을 한눈에 알아보고 이력을 확인합니다.",
+        node: <CustomersPreview />,
+      },
     ],
   },
   {
     label: "배송이 정리됩니다",
-    headline: "배송 관리",
-    description: "오늘 배송할 주문을 모아보고, 기사 배정과 가방 관리까지 한 화면에서 정리합니다.",
-    screens: [{ label: "배송관리", node: <DeliveryPreview /> }],
+    screens: [
+      {
+        label: "배송관리",
+        lead: "오늘 보낼 주문을 바로 정리합니다.",
+        result: "→ 기사 배정과 가방번호를 한 번에 입력하고, 확인 후 한 번에 저장합니다.",
+        node: <DeliveryPreview />,
+      },
+    ],
   },
   {
     label: "배송이 끝까지 이어집니다",
-    headline: "기사 앱 + 배송 현황 + 정산",
-    description: "사장님이 정리한 배송 정보는 기사님에게 바로 전달되고, 배송 진행부터 완료 후 정산까지 이어서 관리합니다.",
     screens: [
-      { label: "기사 앱", node: <DriverAppPreview /> },
-      { label: "배송 현황", node: <DeliveryStatusPreview /> },
-      { label: "정산관리", node: <SettlementPreview /> },
+      {
+        label: "기사 앱",
+        lead: "정리된 배송은 기사님에게 그대로 전달됩니다.",
+        result: "→ 오늘 배송을 순서대로 확인하고 배송완료를 바로 처리합니다.",
+        node: <DriverAppPreview />,
+      },
+      {
+        label: "배송 현황",
+        lead: "배송이 진행되는 상황을 확인할 수 있습니다.",
+        result: "→ 기사별 운행 상태와 마지막 갱신 시각을 확인합니다.",
+        node: <DeliveryStatusPreview />,
+      },
+      {
+        label: "정산관리",
+        lead: "배송이 끝나면 정산까지 이어집니다.",
+        result: "→ 기사별 정산 금액을 확정하고 이력을 관리합니다.",
+        node: <SettlementPreview />,
+      },
     ],
   },
 ];
@@ -404,21 +435,16 @@ export function FeatureShowcase() {
                 )}
               >
                 <p className={cn("text-base font-bold", i === active ? "text-primary" : "text-text-strong")}>{group.label}</p>
-                <p className="mt-1.5 text-xs text-muted-foreground">{group.headline}</p>
+                <p className="mt-1.5 text-xs text-muted-foreground">{group.screens.map((s) => s.label).join(" · ")}</p>
               </button>
             ))}
           </div>
 
-          {/* 오른쪽(모바일은 전체 폭): 선택된 업무 흐름의 실제 화면(들) */}
+          {/* 오른쪽(모바일은 전체 폭): 선택된 업무 흐름의 실제 화면(들) — 화면 하나마다 한 줄 소개 + 화면 + 한 줄 결과로 통일한다(STEP12-6). */}
           <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-            <div className="text-center sm:text-left">
-              <span className="text-xs font-semibold tracking-wide text-primary uppercase">{current.headline}</span>
-              <p className="mt-1 text-sm font-medium text-text-strong">{current.description}</p>
-            </div>
-
             {/* 업무 흐름 안의 실제 화면이 2개 이상이면 작은 서브탭으로 전환(배송관리는 1개라 노출 안 됨) */}
             {current.screens.length > 1 ? (
-              <div className="mt-4 flex gap-1.5">
+              <div className="flex gap-1.5">
                 {current.screens.map((screen, i) => (
                   <button
                     key={screen.label}
@@ -437,10 +463,16 @@ export function FeatureShowcase() {
               </div>
             ) : null}
 
+            <p className={cn("text-center text-sm font-medium text-text-strong sm:text-left", current.screens.length > 1 && "mt-4")}>
+              {currentScreen.lead}
+            </p>
+
             <div className="relative mt-4">
               <div aria-hidden className="absolute inset-6 -z-10 rounded-full bg-primary/10 blur-3xl" />
               {currentScreen.node}
             </div>
+
+            <p className="mt-3 text-center text-xs font-medium text-primary sm:text-left">{currentScreen.result}</p>
 
             <div className="mt-4 flex justify-center gap-1.5 sm:hidden">
               {WORKFLOW_GROUPS.map((group, i) => (

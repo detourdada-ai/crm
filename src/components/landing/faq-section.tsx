@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // STEP12-5(CPO 작업지시, 2026-08-31) — STEP12-4에서 12개→5개로 줄인 것은
@@ -10,6 +11,10 @@ import { cn } from "@/lib/utils";
 // CPO 2차 검수 지적을 반영해 10개로 복구한다(주문/고객/배송/도입 4개 축).
 // 구현되지 않은 자동 연동/자동화를 암시하는 답변은 넣지 않는다(카카오톡
 // 자동 연동 없음, 자동 고객 병합 없음, 실시간 GPS 추적 없음).
+//
+// STEP12-6(CPO 작업지시, 2026-08-31) — 질문 내용(10개)은 그대로 유지하되,
+// 첫 화면에는 가장 자주 묻는 6개만 보이고 나머지는 "더 많은 질문 보기"로
+// 펼치게 한다(첫 화면 스크롤 길이 축소 목적, 질문 삭제 아님).
 const FAQS = [
   {
     q: "전화 주문도 관리할 수 있나요?",
@@ -28,16 +33,16 @@ const FAQS = [
     a: "네, 스마트스토어 전용 양식이 아닌 임의의 엑셀 양식도 컬럼을 매핑해 등록할 수 있고, 한 번 설정한 매핑은 다음에도 그대로 재사용됩니다.",
   },
   {
-    q: "같은 고객이 여러 번 주문하면 어떻게 관리되나요?",
-    a: "이름·전화번호·주소가 정확히 일치하면 자동으로 같은 고객으로 연결되어 주문 이력이 쌓입니다.",
-  },
-  {
     q: "배송기사는 어떻게 주문을 확인하나요?",
     a: "기사는 모바일 기사 앱에서 오늘 배정된 배송을 순서대로 확인하고, 배송완료 처리를 바로 합니다.",
   },
   {
     q: "여러 명의 기사를 관리할 수 있나요?",
     a: "네, 여러 명의 기사를 등록하고 배송건마다 담당 기사를 지정해 관리할 수 있습니다.",
+  },
+  {
+    q: "같은 고객이 여러 번 주문하면 어떻게 관리되나요?",
+    a: "이름·전화번호·주소가 정확히 일치하면 자동으로 같은 고객으로 연결되어 주문 이력이 쌓입니다.",
   },
   {
     q: "배송 진행 상황을 확인할 수 있나요?",
@@ -52,6 +57,8 @@ const FAQS = [
     a: "네, 현재 주문을 어떻게 받고 배송하고 있는지 알려주시면 담당자가 확인 후 맞는 방식인지 함께 검토해드립니다.",
   },
 ];
+
+const INITIAL_VISIBLE_COUNT = 6;
 
 function FaqRow({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
@@ -78,15 +85,27 @@ function FaqRow({ q, a }: { q: string; a: string }) {
 }
 
 export function FaqSection() {
+  const [showAll, setShowAll] = useState(false);
+  const visibleFaqs = showAll ? FAQS : FAQS.slice(0, INITIAL_VISIBLE_COUNT);
+  const hiddenCount = FAQS.length - INITIAL_VISIBLE_COUNT;
+
   return (
     <section className="bg-secondary/30 py-20">
       <div className="mx-auto max-w-2xl px-4 sm:px-6">
         <h2 className="text-center text-2xl font-bold text-text-strong sm:text-3xl">자주 묻는 질문</h2>
         <div className="mt-10 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          {FAQS.map((faq) => (
+          {visibleFaqs.map((faq) => (
             <FaqRow key={faq.q} q={faq.q} a={faq.a} />
           ))}
         </div>
+        {hiddenCount > 0 ? (
+          <div className="mt-4 text-center">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? "질문 접기" : `더 많은 질문 보기 (${hiddenCount})`}
+              <ChevronDown className={cn("size-3.5 transition-transform duration-200", showAll && "rotate-180")} />
+            </Button>
+          </div>
+        ) : null}
       </div>
     </section>
   );

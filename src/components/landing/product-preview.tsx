@@ -16,15 +16,12 @@ export function ProductPreview({
   children,
   className,
   withSidebar = false,
-  showPreviewLabel = false,
 }: {
   /** 화면 이름만 전달한다 — "주문:한장 · " 접두사는 컴포넌트가 붙인다 (예: "대시보드" → "주문:한장 · 대시보드"). */
   screen: string;
   children: ReactNode;
   className?: string;
   withSidebar?: boolean;
-  /** 실제 SaaS 데이터가 아니라 랜딩용 제품 시연임을 명확히 하는 작은 라벨. */
-  showPreviewLabel?: boolean;
 }) {
   return (
     <div
@@ -62,11 +59,6 @@ export function ProductPreview({
         ) : null}
         <div className="flex-1 p-5 sm:p-8">{children}</div>
       </div>
-      {showPreviewLabel ? (
-        <span className="pointer-events-none absolute right-3 bottom-3 rounded-full bg-secondary/90 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-          제품 미리보기
-        </span>
-      ) : null}
     </div>
   );
 }
