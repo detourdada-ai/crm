@@ -19,7 +19,7 @@ export interface LoginActionState {
 export async function loginAction(_prevState: LoginActionState, formData: FormData): Promise<LoginActionState> {
   const username = String(formData.get("username") || "").trim();
   const password = String(formData.get("password") || "");
-  const redirectTo = String(formData.get("redirectTo") || "/");
+  const requestedRedirect = String(formData.get("redirectTo") || "");
 
   if (!username || !password) {
     return { error: "아이디와 비밀번호를 입력해주세요." };
@@ -36,7 +36,13 @@ export async function loginAction(_prevState: LoginActionState, formData: FormDa
   await ensureSupabaseAuthLinked(account.username, password);
 
   await setSessionCookie(account.username, account.role);
-  redirect(redirectTo.startsWith("/") ? redirectTo : "/");
+
+  // STEP12-7(CPO 작업지시, 2026-08-31): 로그인 폼이 명시적 딥링크(예: 세션
+  // 만료로 다시 로그인해 원래 보던 페이지로 돌아가는 경우)를 넘겼으면 그걸
+  // 존중하고, 아니면 role별 기본 목적지로 보낸다 — 기사가 사장님용
+  // /dashboard에 먼저 떨어져 "오늘 배송이 없나?"로 혼동하던 문제 수정.
+  const roleDefault = account.role === "driver" ? "/driver" : "/dashboard";
+  redirect(requestedRedirect.startsWith("/") ? requestedRedirect : roleDefault);
 }
 
 export async function logoutAction(): Promise<void> {

@@ -68,27 +68,17 @@ export function getMapped(row: Record<string, unknown>, mapping: ColumnMapping, 
 }
 
 /**
- * 배송관리 UX 회귀 복구 + 엑셀 안정화 (정정판) PART 3: `e instanceof Error`만
- * 확인하면 Supabase/Postgrest 오류(예: unique 제약 위반)가 전부 "알 수 없는
- * 오류"로 뭉개진다 — PostgrestError는 Error를 상속하지 않는 평범한 객체지만
- * message 필드는 실제 DB 오류 문구를 그대로 담고 있다(예: "duplicate key
- * value violates unique constraint..."). error_log에 실제 원인이 남도록
- * Error 인스턴스가 아니어도 message 필드가 문자열이면 그대로 사용한다.
+ * STEP12-7(CPO 작업지시, 2026-08-31): 이 함수가 호출되는 지점은 전부 "예상
+ * 가능한 오류"(주문번호 중복, 필수값 누락 등)를 이미 개별 분기에서 사장님용
+ * 문구로 처리하고 남은 catch-all 경로다 — 즉 여기 도달하는 예외는 정의상
+ * "예상하지 못한" 오류이므로, Postgres/Postgrest 원문(예: "duplicate key
+ * value violates unique constraint...", 컬럼명, tenant_id 등)을 사장님
+ * 화면에 그대로 노출하면 안 된다. 실제 원문은 서버 로그(console.error)에만
+ * 남기고, 사용자에게는 항상 안전한 일반 문구를 반환한다.
  */
 function errorMessageOf(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (e && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string") {
-    const base = (e as { message: string }).message;
-    // PostgrestError는 실제로 충돌한 값(예: "Key (order_number)=(2026...)
-    // already exists.")을 message가 아니라 details에 담는다 — 실패 원인을
-    // "무엇이" 충돌했는지까지 보여주려면 있을 때 함께 붙여야 한다.
-    const details = (e as { details?: unknown }).details;
-    if (typeof details === "string" && details.trim() && details !== base) {
-      return `${base} (${details})`;
-    }
-    return base;
-  }
-  return "알 수 없는 오류";
+  console.error("[import] 예상하지 못한 처리 오류:", e);
+  return "주문을 처리하는 중 오류가 발생했습니다. 다시 시도해주세요.";
 }
 
 export function cellToString(value: unknown): string {

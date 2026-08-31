@@ -25,8 +25,10 @@ export default async function LoginPage({
 }) {
   // Sprint 14-I UI/UX 리뉴얼 2차 (Phase UI-3): 이미 로그인된 사용자가
   // /login에 접근하면 바로 업무 화면으로 — 로그인 폼을 다시 보여주지 않는다.
+  // STEP12-7(CPO 작업지시, 2026-08-31): 기사 계정은 사장님용 /dashboard가
+  // 아니라 본인 배송 목록인 /driver로 보내야 한다.
   const session = await getSession();
-  if (session) redirect("/dashboard");
+  if (session) redirect(session.role === "driver" ? "/driver" : "/dashboard");
 
   const { from, error } = await searchParams;
   const googleError = error ? GOOGLE_ERROR_MESSAGES[error] : null;
@@ -42,7 +44,11 @@ export default async function LoginPage({
           <CardDescription className="sr-only">주문:한장 계정으로 로그인하세요.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <LoginForm redirectTo={from && from.startsWith("/") ? from : "/dashboard"} />
+          {/* STEP12-7: 명시적 딥링크(from)가 없으면 빈 문자열을 넘긴다 —
+              로그인 전에는 계정의 role을 알 수 없으므로, role별 기본 목적지
+              (사장님 /dashboard vs 기사 /driver) 판단은 인증 이후 loginAction이
+              한다. */}
+          <LoginForm redirectTo={from && from.startsWith("/") ? from : ""} />
 
           {GOOGLE_LOGIN_VISIBLE ? (
             <>
