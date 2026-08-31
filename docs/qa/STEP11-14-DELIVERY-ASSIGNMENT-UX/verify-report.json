@@ -1,0 +1,90 @@
+{
+  "gateId": "STEP11-14-DELIVERY-ASSIGNMENT-UX",
+  "timestamp": "2026-08-31",
+  "commit": "1a457968a0b27c43b2f73cb2f4d364e3d3404123",
+  "baseUrl": "https://jumunhanjang.vercel.app",
+  "ctoFinal": "PASS",
+  "codeChanges": [
+    "1a45796 feat(delivery): STEP11-14 — 배송관리 기사배정 UX 정리 + 최신 공지 1건 노출"
+  ],
+  "sections": {
+    "A_deployment_integrity": {
+      "localHead": "1a457968a0b27c43b2f73cb2f4d364e3d3404123",
+      "originMainHead": "1a457968a0b27c43b2f73cb2f4d364e3d3404123",
+      "vercelCommitStatus": "success",
+      "result": "PASS"
+    },
+    "B_ux_role_separation_scenarios": {
+      "script": "step11-14-delivery-assignment-ux.ts",
+      "scenarios": {
+        "UI_bulk_bar_hidden_when_nothing_selected": { "pass": 1, "total": 1 },
+        "A_individual_input_no_server_wait": { "pass": 2, "total": 2 },
+        "D_mixed_group_checkbox_individual": { "pass": 8, "total": 8 },
+        "E_correction_final_value_wins": { "pass": 2, "total": 2 },
+        "F_clear_selection_returns_to_individual_mode": { "pass": 3, "total": 3 }
+      },
+      "runs": {
+        "local": { "pass": 16, "total": 16 },
+        "production": { "pass": 16, "total": 16 }
+      },
+      "result": "PASS"
+    },
+    "C_step11_13_regression": {
+      "script": "step11-13-draft-batch-save.ts",
+      "note": "no server logic touched this gate; button label kept 'ilgwal jeogyong' as substring for QA locator compatibility",
+      "runs": {
+        "local": { "pass": 38, "total": 38 },
+        "production": { "pass": 38, "total": 38, "note150": "I2 150-shipment save: 32805ms, 1 server request, 100% accurate" }
+      },
+      "result": "PASS"
+    },
+    "D_announcement_feature": {
+      "description": "Latest-published-only announcement display + detail-page back link, published via real admin UI flow (createAnnouncementAction), not direct DB insert",
+      "content": {
+        "title": "📢 배송관리 기능이 더 편리해졌습니다",
+        "category": "기능개선",
+        "showPopup": true
+      },
+      "checks": {
+        "login_popup_shows_latest": "PASS",
+        "popup_detail_link_navigates": "PASS",
+        "detail_page_back_link_exists": "PASS",
+        "back_link_navigates_to_list": "PASS",
+        "announcements_page_shows_exactly_one": "PASS",
+        "no_click_through_needed_body_visible": "PASS",
+        "mobile_390px_renders_correctly": "PASS",
+        "admin_only_tab_not_visible_to_regular_user": "PASS"
+      },
+      "environment": "production",
+      "totals": { "pass": 8, "total": 8 },
+      "result": "PASS"
+    },
+    "E_static_gates": {
+      "tsc": "0 errors",
+      "eslint": "0 errors, 0 warnings",
+      "build": "success"
+    }
+  },
+  "totals": { "pass": 116, "total": 116, "regressions": 0 },
+  "newDefectsFound": [],
+  "testScriptBugsFoundAndFixed": [
+    {
+      "description": "Bulk-bar-visible check used ambiguous 'N건 선택' substring text match, false-matched group header labels",
+      "fix": "Switched to checking presence of the unique '선택 해제' button"
+    },
+    {
+      "description": "Scenario D expected 6 draft changes but actual was 7 because Scenario A's individual change was never saved before D began",
+      "fix": "Corrected expectation to 7 — app behavior was already correct"
+    },
+    {
+      "description": "Announcement detail-page back-link check failed transiently due to Radix Dialog's async aria-hidden removal on close",
+      "fix": "Switched from role-based locator to DOM text locator with a short wait, matching documented pattern in qa-popup-guard.ts"
+    }
+  ],
+  "outOfScopeConfirmedUnchanged": [
+    "STEP11-13 Draft/batch-save server actions (assignDriverAction, bulk_update_shipment_bag RPC) — no diff",
+    "Delivery grouping algorithm (STEP11-11) — no diff",
+    "Geocoding — no diff"
+  ],
+  "qaDataCleanup": "step11-14-delivery-assignment-ux.ts and step11-13-draft-batch-save.ts self-cleaned via finally blocks against user3 (QA-safe tenant) only. One-off admin-create/verify scripts for the announcement were deleted after use (not part of permanent suite); the announcement content itself is real, intended, permanent production content published via the admin UI (not QA scratch data) and was not reverted."
+}
