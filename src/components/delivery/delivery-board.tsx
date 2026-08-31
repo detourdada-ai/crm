@@ -12,7 +12,6 @@ import {
   saveDeliveryDraftAction,
   type DraftChangeInput,
 } from "@/actions/delivery";
-import { assignGroupDriverAction } from "@/actions/delivery-groups";
 import { listCandidateDriverIdsForOrdersAction } from "@/actions/driver-regions";
 import type { OrderItemSummary } from "@/actions/orders";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
@@ -101,6 +100,10 @@ export function DeliveryBoard({
   // 호출하므로 서버 로직/정규화는 완전히 동일하다(CPO 지시: 충돌 없이 교체
   // 겸 추가 — 기존 QA가 의존하는 ↑/↓ 버튼은 그대로 남겨 회귀 위험을 없앤다).
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // STEP12-8F(CPO 작업지시 v2): 그룹 카드는 기본 접힘 — 펼친 그룹의 id만
+  // 담아둔다(빈 Set = 전부 접힘). 그룹 순서 재배열(R11)도 이 배열 순서를
+  // 그대로 쓴다.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [bulkDriverId, setBulkDriverId] = useState("");
   const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
   const [isPending, startTransition] = useTransition();
@@ -227,36 +230,54 @@ export function DeliveryBoard({
     return map;
   }, [currentlyDisplayedOrders]);
 
-  // STEP12-8C: 그룹 헤더의 "담당기사" select에 보여줄 현재값 — 멤버 전원이
-  // 같은 기사면 그 기사, 아니면(배정 전 섞임/override로 갈림) 비워서
-  // "혼합"으로 보이게 한다. override 건수도 함께 세어 헤더에 안내한다.
+  // STEP12-8F(CPO 작업지시 v2, R09): 그룹 헤더의 "담당기사" select에 보여줄
+  // 현재값 — Draft가 있으면 Draft 반영값(applyDraftToOrder) 기준으로 계산해
+  // 저장 전에도 select가 방금 고른 값을 그대로 보여준다. override 여부는
+  // 서버값(override_driver_id, Draft로 바뀌지 않는 필드)만 본다.
   const groupDriverInfo = useMemo(() => {
-    const map = new Map<string, { driverId: string; overrideCount: number } | { driverId: null; overrideCount: number }>();
+    const map = new Map<string, { driverId: string | null; overrideCount: number }>();
     for (const [groupId, memberIds] of groupMemberRowKeys) {
       const members = memberIds.map((id) => orderByRowKey.get(id)).filter((o): o is OrderShipmentBoardRow => !!o);
       const overrideCount = members.filter((m) => m.override_driver_id).length;
-      const distinctDriverIds = new Set(members.map((m) => m.driver_id));
+      const effectiveDriverIds = members.map((m) => applyDraftToOrder(m).driver_id);
+      const distinctDriverIds = new Set(effectiveDriverIds);
       const driverId = distinctDriverIds.size === 1 ? [...distinctDriverIds][0] : null;
-      map.set(groupId, { driverId, overrideCount } as never);
+      map.set(groupId, { driverId, overrideCount });
     }
     return map;
-  }, [groupMemberRowKeys, orderByRowKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyDraftToOrder는 drafts에 대한 클로저이므로 drafts를 직접 의존성으로 둔다.
+  }, [groupMemberRowKeys, orderByRowKey, drafts]);
 
-  const [groupAssignPending, setGroupAssignPending] = useState<string | null>(null);
+  /**
+   * STEP12-8F(R09): 그룹 기본기사 지정은 더 이상 즉시 서버에 반영하지 않는다
+   * — 그룹의 각 멤버(override 없는 건만, 완료/취소 제외)에 Draft를 쌓아두고
+   * "변경사항 저장"을 눌러야 실제로 반영된다. saveDeliveryDraftAction이
+   * 이미 override 여부에 따라 setShipmentOverride/assignDriver를 알아서
+   * 분기하므로(STEP12-8B), 여기서는 순수하게 Draft만 채우면 된다.
+   */
+  function handleGroupDriverSelectChange(groupId: string, driverId: string, groupLabel: string) {
+    const memberIds = groupMemberRowKeys.get(groupId) ?? [];
+    let appliedCount = 0;
+    for (const rowKey of memberIds) {
+      const order = orderByRowKey.get(rowKey);
+      if (!order) continue;
+      if (order.override_driver_id) continue; // 개별 override 건은 그룹 일괄변경 대상에서 제외
+      if (order.delivery_status === "완료" || order.delivery_status === "취소") continue;
+      setDraftField(rowKey, "driverId", driverId, order.driver_id);
+      appliedCount++;
+    }
+    if (appliedCount > 0) {
+      toast.success(`${groupLabel} ${appliedCount}건을 기사 변경사항에 반영했습니다. "변경사항 저장"을 눌러야 실제로 배정됩니다.`);
+    }
+  }
 
-  function handleAssignGroupDriver(groupId: string, driverId: string) {
-    setGroupAssignPending(groupId);
-    startTransition(async () => {
-      try {
-        const result = await assignGroupDriverAction(groupId, driverId);
-        if (result.ok) {
-          toast.success("그룹 기본기사를 배정했습니다.");
-        } else {
-          toast.error(result.error ?? "그룹 기본기사 배정 중 오류가 발생했습니다.");
-        }
-      } finally {
-        setGroupAssignPending(null);
-      }
+  /** STEP12-8F(R12): 그룹 카드 펼침/접힘 토글 — 기본 접힘, 눌러야 배송건이 보인다. */
+  function toggleGroupExpanded(groupId: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
     });
   }
 
@@ -426,6 +447,7 @@ export function DeliveryBoard({
     const memberIds = groupMemberRowKeys.get(groupId) ?? [];
     const allSelected = memberIds.length > 0 && memberIds.every((id) => visibleSelected.has(id));
     const driverInfo = groupDriverInfo.get(groupId);
+    const isExpanded = expandedGroups.has(groupId);
     return (
       <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -437,21 +459,18 @@ export function DeliveryBoard({
           ) : null}
         </div>
         {/*
-          STEP12-8C(CPO 작업지시): "그룹 잡고 → 기사 넣고"의 핵심 — 그룹 헤더에서
-          바로 담당기사를 지정한다. override(개별로 다르게 지정된 배송건)가 있는
-          멤버는 이 select로 덮어써도 건드리지 않는다(assignGroupDriverAction이
-          서버에서 override_driver_id가 있는 멤버를 자동으로 제외한다).
+          STEP12-8F(CPO 작업지시 v2, R09): "그룹 잡고 → 기사 넣고"의 핵심 —
+          그룹 헤더에서 바로 담당기사를 지정한다. 선택 즉시 서버에 반영하지
+          않고 Draft에 쌓아 "변경사항 저장"에서 다른 변경사항과 함께 일괄
+          반영한다(handleGroupDriverSelectChange). override(개별로 다르게
+          지정된 배송건)는 이 select로 바꿔도 건드리지 않는다.
         */}
         {memberIds.length > 0 ? (
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">담당기사</span>
-            <Select
-              value={driverInfo?.driverId ?? ""}
-              onValueChange={(v) => handleAssignGroupDriver(groupId, v)}
-              disabled={groupAssignPending === groupId}
-            >
+            <Select value={driverInfo?.driverId ?? ""} onValueChange={(v) => handleGroupDriverSelectChange(groupId, v, label)}>
               <SelectTrigger size="sm" className="h-7 w-32 bg-surface text-xs" aria-label={`${label} 담당기사 선택`}>
-                <SelectValue placeholder={groupAssignPending === groupId ? "배정하는 중..." : "미배정 (혼합)"} />
+                <SelectValue placeholder="미배정 (혼합)" />
               </SelectTrigger>
               <SelectContent>
                 {drivers.map((d) => (
@@ -488,16 +507,30 @@ export function DeliveryBoard({
             {buildings.map((b) => `🏢 ${b.name} ${b.count}건`).join("  ·  ")}
           </p>
         ) : null}
-        {memberIds.length > 0 ? (
-          // STEP11-14(CPO 작업지시): 그룹은 "같이 배정하면 편할 가능성이 높은
-          // 묶음"일 뿐 별도 모드가 아니다 — 체크하면 바로 아래 배송건들도
-          // 함께 선택되고, 그 다음부터는 일반 체크박스 선택과 동일하게
-          // BulkAssignBar(일괄 적용)로 이어진다.
-          <label className="mt-2 flex items-center gap-2 text-sm font-medium text-primary">
-            <Checkbox checked={allSelected} onCheckedChange={(checked) => toggleGroupSelection(groupId, checked === true)} />
-            이 그룹 {memberIds.length}건 선택
-          </label>
-        ) : null}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          {memberIds.length > 0 ? (
+            // STEP11-14(CPO 작업지시): 그룹은 "같이 배정하면 편할 가능성이 높은
+            // 묶음"일 뿐 별도 모드가 아니다 — 체크하면 바로 아래 배송건들도
+            // 함께 선택되고, 그 다음부터는 일반 체크박스 선택과 동일하게
+            // BulkAssignBar(일괄 적용)로 이어진다.
+            <label className="flex items-center gap-2 text-sm font-medium text-primary">
+              <Checkbox checked={allSelected} onCheckedChange={(checked) => toggleGroupSelection(groupId, checked === true)} />
+              이 그룹 {memberIds.length}건 선택
+            </label>
+          ) : (
+            <span />
+          )}
+          {/* STEP12-8F(R12): 그룹은 기본 접힘 — 눌러야 배송건 목록이 펼쳐진다. */}
+          <button
+            type="button"
+            onClick={() => toggleGroupExpanded(groupId)}
+            className="ml-auto flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-text-strong"
+            aria-expanded={isExpanded}
+          >
+            상세보기
+            {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          </button>
+        </div>
       </div>
     );
   }
@@ -552,10 +585,15 @@ export function DeliveryBoard({
           const prevGroupId = idx > 0 ? currentlyDisplayedOrders[idx - 1].delivery_group_id : null;
           const isNewGroup =
             showGroupCards && !showReorderControls && !!o.delivery_group_id && o.delivery_group_id !== prevGroupId;
+          // STEP12-8F(R12): 그룹이 접혀있으면(기본값) 헤더만 보여주고 소속
+          // 배송건 카드는 렌더링하지 않는다 — reorderEnabled 모드(기사 필터로
+          // 좁힌 화면)에는 그룹 카드 자체가 없으므로 영향 없다.
+          const belongsToCollapsedGroup =
+            showGroupCards && !showReorderControls && !!o.delivery_group_id && !expandedGroups.has(o.delivery_group_id);
           return (
             <Fragment key={o.rowKey}>
               {isNewGroup ? renderGroupHeader(o.delivery_group_id!) : null}
-              {showReorderControls ? (
+              {belongsToCollapsedGroup ? null : showReorderControls ? (
                 <div
                   className={cn("flex items-start gap-2 rounded-xl transition-colors", dragIndex === idx && "opacity-50")}
                   onDragOver={(e) => {
