@@ -443,6 +443,59 @@ export async function saveDeliveryDraftAction(changes: DraftChangeInput[]): Prom
     const groups = await deliveryGroupsRepository.findByIds(groupIds);
     const groupDriverById = new Map(groups.map((g) => [g.id, g.driver_id]));
 
+    // STEP12-8F 버그 수정(R09 실브라우저 검증 중 발견): 그룹 헤더 select는
+    // Draft에만 쌓였다가 이 액션에서 일괄 반영되는데, 그동안 delivery_groups.
+    // driver_id 자체를 갱신하는 코드가 없어(구 assignGroupDriverAction은
+    // Draft 전환 후 더 이상 호출되지 않음) 그룹의 "현재 기본기사"가 영원히
+    // null로 남았다. 그 결과 그룹 select로 기사를 지정할 때마다 매번
+    // override로 오분류되어(그룹의 저장된 driver_id는 항상 null이므로
+    // "다르다" 판정) 그룹 기본기사 변경이 뒤따라오는 멤버 추적 기능이 무력화됐다.
+    // 그룹에 속한 override 아닌·완료/취소 아닌 멤버 전원이 이번 저장에서
+    // 동일한 기사로 바뀌는 경우만 "그룹 기본기사 지정"으로 판별해 plain
+    // assign으로 처리하고 delivery_groups.driver_id도 함께 갱신한다 — 부분
+    // 변경(일부만 다른 값)은 여전히 override로 남는다.
+    const allGroupMembers = groupIds.length > 0 ? await orderShipmentsRepository.findByGroupIds(groupIds) : [];
+    const eligibleMemberIdsByGroup = new Map<string, Set<string>>();
+    const nonOverrideDriverIdsByGroup = new Map<string, Set<string>>();
+    for (const m of allGroupMembers) {
+      if (!m.delivery_group_id) continue;
+      if (!m.override_driver_id && m.delivery_status !== "완료" && m.delivery_status !== "취소") {
+        const set = eligibleMemberIdsByGroup.get(m.delivery_group_id) ?? new Set<string>();
+        set.add(m.id);
+        eligibleMemberIdsByGroup.set(m.delivery_group_id, set);
+      }
+      if (!m.override_driver_id && m.driver_id) {
+        const set = nonOverrideDriverIdsByGroup.get(m.delivery_group_id) ?? new Set<string>();
+        set.add(m.driver_id);
+        nonOverrideDriverIdsByGroup.set(m.delivery_group_id, set);
+      }
+    }
+    function effectiveGroupDriverId(groupId: string): string | null {
+      const stored = groupDriverById.get(groupId);
+      if (stored) return stored;
+      const set = nonOverrideDriverIdsByGroup.get(groupId);
+      return set && set.size === 1 ? [...set][0] : null;
+    }
+
+    const changesByGroup = new Map<string, { shipmentId: string; driverId: string }[]>();
+    for (const c of changes) {
+      if (!c.driverId) continue;
+      const groupId = currentById.get(c.shipmentId)?.delivery_group_id ?? null;
+      if (!groupId) continue;
+      const list = changesByGroup.get(groupId) ?? [];
+      list.push({ shipmentId: c.shipmentId, driverId: c.driverId });
+      changesByGroup.set(groupId, list);
+    }
+    const groupDefaultUpdates = new Map<string, string>();
+    for (const [groupId, groupChanges] of changesByGroup) {
+      const eligible = eligibleMemberIdsByGroup.get(groupId) ?? new Set<string>();
+      const changedIds = new Set(groupChanges.map((g) => g.shipmentId));
+      const distinctDriverIds = new Set(groupChanges.map((g) => g.driverId));
+      const isFullGroupUniformChange =
+        eligible.size > 0 && distinctDriverIds.size === 1 && eligible.size === changedIds.size && [...eligible].every((id) => changedIds.has(id));
+      if (isFullGroupUniformChange) groupDefaultUpdates.set(groupId, [...distinctDriverIds][0]);
+    }
+
     const plainAssignGroups = new Map<string, string[]>();
     const overrideAssigns: { shipmentId: string; driverId: string }[] = [];
     const resyncToGroupIds: string[] = [];
@@ -450,10 +503,11 @@ export async function saveDeliveryDraftAction(changes: DraftChangeInput[]): Prom
       if (c.driverId === undefined || c.driverId === null) continue;
       const cur = currentById.get(c.shipmentId);
       const groupId = cur?.delivery_group_id ?? null;
-      const groupDriverId = groupId ? (groupDriverById.get(groupId) ?? null) : null;
-      if (groupId && groupDriverId !== c.driverId) {
+      const isGroupDefaultChange = groupId ? groupDefaultUpdates.get(groupId) === c.driverId : false;
+      const groupDriverId = groupId && !isGroupDefaultChange ? effectiveGroupDriverId(groupId) : null;
+      if (groupId && !isGroupDefaultChange && groupDriverId !== null && groupDriverId !== c.driverId) {
         overrideAssigns.push({ shipmentId: c.shipmentId, driverId: c.driverId });
-      } else if (groupId && cur?.override_driver_id) {
+      } else if (groupId && !isGroupDefaultChange && cur?.override_driver_id) {
         // 그룹 기본기사와 같은 값으로 되돌렸다 — override 마커를 지워야 다음
         // 그룹 기본기사 변경 때 이 배송건도 다시 따라간다.
         resyncToGroupIds.push(c.shipmentId);
@@ -470,6 +524,13 @@ export async function saveDeliveryDraftAction(changes: DraftChangeInput[]): Prom
     }
 
     await Promise.all([
+      ...[...groupDefaultUpdates.entries()].map(async ([groupId, driverId]) => {
+        try {
+          await deliveryGroupsRepository.updateDriver(groupId, driverId);
+        } catch (e) {
+          console.warn(`[saveDeliveryDraftAction] 그룹(${groupId}) 기본기사 갱신 실패:`, e instanceof Error ? e.message : e);
+        }
+      }),
       ...[...plainAssignGroups.entries()].map(async ([driverId, shipmentIds]) => {
         try {
           await orderShipmentsRepository.assignDriver(shipmentIds, driverId, ownerUsername);
