@@ -737,6 +737,26 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["products"]["Insert"]>;
         Relationships: [];
       };
+      product_aliases: {
+        Row: {
+          id: string;
+          product_id: string;
+          alias_name: string;
+          owner_username: string;
+          tenant_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          alias_name: string;
+          owner_username: string;
+          tenant_id: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["product_aliases"]["Insert"]>;
+        Relationships: [];
+      };
       imports: {
         Row: {
           id: string;

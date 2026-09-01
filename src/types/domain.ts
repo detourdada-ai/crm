@@ -313,6 +313,21 @@ export interface Product {
   updated_at: ISODateString;
 }
 
+// STEP12-8F Phase3(R05): "표준상품(products) ↔ 별칭(alias)" 매핑 — 세트메뉴
+// 등 같은 실제 상품이 Excel/수동입력마다 다른 문자열로 들어와도, 이 원본
+// 문자열(alias_name)을 표준 상품(product_id)에 연결해두면 다음 번 그
+// 문자열이 다시 들어올 때 order_items.product_id를 자동으로 채운다.
+// order_items.product_name 원본 텍스트는 절대 다시 쓰지 않는다(문자열
+// 치환 금지) — 과거 주문에도 소급 적용하지 않는다.
+export interface ProductAlias {
+  id: UUID;
+  product_id: UUID;
+  alias_name: string;
+  owner_username: string;
+  tenant_id: UUID;
+  created_at: ISODateString;
+}
+
 export type SettlementStatus = "unpaid" | "paid";
 
 export interface Settlement {

@@ -14,6 +14,7 @@ import { VipCriteriaForm } from "@/components/settings/vip-criteria-form";
 import { DriverManagementCard } from "@/components/settings/driver-management-card";
 import { AccountRoleFilter } from "@/components/settings/account-role-filter";
 import { ProductManagementCard } from "@/components/settings/product-management-card";
+import { ProductAliasManagementCard } from "@/components/settings/product-alias-management-card";
 import { TenantProfileCard } from "@/components/settings/tenant-profile-card";
 import { GoogleEmailCell } from "@/components/settings/google-email-cell";
 import { IssueBetaKeyButton } from "@/components/settings/issue-beta-key-button";
@@ -28,6 +29,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { listDriversAction } from "@/actions/drivers";
 import { listKnownRegionsAction } from "@/actions/driver-regions";
 import { listProductsAction } from "@/actions/products";
+import { listProductAliasesAction, listUnmappedProductNamesAction } from "@/actions/product-aliases";
 import { listBetaRecruitApplicationsAction } from "@/actions/beta-recruit";
 import { listInquiriesAction } from "@/actions/inquiries";
 import { listAnnouncementsForAdminAction } from "@/actions/announcements";
@@ -54,11 +56,13 @@ export default async function SettingsPage({
   const { roleFilter } = await searchParams;
   const session = await requireSession();
   const isAdmin = session.role === "admin";
-  const [accounts, drivers, knownRegions, products] = await Promise.all([
+  const [accounts, drivers, knownRegions, products, productAliases, unmappedProductNames] = await Promise.all([
     listAccounts(),
     listDriversAction(),
     listKnownRegionsAction(),
     listProductsAction(),
+    listProductAliasesAction(),
+    listUnmappedProductNamesAction(),
   ]);
   const [recruitApplications, inquiries, announcements] = isAdmin
     ? await Promise.all([listBetaRecruitApplicationsAction(), listInquiriesAction(), listAnnouncementsForAdminAction()])
@@ -125,6 +129,24 @@ export default async function SettingsPage({
               </CardHeader>
               <CardContent>
                 <ProductManagementCard products={products} isAdmin={false} accountUsernames={[]} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>상품 별칭(세트메뉴 표준화)</CardTitle>
+                <CardDescription>
+                  Excel/수동 입력마다 이름이 다르게 들어오는 같은 상품을 표준 상품 하나로 연결합니다. 원본 상품명
+                  텍스트는 바꾸지 않고, 이미 등록된 과거 주문에도 소급 적용되지 않습니다.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ProductAliasManagementCard
+                  products={products}
+                  aliases={productAliases}
+                  unmappedNames={unmappedProductNames}
+                  isAdmin={false}
+                />
               </CardContent>
             </Card>
           </TabsContent>
@@ -308,6 +330,19 @@ export default async function SettingsPage({
             </CardHeader>
             <CardContent>
               <ProductManagementCard products={products} isAdmin accountUsernames={accountUsernames} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>상품 별칭(세트메뉴 표준화)</CardTitle>
+              <CardDescription>
+                전체 계정의 상품 별칭 매핑을 조회할 수 있습니다. 원본 상품명 텍스트는 바꾸지 않고, 과거 주문에도
+                소급 적용되지 않습니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ProductAliasManagementCard products={products} aliases={productAliases} unmappedNames={unmappedProductNames} isAdmin />
             </CardContent>
           </Card>
         </TabsContent>

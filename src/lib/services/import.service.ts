@@ -6,6 +6,7 @@ import { importsRepository } from "@/lib/repositories/imports.repository";
 import { duplicatesRepository, type DuplicateCandidateInsert } from "@/lib/repositories/duplicates.repository";
 import { customersRepository, type CustomerInsert } from "@/lib/repositories/customers.repository";
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
+import { productAliasesRepository } from "@/lib/repositories/product-aliases.repository";
 import { isSimilarButNotIdenticalName } from "@/lib/utils/similarity";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { cleanAddress, normalizeAddressForCompare } from "@/lib/utils/address";
@@ -337,6 +338,13 @@ export async function runImport({
   const tenant = await tenantsRepository.findByUsername(ownerUsername);
   if (!tenant) throw new Error(`No tenant membership found for account "${ownerUsername}".`);
 
+  // STEP12-8F Phase3(R05): 원본 상품명(alias_name)이 등록된 별칭과 정확히
+  // 일치하면 order_items.product_id를 채운다(문자열 치환 없음 — product_name
+  // 원본 텍스트는 그대로 둔다). 이 tenant 전체 별칭을 한 번만 조회해 맵으로
+  // 재사용한다(행마다 DB 왕복하지 않는 기존 배치 원칙과 동일).
+  const aliasEntries = await productAliasesRepository.listAll(ownerUsername);
+  const productIdByAliasName = new Map(aliasEntries.map((a) => [a.alias_name, a.product_id]));
+
   const importRecord = await importsRepository.create({
     file_name: fileName,
     status: "processing",
@@ -662,16 +670,20 @@ export async function runImport({
         if (skippedCount > 0) successRows += skippedCount;
         alreadyImportedRows += skippedCount;
 
-        const newItems = newRowEntries.map(({ row }) => ({
-          product_order_number: cellToString(getMapped(row, mapping, "product_order_number")) || null,
-          product_code: cellToString(getMapped(row, mapping, "product_code")) || null,
-          product_name: cellToString(getMapped(row, mapping, "product_name")) || "상품",
-          option_name: cellToString(getMapped(row, mapping, "option_name")) || null,
-          quantity: parseNumber(getMapped(row, mapping, "quantity")) || 1,
-          unit_price: parseNumber(getMapped(row, mapping, "unit_price")),
-          amount: parseNumber(getMapped(row, mapping, "amount")),
-          extra: row,
-        }));
+        const newItems = newRowEntries.map(({ row }) => {
+          const productName = cellToString(getMapped(row, mapping, "product_name")) || "상품";
+          return {
+            product_order_number: cellToString(getMapped(row, mapping, "product_order_number")) || null,
+            product_code: cellToString(getMapped(row, mapping, "product_code")) || null,
+            product_name: productName,
+            product_id: productIdByAliasName.get(productName) ?? null,
+            option_name: cellToString(getMapped(row, mapping, "option_name")) || null,
+            quantity: parseNumber(getMapped(row, mapping, "quantity")) || 1,
+            unit_price: parseNumber(getMapped(row, mapping, "unit_price")),
+            amount: parseNumber(getMapped(row, mapping, "amount")),
+            extra: row,
+          };
+        });
         const parentOrderDateObj = new Date(existingParent.order_date);
         const newItemDeliveryDates = newItems.map((item) => parseDeliveryDateFromOption(item.option_name, parentOrderDateObj));
         const explicitDeliveryDate = parseOptionalDate(getMapped(rows[0], mapping, "delivery_date"));
@@ -854,17 +866,21 @@ export async function runImport({
       else repeatOrderCount += rows.length;
       priorOrderCounts.set(customerId, priorOrders + 1);
 
-      const items = rows.map((row) => ({
-        product_order_number: cellToString(getMapped(row, mapping, "product_order_number")) || null,
-        product_code: cellToString(getMapped(row, mapping, "product_code")) || null,
-        product_name: cellToString(getMapped(row, mapping, "product_name")) || "상품",
-        option_name: cellToString(getMapped(row, mapping, "option_name")) || null,
-        quantity: parseNumber(getMapped(row, mapping, "quantity")) || 1,
-        unit_price: parseNumber(getMapped(row, mapping, "unit_price")),
-        amount: parseNumber(getMapped(row, mapping, "amount")),
-        // Preserve every original column for this row, not just the mapped subset.
-        extra: row,
-      }));
+      const items = rows.map((row) => {
+        const productName = cellToString(getMapped(row, mapping, "product_name")) || "상품";
+        return {
+          product_order_number: cellToString(getMapped(row, mapping, "product_order_number")) || null,
+          product_code: cellToString(getMapped(row, mapping, "product_code")) || null,
+          product_name: productName,
+          product_id: productIdByAliasName.get(productName) ?? null,
+          option_name: cellToString(getMapped(row, mapping, "option_name")) || null,
+          quantity: parseNumber(getMapped(row, mapping, "quantity")) || 1,
+          unit_price: parseNumber(getMapped(row, mapping, "unit_price")),
+          amount: parseNumber(getMapped(row, mapping, "amount")),
+          // Preserve every original column for this row, not just the mapped subset.
+          extra: row,
+        };
+      });
       const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
 
       // 옵션정보 often embeds the delivery-area + delivery-date choice
