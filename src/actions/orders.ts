@@ -202,7 +202,7 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
     if (params.includeProductSummary) {
       const allItems = await ordersRepository.findItemsByShipmentIds(allShipmentIds);
       productSummary = aggregateProductSummary(allItems, "shipment_id");
-      totalProductOrders = allItems.length;
+      totalProductOrders = allItems.reduce((sum, item) => sum + item.quantity, 0);
     }
 
     return { orders, total, itemSummaries, driverNames, productSummary, distinctOrderCount, totalProductOrders };
@@ -225,7 +225,7 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
     const allOrderIds = await ordersRepository.findAllMatchingOrderIds({ ...params, ownerUsername });
     const allItems = await ordersRepository.findItemsByOrderIds(allOrderIds);
     productSummary = aggregateProductSummary(allItems, "order_id");
-    totalProductOrders = allItems.length;
+    totalProductOrders = allItems.reduce((sum, item) => sum + item.quantity, 0);
   }
 
   return { orders, total, itemSummaries, driverNames, productSummary, totalProductOrders };
