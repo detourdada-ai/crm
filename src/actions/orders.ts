@@ -386,6 +386,12 @@ export async function createManualOrderAction(
         order_date: orderDate,
         status,
         total_amount: amount,
+        // STEP12-8F Phase3(R15): 수취인과 실제 주문한 고객이 다를 수 있다
+        // (예: 자녀가 부모님께 보내는 주문) — 배송관리/기사 앱 카드가
+        // "구매자→수취인"을 구분해서 보여주려면 buyer_name이 필요한데,
+        // 지금까지 수동 주문 경로에서는 이 값을 저장하지 않아 엑셀 임포트
+        // 주문(구매자명/수취인명 컬럼 분리)에서만 표시되고 있었다.
+        buyer_name: customer.name,
         recipient_name: recipientName,
         phone_snapshot: formatPhoneNumber(recipientPhoneRaw),
         address_snapshot: address,
