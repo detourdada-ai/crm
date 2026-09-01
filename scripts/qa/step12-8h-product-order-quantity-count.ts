@@ -157,11 +157,8 @@ async function main() {
     await page.getByRole("option", { name: new RegExp(productY) }).click();
     await page.waitForTimeout(300);
     const afterSelectText = await mainText(page);
-    record(
-      `STEP12-8H-2c. ${productY} 선택 시 옆 배지 = 2건(수량합)`,
-      /2건/.test(afterSelectText.slice(afterSelectText.indexOf(productY), afterSelectText.indexOf(productY) + 20)),
-      afterSelectText.slice(afterSelectText.indexOf(productY) - 10, afterSelectText.indexOf(productY) + 30)
-    );
+    const afterSelectWindow = afterSelectText.slice(afterSelectText.indexOf(productY), afterSelectText.indexOf(productY) + productY.length + 20);
+    record(`STEP12-8H-2c. ${productY} 선택 시 옆 배지 = 2건(수량합)`, /2건/.test(afterSelectWindow), afterSelectWindow);
 
     await context.close();
   } finally {
