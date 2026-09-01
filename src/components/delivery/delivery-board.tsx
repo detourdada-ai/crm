@@ -503,6 +503,18 @@ export function DeliveryBoard({
     next.splice(toIndex, 0, item);
     commitGroupOrder(next);
   }
+  /**
+   * STEP12-8F Phase4(R11): 그룹 순서도 배송건 순서(R10)와 동일하게 드래그 손잡이
+   * 외에 ↑/↓·바로가기 Select를 둔다 — 네이티브 HTML5 Drag&Drop은 터치(모바일)를
+   * 지원하지 않아 손잡이만으로는 모바일에서 그룹 순서를 바꿀 방법이 없었다.
+   */
+  function handleMoveGroup(index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= currentGroupOrder.length) return;
+    const next = currentGroupOrder.slice();
+    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+    commitGroupOrder(next);
+  }
 
   function renderRow(order: OrderShipmentBoardRow) {
     // order는 서버 원본값(원래값 비교용) — 화면 표시는 Draft가 반영된 값을 쓴다.
@@ -751,6 +763,43 @@ export function DeliveryBoard({
                     <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
                       {groupIndex + 1}
                     </span>
+                    <div className="flex flex-col gap-0.5">
+                      <button
+                        type="button"
+                        disabled={groupIndex === 0}
+                        onClick={() => handleMoveGroup(groupIndex, -1)}
+                        aria-label="그룹 위로 이동"
+                        className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                      >
+                        <ChevronUp className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={groupIndex === currentGroupOrder.length - 1}
+                        onClick={() => handleMoveGroup(groupIndex, 1)}
+                        aria-label="그룹 아래로 이동"
+                        className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+                      >
+                        <ChevronDown className="size-3.5" />
+                      </button>
+                    </div>
+                    {currentGroupOrder.length > 2 ? (
+                      <Select
+                        value={String(groupIndex + 1)}
+                        onValueChange={(v) => handleGroupJumpToPosition(groupIndex, Number(v) - 1)}
+                      >
+                        <SelectTrigger size="sm" className="h-7 w-14 px-1.5 text-xs" aria-label="그룹순서 바로 변경">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {currentGroupOrder.map((_, i) => (
+                            <SelectItem key={i} value={String(i + 1)}>
+                              {i + 1}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : null}
                   </div>
                   {renderGroupHeader(o.delivery_group_id!)}
                 </div>
