@@ -199,8 +199,11 @@ async function run() {
     await page.reload({ waitUntil: "networkidle" });
     await dismissAnnouncementPopupIfPresent(page);
     await page.getByRole("tab", { name: "상품관리" }).click();
-    const afterAlias2Text = await mainText(page);
-    record("R05-6c. 별칭 등록 후 추천 목록에서 사라짐(새로고침 반영)", !afterAlias2Text.includes("아직 표준 상품에 연결되지 않은") || !afterAlias2Text.includes(unmatchedProductName));
+    // 별칭 테이블에도 같은 원본 상품명이 표시되므로(방금 그걸로 별칭을 만들었으니
+    // 당연함) 페이지 전체 텍스트가 아니라 "추천 목록" li 항목만 정확히 확인한다.
+    const remainingSuggestion = page.locator("li", { hasText: unmatchedProductName });
+    const suggestionGone = (await remainingSuggestion.count()) === 0;
+    record("R05-6c. 별칭 등록 후 추천 목록에서 사라짐(새로고침 반영)", suggestionGone);
 
     // R05-4c: 과거(이미 업로드된) 주문에는 소급 적용되지 않음을 확인 — 방금 만든
     // 별칭이 이미 등록된 order2의 product_id를 뒤늦게 채우지 않아야 한다.
