@@ -734,6 +734,7 @@ export function DeliveryBoard({
             <Fragment key={o.rowKey}>
               {isNewGroup ? (
                 <div
+                  data-testid={`group-header-${o.delivery_group_id}`}
                   className={cn("flex items-start gap-2 transition-opacity", groupDragIndex === groupIndex && "opacity-50")}
                   onDragOver={(e) => {
                     if (groupDragIndex === null) return;
