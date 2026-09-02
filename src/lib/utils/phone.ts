@@ -38,3 +38,14 @@ export function isSamePhone(a: string | null | undefined, b: string | null | und
   if (!a || !b) return false;
   return digitsOnly(a) === digitsOnly(b);
 }
+
+/**
+ * R04(2026-09-02 CPO 작업지시): 050으로 시작하는 번호는 통신사/플랫폼이
+ * 발급하는 안심(중계)번호일 가능성이 높다 — 배송 종료 후 만료되면 기사가
+ * 통화할 수 없다. 자동으로 지우거나 다른 번호로 바꾸지 않고, 이 패턴이면
+ * UI에 "안심번호 가능성" 배지만 붙인다(사장님이 직접 판단).
+ */
+export function isLikelySafeNumber(phone: string | null | undefined): boolean {
+  if (!phone) return false;
+  return digitsOnly(phone).startsWith("050");
+}

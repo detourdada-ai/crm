@@ -106,7 +106,7 @@ export function DeliveryFilterBar({
               <SelectContent>
                 <SelectItem value={PRODUCT_ALL}>전체</SelectItem>
                 {productOptions.map((p) => (
-                  <SelectItem key={p.productName} value={p.productName} className="max-w-64">
+                  <SelectItem key={p.groupKey} value={p.groupKey} className="max-w-64">
                     <span className="truncate">
                       {p.productName} <span className="text-muted-foreground">· {p.totalQuantity.toLocaleString()}건</span>
                     </span>
@@ -116,7 +116,7 @@ export function DeliveryFilterBar({
             </Select>
             {product !== PRODUCT_ALL ? (
               <span className="text-xs whitespace-nowrap text-muted-foreground">
-                {productOptions.find((p) => p.productName === product)?.totalQuantity ?? 0}건
+                {productOptions.find((p) => p.groupKey === product)?.totalQuantity ?? 0}건
               </span>
             ) : null}
           </div>

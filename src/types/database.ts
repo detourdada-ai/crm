@@ -244,6 +244,8 @@ export interface Database {
           total_amount: number;
           recipient_name: string;
           phone_snapshot: string | null;
+          buyer_phone_snapshot: string | null;
+          recipient_phone_snapshot: string | null;
           address_snapshot: string | null;
           road_address_snapshot: string | null;
           detail_address_snapshot: string | null;
@@ -299,6 +301,8 @@ export interface Database {
           total_amount?: number;
           recipient_name: string;
           phone_snapshot?: string | null;
+          buyer_phone_snapshot?: string | null;
+          recipient_phone_snapshot?: string | null;
           address_snapshot?: string | null;
           road_address_snapshot?: string | null;
           detail_address_snapshot?: string | null;

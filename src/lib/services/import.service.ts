@@ -723,6 +723,10 @@ export async function runImport({
 
       const first = rows[0];
       const rawPhone = resolvePhoneCell(first, mapping) || null;
+      // STEP12-10(R04): 배송 연락처(rawPhone, 구매자 우선) 계산과 별개로
+      // 원본 구매자/수취인 연락처를 각각 보존한다.
+      const rawBuyerPhone = cellToString(getMapped(first, mapping, "buyer_phone")) || null;
+      const rawRecipientPhone = cellToString(getMapped(first, mapping, "phone")) || null;
       const rawAddress = cellToString(getMapped(first, mapping, "address")) || null;
       const deliveryMemo = cellToString(getMapped(first, mapping, "delivery_memo")) || null;
       const orderDate = parseOrderDate(getMapped(first, mapping, "order_date"));
@@ -951,6 +955,8 @@ export async function runImport({
         total_amount: totalAmount,
         recipient_name: name,
         phone_snapshot: formatPhoneNumber(rawPhone),
+        buyer_phone_snapshot: formatPhoneNumber(rawBuyerPhone),
+        recipient_phone_snapshot: formatPhoneNumber(rawRecipientPhone),
         address_snapshot: address,
         zipcode,
         delivery_memo: deliveryMemo,

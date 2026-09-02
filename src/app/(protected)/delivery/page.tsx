@@ -5,13 +5,14 @@ import { getDeliveryBoardAction } from "@/actions/delivery";
 import { listDeliveryGroupsAction } from "@/actions/delivery-groups";
 import { listDriversAction } from "@/actions/drivers";
 import { listKnownRegionsAction } from "@/actions/driver-regions";
-import { requireSession } from "@/lib/auth/current-session";
+import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import { getTenantFeaturesForSession } from "@/lib/tenant/features";
 import { listAccounts } from "@/lib/auth/credentials";
 import { isValidDateString } from "@/lib/utils/date";
 import { kstTodayIso, resolveKstQuickRange, isQuickDateFilter, type QuickDateFilterValue } from "@/lib/utils/kst-date";
 import { digitsOnly } from "@/lib/utils/phone";
 import { aggregateProductSummary } from "@/lib/utils/product-summary";
+import { productsRepository } from "@/lib/repositories/products.repository";
 import type { OrderShipmentBoardRow } from "@/lib/repositories/order-shipments.repository";
 
 function isDeliveryFilter(value: string | undefined): value is DeliveryFilter {
@@ -127,10 +128,17 @@ export default async function DeliveryPage({
   // 같은 "현재 필터링된 목록" 원칙. 필터(칩 클릭)는 해당 상품이 포함된
   // 배송건으로 orders를 한 번 더 좁힌다(주문관리 productOrderIds와 동일한
   // 발상, 여기선 이미 전부 in-memory이므로 Set 필터로 충분하다).
-  const productSummary = aggregateProductSummary(items, "shipment_id");
+  // STEP12-10(R06/R08): product_id로 별칭 매핑된 상품은 product_id 기준으로
+  // 합쳐서 집계/필터한다 — 별칭 없는(미매핑) 상품은 기존처럼 product_name.
+  const standardProducts = await productsRepository.listAll(ownerScopeFor(session));
+  const standardProductNameById = new Map(standardProducts.map((p) => [p.id, p.name]));
+  const productSummary = aggregateProductSummary(items, "shipment_id", standardProductNameById);
   if (params.product) {
     const productShipmentIds = new Set(
-      items.filter((i) => i.product_name === params.product).map((i) => i.shipment_id).filter((id): id is string => id !== null)
+      items
+        .filter((i) => (i.product_id ?? i.product_name) === params.product)
+        .map((i) => i.shipment_id)
+        .filter((id): id is string => id !== null)
     );
     orders = orders.filter((o) => productShipmentIds.has(o.shipmentId));
   }

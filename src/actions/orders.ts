@@ -22,6 +22,12 @@ import { isOrderSource } from "@/lib/constants/order-source";
 import { DEFAULT_PAYMENT_STATUS, isPaymentStatus, isPaymentMethod } from "@/lib/constants/payment";
 import type { Order, OrderItem, OrderShipment, DeliveryStatus, OrderSource, Customer, PaymentStatus } from "@/types/domain";
 
+/** STEP12-10(R06/R08): product_id로 묶인 상품 그룹에 보여줄 표준 상품명 조회. */
+async function buildStandardProductNameMap(ownerUsername?: string): Promise<Map<string, string>> {
+  const products = await productsRepository.listAll(ownerUsername);
+  return new Map(products.map((p) => [p.id, p.name]));
+}
+
 export async function listOrdersAction(page = 1, pageSize = 20) {
   const session = await requireSession();
   return ordersRepository.listRecent(page, pageSize, ownerScopeFor(session));
@@ -200,8 +206,11 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
     let productSummary: ProductSummaryEntry[] = [];
     let totalProductOrders: number | undefined;
     if (params.includeProductSummary) {
-      const allItems = await ordersRepository.findItemsByShipmentIds(allShipmentIds);
-      productSummary = aggregateProductSummary(allItems, "shipment_id");
+      const [allItems, standardProductNameById] = await Promise.all([
+        ordersRepository.findItemsByShipmentIds(allShipmentIds),
+        buildStandardProductNameMap(ownerUsername),
+      ]);
+      productSummary = aggregateProductSummary(allItems, "shipment_id", standardProductNameById);
       totalProductOrders = allItems.reduce((sum, item) => sum + item.quantity, 0);
     }
 
@@ -223,8 +232,11 @@ export async function searchOrdersAction(params: SearchOrdersParams): Promise<Se
   let totalProductOrders: number | undefined;
   if (params.includeProductSummary) {
     const allOrderIds = await ordersRepository.findAllMatchingOrderIds({ ...params, ownerUsername });
-    const allItems = await ordersRepository.findItemsByOrderIds(allOrderIds);
-    productSummary = aggregateProductSummary(allItems, "order_id");
+    const [allItems, standardProductNameById] = await Promise.all([
+      ordersRepository.findItemsByOrderIds(allOrderIds),
+      buildStandardProductNameMap(ownerUsername),
+    ]);
+    productSummary = aggregateProductSummary(allItems, "order_id", standardProductNameById);
     totalProductOrders = allItems.reduce((sum, item) => sum + item.quantity, 0);
   }
 
@@ -394,6 +406,11 @@ export async function createManualOrderAction(
         buyer_name: customer.name,
         recipient_name: recipientName,
         phone_snapshot: formatPhoneNumber(recipientPhoneRaw),
+        // STEP12-10(R04): 원본 두 값을 각각 보존한다. 수동 주문은 수취인
+        // 연락처가 항상 필수 입력이라 phone_snapshot 계산 자체는 그대로
+        // 두고(회귀 방지), 구매자(선택/신규 등록된 고객)의 연락처를 별도로 기록한다.
+        buyer_phone_snapshot: formatPhoneNumber(customer.phone),
+        recipient_phone_snapshot: formatPhoneNumber(recipientPhoneRaw),
         address_snapshot: address,
         road_address_snapshot: roadAddress,
         detail_address_snapshot: detailAddress,

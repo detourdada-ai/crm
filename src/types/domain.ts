@@ -142,6 +142,10 @@ export interface Order {
   // Snapshot fields: captured at order time, never mutated when customer changes
   recipient_name: string;
   phone_snapshot: string | null;
+  // STEP12-10(R04): phone_snapshot 계산(구매자 우선→수취인)에 쓰인 원본 두
+  // 값 — 과거 주문은 null.
+  buyer_phone_snapshot: string | null;
+  recipient_phone_snapshot: string | null;
   address_snapshot: string | null; // composed display value = road_address_snapshot + detail_address_snapshot
   road_address_snapshot: string | null;
   detail_address_snapshot: string | null;

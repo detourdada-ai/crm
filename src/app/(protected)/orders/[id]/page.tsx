@@ -20,6 +20,7 @@ import { formatCurrency, formatDate, formatDateTime } from "@/lib/constants/orde
 import { DELIVERY_STATUS_BADGE_VARIANT } from "@/lib/constants/delivery-status";
 import { ORDER_SOURCE_LABELS } from "@/lib/constants/order-source";
 import { PAYMENT_STATUS_BADGE_VARIANT } from "@/lib/constants/payment";
+import { isLikelySafeNumber } from "@/lib/utils/phone";
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
@@ -121,6 +122,21 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               </Link>
             </div>
             <Field label="수령인 연락처" value={order.phone_snapshot} />
+            <Field label="구매자 연락처(원본)" value={order.buyer_phone_snapshot} />
+            {order.recipient_phone_snapshot ? (
+              <div className="flex justify-between gap-3 border-b py-1.5 text-sm last:border-0">
+                <span className="text-muted-foreground">수취인 연락처(원본)</span>
+                <span className="flex items-center gap-1.5 text-right font-medium break-all">
+                  {order.recipient_phone_snapshot}
+                  {isLikelySafeNumber(order.recipient_phone_snapshot) ? (
+                    <Badge variant="outline" className="gap-1 text-amber-700">
+                      <AlertTriangle className="size-3" />
+                      안심번호 가능성
+                    </Badge>
+                  ) : null}
+                </span>
+              </div>
+            ) : null}
             <Field label="배송지" value={order.address_snapshot} />
             <Field label="우편번호" value={order.zipcode} />
             <div className="flex items-center justify-between gap-3 border-b py-1.5 text-sm last:border-0">

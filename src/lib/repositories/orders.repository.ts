@@ -2,6 +2,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { kstDayStartIso, kstDayEndIso } from "@/lib/utils/kst-date";
 import { digitsOnly, formatPhoneNumber } from "@/lib/utils/phone";
+import { isUuid } from "@/lib/utils/id";
 import type { Order, OrderItem, OrderSource, DeliveryStatus, FulfillmentMethod, GeocodeStatus, PaymentStatus, PaymentMethod } from "@/types/domain";
 
 export interface OrderInsert {
@@ -14,6 +15,8 @@ export interface OrderInsert {
   total_amount: number;
   recipient_name: string;
   phone_snapshot?: string | null;
+  buyer_phone_snapshot?: string | null;
+  recipient_phone_snapshot?: string | null;
   address_snapshot?: string | null;
   road_address_snapshot?: string | null;
   detail_address_snapshot?: string | null;
@@ -461,9 +464,16 @@ export const ordersRepository = {
     return (data ?? []).map((r) => r.id as string);
   },
 
-  /** STD-6: 상품 집계 칩 클릭 시 그 상품이 포함된 주문 id 목록을 구한다(문자열 매칭은 여기서만 한다). */
-  async findOrderIdsByProductName(productName: string): Promise<string[]> {
-    const { data, error } = await getSupabaseAdmin().from("order_items").select("order_id").eq("product_name", productName);
+  /**
+   * STD-6/STEP12-10(R06): 상품 집계 칩 클릭 시 그 상품이 포함된 주문 id
+   * 목록을 구한다. groupKey는 product-summary.ts의 ProductSummaryEntry.groupKey —
+   * 별칭으로 표준상품에 연결된 product_id(UUID)이면 product_id로, 아니면
+   * (별칭 없는 과거/미매핑 상품명) product_name 문자열로 매칭한다.
+   */
+  async findOrderIdsByProductName(groupKey: string): Promise<string[]> {
+    let q = getSupabaseAdmin().from("order_items").select("order_id");
+    q = isUuid(groupKey) ? q.eq("product_id", groupKey) : q.eq("product_name", groupKey);
+    const { data, error } = await q;
     if (error) throw error;
     return Array.from(new Set((data ?? []).map((r) => r.order_id as string)));
   },
@@ -477,12 +487,10 @@ export const ordersRepository = {
    * 있었다(예: 세트봄날반찬 26건인데 목록엔 29건). searchByShipmentDate
    * 전용 — search()의 주문 단위 조회는 findOrderIdsByProductName을 그대로 쓴다.
    */
-  async findShipmentIdsByProductName(productName: string): Promise<string[]> {
-    const { data, error } = await getSupabaseAdmin()
-      .from("order_items")
-      .select("shipment_id")
-      .eq("product_name", productName)
-      .not("shipment_id", "is", null);
+  async findShipmentIdsByProductName(groupKey: string): Promise<string[]> {
+    let q = getSupabaseAdmin().from("order_items").select("shipment_id").not("shipment_id", "is", null);
+    q = isUuid(groupKey) ? q.eq("product_id", groupKey) : q.eq("product_name", groupKey);
+    const { data, error } = await q;
     if (error) throw error;
     return Array.from(new Set((data ?? []).map((r) => r.shipment_id as string)));
   },

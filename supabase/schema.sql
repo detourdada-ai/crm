@@ -315,6 +315,10 @@ create table if not exists orders (
   -- snapshot fields: captured at import time, immutable afterwards
   recipient_name text not null,
   phone_snapshot text,
+  -- STEP12-10(R04): phone_snapshot(배송연락처 = 구매자 우선→수취인)의 계산에
+  -- 쓰인 원본 두 값을 별도로 보존한다. 과거 주문은 null로 남는다.
+  buyer_phone_snapshot text,
+  recipient_phone_snapshot text,
   address_snapshot text,
   -- F6~F10: address_snapshot은 계속 road_address_snapshot+detail_address_snapshot
   -- 으로부터 합성된 전체 주소 표시값으로 유지된다(기존 화면 무변경). zipcode가
