@@ -31,6 +31,8 @@ assertAllowedQaOwner(OWNER);
 const RUN_TAG = makeRunTag("r20");
 const TITLE_1 = `${RUN_TAG}-공지1`;
 const TITLE_2 = `${RUN_TAG}-공지2`;
+const TITLE_3 = `${RUN_TAG}-공지3`;
+const TITLE_4 = `${RUN_TAG}-공지4`;
 
 interface StepResult {
   step: string;
@@ -213,6 +215,39 @@ async function main() {
     );
     const ann2StillHidden = ann1Reappeared ? (await dlgAfterExpiry.getByText(TITLE_2).count()) === 0 : true;
     record("R20-06(QA-6). dismissed_date가 어제로 만료되면 공지1은 재노출, 여전히 오늘 처리된 공지2는 안 섞임", ann1Reappeared && ann2StillHidden);
+
+    // ---- R20-FIX: 게시중 공지가 동시에 2건 이상 미확인 상태여도, 표시된 최신
+    //      공지 하나만 "오늘 그만 보기" 하면 나머지도 함께 오늘 하루 숨겨져야
+    //      한다(CPO 지시: "최신공지만 뜨게 하고, 오늘 그만 보기 하면 끝"). ----
+    const { data: ann3, error: ann3Err } = await admin
+      .from("announcements")
+      .insert({ title: TITLE_3, summary: `${TITLE_3} 요약`, body: `${TITLE_3} 본문`, category: "일반공지", show_popup: true, status: "게시중", published_at: today, created_by: "admin" })
+      .select("id")
+      .single();
+    if (ann3Err) throw ann3Err;
+    createdIds.push(ann3.id);
+    const { data: ann4, error: ann4Err } = await admin
+      .from("announcements")
+      .insert({ title: TITLE_4, summary: `${TITLE_4} 요약`, body: `${TITLE_4} 본문`, category: "일반공지", show_popup: true, status: "게시중", published_at: today, created_by: "admin" })
+      .select("id")
+      .single();
+    if (ann4Err) throw ann4Err;
+    createdIds.push(ann4.id);
+
+    await page.reload({ waitUntil: "load" });
+    const dlgForAnn4 = page.getByRole("dialog");
+    const ann4Shown = await waitForCondition(async () => (await dlgForAnn4.count()) > 0 && (await dlgForAnn4.isVisible().catch(() => false)) && (await dlgForAnn4.getByText(TITLE_4).count()) > 0);
+    record("R20-FIX-사전. 최신(공지4)만 팝업에 노출됨(공지3은 아직 안 뜸)", ann4Shown);
+
+    await dlgForAnn4.getByRole("button", { name: "오늘 그만 보기" }).click();
+    await waitForCondition(async () => (await dismissalRow(admin, OWNER, ann4.id))?.dismissed_date === today);
+    const ann3AlsoDismissed = await waitForCondition(async () => (await dismissalRow(admin, OWNER, ann3.id))?.dismissed_date === today, 5000);
+    record('R20-FIX-1. 공지4 하나만 "오늘 그만 보기" 클릭해도 동시에 게시중이던 공지3도 함께 오늘자로 dismiss됨(DB)', ann3AlsoDismissed);
+
+    await page.reload({ waitUntil: "load" });
+    await page.waitForTimeout(1200);
+    const noPopupAtAllAfterSingleClick = !(await page.getByRole("dialog").isVisible().catch(() => false));
+    record('R20-FIX-2. 새로고침해도 공지3/공지4 둘 다 재노출 0회 — "한 번 누르면 오늘은 끝"', noPopupAtAllAfterSingleClick);
   } finally {
     if (createdIds.length > 0) {
       const { error: dErr } = await admin.from("announcement_dismissals").delete().in("announcement_id", createdIds);

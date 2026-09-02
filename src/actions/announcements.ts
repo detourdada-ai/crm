@@ -125,7 +125,11 @@ export async function getPopupAnnouncementAction(): Promise<Announcement | null>
   return announcementsRepository.findLatestUndismissedForUser(session.username);
 }
 
-/** "오늘 그만 보기" — 이 공지는 오늘만 이 계정에서 다시 표시되지 않는다(다음날 재노출). */
+/**
+ * "오늘 그만 보기" — 오늘 하루 이 계정에는 팝업 대상 공지가 다시 표시되지
+ * 않는다(다음날 재노출). R20: 클릭 시점에 게시중인 다른 공지가 더 있어도
+ * 한 번의 클릭으로 전부 오늘자 숨김 처리된다(사장님 지시: "한 번 누르면 끝").
+ */
 export async function dismissAnnouncementAction(announcementId: string): Promise<AnnouncementActionState> {
   const session = await requireSession();
   try {

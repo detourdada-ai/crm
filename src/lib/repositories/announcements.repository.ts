@@ -116,11 +116,27 @@ export const announcementsRepository = {
    * "오늘 그만 보기" — 계정+공지 단위로 오늘 날짜를 기록한다(당일만 숨김).
    * PK가 (username, announcement_id)라 같은 공지를 여러 번 눌러도 행이
    * 늘어나지 않고 dismissed_date만 최신 날짜로 갱신된다.
+   *
+   * R20(2026-09-02 CPO 작업지시): 클릭한 그 공지 하나만 숨기면 "게시중"
+   * 공지가 동시에 여러 건일 때 하나를 닫아도 곧바로 다른 미확인 공지가
+   * 이어서 뜬다 — 사장님 입장에선 "버튼이 안 먹힌다"로 보인다. "한 번
+   * 누르면 끝"이 되도록, 클릭 시점에 팝업 대상인(게시중+표시켜짐+게시일
+   * 도래) 공지 전체를 오늘 날짜로 한꺼번에 dismiss한다. 클릭 이후에 새로
+   * 게시되는 공지는 이 집합에 없으므로 기존 정책대로 즉시 노출된다.
    */
   async dismiss(username: string, announcementId: string): Promise<void> {
-    const { error } = await getSupabaseAdmin()
-      .from("announcement_dismissals")
-      .upsert({ username, announcement_id: announcementId, dismissed_date: kstTodayIso() }, { onConflict: "username,announcement_id" });
+    const today = kstTodayIso();
+    const { data: eligible, error: eligibleErr } = await getSupabaseAdmin()
+      .from("announcements")
+      .select("id")
+      .eq("status", "게시중" satisfies AnnouncementStatus)
+      .eq("show_popup", true)
+      .lte("published_at", today);
+    if (eligibleErr) throw eligibleErr;
+
+    const ids = new Set([announcementId, ...(eligible ?? []).map((a) => a.id)]);
+    const rows = Array.from(ids).map((id) => ({ username, announcement_id: id, dismissed_date: today }));
+    const { error } = await getSupabaseAdmin().from("announcement_dismissals").upsert(rows, { onConflict: "username,announcement_id" });
     if (error) throw error;
   },
 };
