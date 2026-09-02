@@ -57,7 +57,7 @@ async function waitForNonEmptyMainText(page: Page, timeoutMs = 8000): Promise<st
 /** 헤더/필터 UI만 먼저 그려지고 배송건 목록은 스트리밍으로 뒤늦게 채워지는 경우가
  *  있어(비어있지 않다=텍스트 있음 만으로는 부족), 실제 찾는 마커 문자열이 나타날
  *  때까지 기다린다 — RUN_TAG 마커가 안 나타나면 8초 후 마지막 텍스트를 그대로 반환한다. */
-async function waitForMainTextContaining(page: Page, marker: string, timeoutMs = 8000): Promise<string> {
+async function waitForMainTextContaining(page: Page, marker: string, timeoutMs = 20000): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   let text = await mainText(page);
   while (!text.includes(marker) && Date.now() < deadline) {
@@ -74,8 +74,8 @@ async function dragHandle(page: Page, sourceSelector: string, targetSelector: st
   // 로컬 dev 서버는 요청마다 수백ms~1초대 렌더 지연이 있어, 방금 상태변경(그룹펼침 등) 직후
   // 곧바로 boundingBox를 재면 레이아웃이 아직 안정되기 전이라 null이 나올 수 있다 —
   // 요소가 실제로 보일 때까지 명시적으로 기다린 뒤 좌표를 잰다.
-  await source.waitFor({ state: "visible", timeout: 10000 });
-  await target.waitFor({ state: "visible", timeout: 10000 });
+  await source.waitFor({ state: "visible", timeout: 20000 });
+  await target.waitFor({ state: "visible", timeout: 20000 });
   // 그룹을 펼친 뒤(R24)라 헤더가 뷰포트 밖으로 밀려나 있을 수 있다 — mouse.move는
   // 자동 스크롤을 하지 않으므로 명시적으로 뷰포트 안으로 스크롤해야 좌표가 유효하다.
   await source.scrollIntoViewIfNeeded();
@@ -299,14 +299,20 @@ async function main() {
         `${groupHeaderSelB} button[aria-label="그룹 순서 드래그해서 변경"]`
       );
       const changeBanner = page.getByText(/변경사항 \d+건/);
-      await changeBanner.first().waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+      await changeBanner.first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
       const bannerVisible = await changeBanner.isVisible().catch(() => false);
       record("R23-PC-1. 그룹 드래그 후 '변경사항 N건' 배너 노출(Draft 반영)", bannerVisible);
 
       if (bannerVisible) {
         await page.getByRole("button", { name: "변경사항 저장" }).click();
-        await page.waitForTimeout(1200);
-        const savedToast = await page.getByText(/저장했습니다/).isVisible().catch(() => false);
+        // Production은 서버 액션 왕복(콜드스타트 포함)이 로컬보다 훨씬 느릴 수 있다 —
+        // 고정 대기 후 곧바로 navigate하면 저장 요청이 완료되기 전에 페이지 이동으로
+        // 요청이 취소되어(navigate가 in-flight fetch를 끊음) 실제로는 저장되지 않은
+        // 채 다음 단계로 넘어가는 오탐이 난다. 토스트가 뜨거나 저장 버튼이 "저장하는
+        // 중..."에서 원래 상태로 돌아올 때까지 명시적으로 기다린 뒤에만 이동한다.
+        const savedToastLocator = page.getByText(/저장했습니다/);
+        await savedToastLocator.first().waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+        const savedToast = await savedToastLocator.isVisible().catch(() => false);
         record("R23-PC-2. 저장 성공 토스트 노출", savedToast);
 
         await page.goto(`${BASE_URL}/delivery?filter=all&dateFilter=today`, { waitUntil: "load" });
@@ -343,12 +349,13 @@ async function main() {
     const rowSelR1 = `[data-testid="sortable-row-${shipmentIds.R1}"] button[aria-label="드래그해서 순서 변경"]`;
     const rowSelR2 = `[data-testid="sortable-row-${shipmentIds.R2}"] button[aria-label="드래그해서 순서 변경"]`;
     await dragHandle(page, rowSelR1, rowSelR2);
-    await page.getByText(/변경사항 \d+건/).first().waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+    await page.getByText(/변경사항 \d+건/).first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
     const rowChangeBanner = await page.getByText(/변경사항 \d+건/).isVisible().catch(() => false);
     record("R23-행-1. 배송건 드래그 후 변경사항 배너 노출", rowChangeBanner);
     if (rowChangeBanner) {
       await page.getByRole("button", { name: "변경사항 저장" }).click();
-      await page.waitForTimeout(1200);
+      // Production 서버 액션 왕복 지연을 고려해 저장 완료(토스트)를 확인한 뒤에만 이동한다.
+      await page.getByText(/저장했습니다/).first().waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
       await page.goto(`${BASE_URL}/delivery?filter=${encodeURIComponent("배송중")}&driverFilter=${driver.driverId}&dateFilter=today`, { waitUntil: "load" });
       await dismissAnnouncementPopupIfPresent(page);
       routeText = await waitForMainTextContaining(page, `${RUN_TAG}-순서`);
@@ -366,7 +373,7 @@ async function main() {
     await page.goto(`${BASE_URL}/delivery?filter=${encodeURIComponent("배송중")}&driverFilter=${driver.driverId}&dateFilter=today`, { waitUntil: "load" });
     await dismissAnnouncementPopupIfPresent(page);
     await waitForNonEmptyMainText(page);
-    await page.locator(rowSelR1).waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+    await page.locator(rowSelR1).waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
     const mobileHandleVisible = await page.locator(rowSelR1).isVisible().catch(() => false);
     record("R23-모바일. 390px 뷰포트에서도 드래그 손잡이가 정상 노출(터치 대상)", mobileHandleVisible);
     await page.setViewportSize({ width: 1280, height: 900 });
