@@ -185,6 +185,20 @@ export default async function DeliveryPage({
     if (o.driver_id) driverCounts[o.driver_id] = (driverCounts[o.driver_id] ?? 0) + 1;
   }
 
+  // 주문관리 상단 요약(주문/배송/상품주문 건수 표기)과 동일한 형태를 배송관리에도
+  // 노출한다(R21, CPO 지시) — 주문관리와 동일한 비대칭 기준을 그대로 따른다:
+  // 주문/배송 건수는 "현재 조회 기간(dateFilter) 전체" 기준으로 검색어/상품/
+  // 상태탭 필터에 영향받지 않지만(actions/orders.ts의 statusCounts[0]과 동일
+  // 원칙), 상품주문 건수는 주문관리의 totalProductOrders처럼 검색어·상품
+  // 필터까지 반영된 "지금 보이는 목록" 기준이어야 한다 — 여기서는 이미 위에서
+  // q/product 필터가 모두 적용된 orders(shipmentId 집합)로 items를 좁힌다.
+  const distinctOrderCount = new Set(fetchedOrders.map((o) => o.id)).size;
+  const shipmentCount = fetchedOrders.length;
+  const visibleShipmentIds = new Set(orders.map((o) => o.shipmentId));
+  const totalProductOrders = items
+    .filter((item) => item.shipment_id && visibleShipmentIds.has(item.shipment_id))
+    .reduce((sum, item) => sum + item.quantity, 0);
+
   return (
     <>
       <AutoRefresh />
@@ -192,6 +206,9 @@ export default async function DeliveryPage({
         baseQuery={{ dateFilter: params.dateFilter, dateFrom: params.dateFrom, dateTo: params.dateTo, q: params.q, product: params.product }}
         activeFilter={activeFilter}
         flowCounts={flowCounts}
+        orderCount={distinctOrderCount}
+        shipmentCount={shipmentCount}
+        totalProductOrders={totalProductOrders}
         dateFilter={dateFilter}
         dateFrom={range?.start ?? today}
         dateTo={range?.end ?? today}

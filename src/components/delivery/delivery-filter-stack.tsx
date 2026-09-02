@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Map as MapIcon } from "lucide-react";
 import { DeliveryRegionMultiFilter } from "@/components/delivery/delivery-region-multi-filter";
 import { DeliveryBoard } from "@/components/delivery/delivery-board";
 import { DeliveryMapView } from "@/components/delivery/delivery-map-view";
@@ -182,6 +183,12 @@ export function DeliveryFilterStack({
   // (양방향 — DeliveryMap의 highlightId 이펙트가 이미 pan+강조를 처리한다).
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  // R22(CPO 작업지시, STEP12-11): 배송관리 진입 시 지도가 크게 펼쳐져 있어
+  // 목록을 보려면 스크롤이 많이 필요했다 — 지도는 기본 접힘, 필요할 때만
+  // 펼친다. PC/모바일 모두 기본값은 접힘이며, 세션 중 상태만 기억한다(탭
+  // 이동 시 새로고침되면 다시 접힌 상태로 돌아오는 것으로 충분하다는
+  // 지시 — 별도 영속화 요구 없음).
+  const [mapExpanded, setMapExpanded] = useState(false);
   function selectOrder(rowKey: string) {
     setHighlightedOrderId(rowKey);
     rowRefs.current.get(rowKey)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -260,40 +267,62 @@ export function DeliveryFilterStack({
       </p>
 
       {showMap ? (
-        showRoutePanel ? (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_320px]">
-            <div className="h-[420px] sm:h-[520px]">
-              <DeliveryMapView
-                orders={filteredOrders}
-                drivers={drivers}
-                driverColorById={driverColorById}
-                highlightedOrderId={highlightedOrderId}
-                onSelectOrder={selectOrder}
-                emphasizedDriverId={dimDriverId}
-              />
-            </div>
-            <div className="h-[280px] sm:h-[420px]">
-              <DeliveryRoutePanel
-                orders={filteredOrders}
-                drivers={drivers}
-                driverColorById={driverColorById}
-                selectedDriverId={routePanelSelectedId}
-                onSelectDriver={handleRoutePanelSelectDriver}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="h-[420px] sm:h-[480px]">
-            <DeliveryMapView
-              orders={filteredOrders}
-              drivers={drivers}
-              driverColorById={driverColorById}
-              highlightedOrderId={highlightedOrderId}
-              onSelectOrder={selectOrder}
-              emphasizedDriverId={null}
-            />
-          </div>
-        )
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setMapExpanded((prev) => !prev)}
+            className="flex items-center gap-1.5 text-sm font-medium text-text-strong hover:text-primary"
+            aria-expanded={mapExpanded}
+          >
+            <MapIcon className="size-4" />
+            배송 지도
+            {mapExpanded ? (
+              <span className="flex items-center gap-0.5 text-xs font-normal text-muted-foreground">
+                접기 <ChevronUp className="size-3.5" />
+              </span>
+            ) : (
+              <span className="flex items-center gap-0.5 text-xs font-normal text-muted-foreground">
+                펼치기 <ChevronDown className="size-3.5" />
+              </span>
+            )}
+          </button>
+          {mapExpanded ? (
+            showRoutePanel ? (
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_320px]">
+                <div className="h-[420px] sm:h-[520px]">
+                  <DeliveryMapView
+                    orders={filteredOrders}
+                    drivers={drivers}
+                    driverColorById={driverColorById}
+                    highlightedOrderId={highlightedOrderId}
+                    onSelectOrder={selectOrder}
+                    emphasizedDriverId={dimDriverId}
+                  />
+                </div>
+                <div className="h-[280px] sm:h-[420px]">
+                  <DeliveryRoutePanel
+                    orders={filteredOrders}
+                    drivers={drivers}
+                    driverColorById={driverColorById}
+                    selectedDriverId={routePanelSelectedId}
+                    onSelectDriver={handleRoutePanelSelectDriver}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="h-[420px] sm:h-[480px]">
+                <DeliveryMapView
+                  orders={filteredOrders}
+                  drivers={drivers}
+                  driverColorById={driverColorById}
+                  highlightedOrderId={highlightedOrderId}
+                  onSelectOrder={selectOrder}
+                  emphasizedDriverId={null}
+                />
+              </div>
+            )
+          ) : null}
+        </div>
       ) : null}
 
       <DeliveryBoard

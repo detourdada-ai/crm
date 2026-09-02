@@ -534,8 +534,10 @@ function FocusDeliveryCard({
           {order.phone_snapshot}
         </a>
       ) : null}
-      <DeliveryItemsAndBag order={order} itemSummary={itemSummary} />
+      {/* R26(STEP12-11, CPO 작업지시): 공동현관 비밀번호 등 배송 직전에 바로
+          확인해야 하는 정보라 상품 목록보다 먼저(주소/연락처 바로 다음) 배치한다. */}
       {order.delivery_memo ? <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">💬 {order.delivery_memo}</p> : null}
+      <DeliveryItemsAndBag order={order} itemSummary={itemSummary} />
       {action ? <div onClick={(e) => e.stopPropagation()}>{action}</div> : null}
     </div>
   );
@@ -588,8 +590,8 @@ function UpcomingDeliveryCard({
           {order.phone_snapshot}
         </a>
       ) : null}
-      <DeliveryItemsAndBag order={order} itemSummary={itemSummary} />
       {order.delivery_memo ? <p className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">💬 {order.delivery_memo}</p> : null}
+      <DeliveryItemsAndBag order={order} itemSummary={itemSummary} />
       {!done && onComplete ? (
         <Button
           type="button"

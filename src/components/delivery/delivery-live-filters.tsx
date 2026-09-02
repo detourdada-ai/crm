@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
-import { Truck, Download, Navigation } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Truck, Download, Navigation, Info } from "lucide-react";
 import { DeliveryFilterBar } from "@/components/delivery/delivery-filter-bar";
 import { DriverManagementDialog } from "@/components/delivery/driver-management-dialog";
 import { DeliveryStatusFlow, type DeliveryFilter, type DeliveryFlowCount } from "@/components/delivery/delivery-status-flow";
@@ -45,6 +46,9 @@ export function DeliveryLiveFilters({
   baseQuery,
   activeFilter,
   flowCounts,
+  orderCount,
+  shipmentCount,
+  totalProductOrders,
   dateFilter,
   dateFrom,
   dateTo,
@@ -67,6 +71,9 @@ export function DeliveryLiveFilters({
   baseQuery: { dateFilter?: string; dateFrom?: string; dateTo?: string; q?: string; product?: string };
   activeFilter: DeliveryFilter;
   flowCounts: DeliveryFlowCount[];
+  orderCount: number;
+  shipmentCount: number;
+  totalProductOrders: number;
   dateFilter: QuickDateFilterValue;
   dateFrom: string;
   dateTo: string;
@@ -223,6 +230,28 @@ export function DeliveryLiveFilters({
           </div>
         }
       />
+
+      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <span>
+          주문 <span className="font-semibold text-text-strong">{orderCount.toLocaleString()}건</span> · 배송{" "}
+          <span className="font-semibold text-text-strong">{shipmentCount.toLocaleString()}건</span>
+          {" · "}상품주문 <span className="font-semibold text-text-strong">{totalProductOrders.toLocaleString()}건</span>
+        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" aria-label="주문/배송/상품주문 건수 차이 안내" className="text-muted-foreground/70 hover:text-foreground">
+              <Info className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <div className="space-y-0.5">
+              <p>주문: 고객의 주문 건수</p>
+              <p>배송: 실제 배송해야 하는 건수(한 주문이 여러 날짜로 나뉘면 여러 건)</p>
+              <p>상품주문: 주문에 포함된 상품 각각의 건수. 한 주문에 상품이 여러 개면 주문 수보다 많아질 수 있습니다(오류 아님).</p>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </div>
 
       {/* STEP12-1(CPO 작업지시, 2026-08-31): 신규 사장님이 기사 등록 없이
           배송관리에 처음 들어왔을 때 "먼저 기사를 등록해야 한다"는 걸

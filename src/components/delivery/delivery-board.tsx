@@ -3,6 +3,24 @@
 import { Fragment, useEffect, useMemo, useState, useTransition, type RefObject } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -143,11 +161,6 @@ export function DeliveryBoard({
   onSelectOrder?: (rowKey: string) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  // STEP12-8D: ↑/↓ 버튼(기존, 유지)에 더해 드래그로도 순서를 바꿀 수 있게
-  // 한다 — 둘 다 결국 handleJumpToPosition(같은 reorderShipmentsAction 경로)을
-  // 호출하므로 서버 로직/정규화는 완전히 동일하다(CPO 지시: 충돌 없이 교체
-  // 겸 추가 — 기존 QA가 의존하는 ↑/↓ 버튼은 그대로 남겨 회귀 위험을 없앤다).
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
   // STEP12-8F(CPO 작업지시 v2): 그룹 카드는 기본 접힘 — 펼친 그룹의 id만
   // 담아둔다(빈 Set = 전부 접힘). 그룹 순서 재배열(R11)도 이 배열 순서를
   // 그대로 쓴다.
@@ -158,7 +171,15 @@ export function DeliveryBoard({
   // 아직 안 바꿨다는 뜻(자연 순서 그대로 보여준다).
   const [rowOrderDraft, setRowOrderDraft] = useState<string[] | null>(null);
   const [groupOrderDraft, setGroupOrderDraft] = useState<string[] | null>(null);
-  const [groupDragIndex, setGroupDragIndex] = useState<number | null>(null);
+  // R23(STEP12-11, CPO 작업지시): 네이티브 HTML5 Drag&Drop(draggable 속성)은
+  // 모바일 터치를 지원하지 않아 ↑/↓·Select 바로가기를 별도로 유지해야 했다 —
+  // dnd-kit의 PointerSensor+TouchSensor로 교체해 PC 마우스와 모바일 터치가
+  // 하나의 드래그 핸들로 모두 동작하게 하고, 보조 UI(↑/↓/Select)는 제거한다.
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
   const [bulkDriverId, setBulkDriverId] = useState("");
   const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentMethod>("delivery");
   const [isPending, startTransition] = useTransition();
@@ -473,21 +494,15 @@ export function DeliveryBoard({
     return <p className="py-12 text-center text-sm text-muted-foreground">해당 조건의 배송건이 없습니다.</p>;
   }
 
-  function handleMoveRow(index: number, direction: -1 | 1) {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= currentlyDisplayedOrders.length) return;
-    const next = currentlyDisplayedOrders.map((o) => o.rowKey);
-    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
-    commitRowOrder(next);
-  }
-
-  /** PART 12: ↑/↓(한 칸 미세조정)과 별개로, 순서를 원하는 위치로 한 번에 이동시킨다. */
-  function handleJumpToPosition(fromIndex: number, toIndex: number) {
-    if (fromIndex === toIndex) return;
-    const next = currentlyDisplayedOrders.map((o) => o.rowKey);
-    const [item] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, item);
-    commitRowOrder(next);
+  /** R23: dnd-kit 드래그가 끝나면(마우스든 터치든 동일 경로) 배송순서를 Draft로 반영한다. */
+  function handleRowDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const ids = currentlyDisplayedOrders.map((o) => o.rowKey);
+    const oldIndex = ids.indexOf(String(active.id));
+    const newIndex = ids.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    commitRowOrder(arrayMove(ids, oldIndex, newIndex));
   }
 
   /** STEP12-8F Phase2(R11): 그룹 카드 자체의 순서 — 배송건 순서(R10)와 동일하게
@@ -496,24 +511,14 @@ export function DeliveryBoard({
   function commitGroupOrder(nextGroupIds: string[]) {
     setGroupOrderDraft(naturalGroupOrder.every((id, i) => id === nextGroupIds[i]) ? null : nextGroupIds);
   }
-  function handleGroupJumpToPosition(fromIndex: number, toIndex: number) {
-    if (fromIndex === toIndex) return;
-    const next = currentGroupOrder.slice();
-    const [item] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, item);
-    commitGroupOrder(next);
-  }
-  /**
-   * STEP12-8F Phase4(R11): 그룹 순서도 배송건 순서(R10)와 동일하게 드래그 손잡이
-   * 외에 ↑/↓·바로가기 Select를 둔다 — 네이티브 HTML5 Drag&Drop은 터치(모바일)를
-   * 지원하지 않아 손잡이만으로는 모바일에서 그룹 순서를 바꿀 방법이 없었다.
-   */
-  function handleMoveGroup(index: number, direction: -1 | 1) {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= currentGroupOrder.length) return;
-    const next = currentGroupOrder.slice();
-    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
-    commitGroupOrder(next);
+  /** R23: 그룹 순서도 배송건 순서와 동일한 dnd-kit 드래그 경로를 쓴다. */
+  function handleGroupDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = currentGroupOrder.indexOf(String(active.id));
+    const newIndex = currentGroupOrder.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    commitGroupOrder(arrayMove(currentGroupOrder, oldIndex, newIndex));
   }
 
   function renderRow(order: OrderShipmentBoardRow) {
@@ -674,6 +679,62 @@ export function DeliveryBoard({
     );
   }
 
+  const rowIds = currentlyDisplayedOrders.map((o) => o.rowKey);
+
+  function renderList() {
+    return (
+      <div className="space-y-2">
+        {currentlyDisplayedOrders.length > 1 ? (
+          <label className="flex items-center gap-2 pb-1 text-sm text-muted-foreground">
+            <Checkbox
+              checked={visibleSelected.size === currentlyDisplayedOrders.length}
+              onCheckedChange={(checked) =>
+                setSelected(checked === true ? new Set(currentlyDisplayedOrders.map((o) => o.rowKey)) : new Set())
+              }
+            />
+            전체 선택({currentlyDisplayedOrders.length}건)
+          </label>
+        ) : null}
+        {currentlyDisplayedOrders.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">해당 조건의 배송건이 없습니다.</p>
+        ) : null}
+        {currentlyDisplayedOrders.map((o, idx) => {
+          const prevGroupId = idx > 0 ? currentlyDisplayedOrders[idx - 1].delivery_group_id : null;
+          const isNewGroup =
+            showGroupCards && !showReorderControls && !!o.delivery_group_id && o.delivery_group_id !== prevGroupId;
+          // STEP12-8F(R12): 그룹이 접혀있으면(기본값) 헤더만 보여주고 소속
+          // 배송건 카드는 렌더링하지 않는다 — reorderEnabled 모드(기사 필터로
+          // 좁힌 화면)에는 그룹 카드 자체가 없으므로 영향 없다.
+          const belongsToCollapsedGroup =
+            showGroupCards && !showReorderControls && !!o.delivery_group_id && !expandedGroups.has(o.delivery_group_id);
+          // R24(STEP12-11, CPO 작업지시): 펼쳐진 그룹의 하위 카드는 상위 카드와
+          // 구분 없이 나란히 보여 "그룹 소속"이 한눈에 안 들어온다는 지적 —
+          // 들여쓰기 + 왼쪽 경계선으로 그룹 헤더 아래 소속임을 시각적으로 드러낸다.
+          const childOfExpandedGroup = !belongsToCollapsedGroup && showGroupCards && !showReorderControls && !!o.delivery_group_id;
+          const groupIndex = isNewGroup ? currentGroupOrder.indexOf(o.delivery_group_id!) : -1;
+          return (
+            <Fragment key={o.rowKey}>
+              {isNewGroup ? (
+                <SortableGroupHeader groupId={o.delivery_group_id!} index={groupIndex}>
+                  {renderGroupHeader(o.delivery_group_id!)}
+                </SortableGroupHeader>
+              ) : null}
+              {belongsToCollapsedGroup ? null : showReorderControls ? (
+                <SortableRow id={o.rowKey} index={idx}>
+                  {renderRowWithRef(o)}
+                </SortableRow>
+              ) : childOfExpandedGroup ? (
+                <div className="ml-4 border-l-2 border-primary/20 pl-3">{renderRowWithRef(o)}</div>
+              ) : (
+                renderRowWithRef(o)
+              )}
+            </Fragment>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <BulkAssignBar
@@ -705,183 +766,88 @@ export function DeliveryBoard({
         </div>
       ) : null}
 
-      <div className="space-y-2">
-        {currentlyDisplayedOrders.length > 1 ? (
-          <label className="flex items-center gap-2 pb-1 text-sm text-muted-foreground">
-            <Checkbox
-              checked={visibleSelected.size === currentlyDisplayedOrders.length}
-              onCheckedChange={(checked) =>
-                setSelected(checked === true ? new Set(currentlyDisplayedOrders.map((o) => o.rowKey)) : new Set())
-              }
-            />
-            전체 선택({currentlyDisplayedOrders.length}건)
-          </label>
-        ) : null}
-        {currentlyDisplayedOrders.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">해당 조건의 배송건이 없습니다.</p>
-        ) : null}
-        {currentlyDisplayedOrders.map((o, idx) => {
-          const prevGroupId = idx > 0 ? currentlyDisplayedOrders[idx - 1].delivery_group_id : null;
-          const isNewGroup =
-            showGroupCards && !showReorderControls && !!o.delivery_group_id && o.delivery_group_id !== prevGroupId;
-          // STEP12-8F(R12): 그룹이 접혀있으면(기본값) 헤더만 보여주고 소속
-          // 배송건 카드는 렌더링하지 않는다 — reorderEnabled 모드(기사 필터로
-          // 좁힌 화면)에는 그룹 카드 자체가 없으므로 영향 없다.
-          const belongsToCollapsedGroup =
-            showGroupCards && !showReorderControls && !!o.delivery_group_id && !expandedGroups.has(o.delivery_group_id);
-          const groupIndex = isNewGroup ? currentGroupOrder.indexOf(o.delivery_group_id!) : -1;
-          return (
-            <Fragment key={o.rowKey}>
-              {isNewGroup ? (
-                <div
-                  data-testid={`group-header-${o.delivery_group_id}`}
-                  className={cn("flex items-start gap-2 transition-opacity", groupDragIndex === groupIndex && "opacity-50")}
-                  onDragOver={(e) => {
-                    if (groupDragIndex === null) return;
-                    e.preventDefault();
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (groupDragIndex === null || groupDragIndex === groupIndex) return;
-                    handleGroupJumpToPosition(groupDragIndex, groupIndex);
-                    setGroupDragIndex(null);
-                  }}
-                >
-                  {/* STEP12-8F Phase2(R11): 배송건 순서(R10)와 동일한 드래그
-                      상호작용 — 손잡이를 잡고 끌면 handleGroupJumpToPosition이
-                      currentGroupOrder를 재배열해 groupOrderDraft에 담는다. */}
-                  <div className="flex shrink-0 flex-col items-center gap-1 pt-2">
-                    <span
-                      draggable
-                      onDragStart={() => setGroupDragIndex(groupIndex)}
-                      onDragEnd={() => setGroupDragIndex(null)}
-                      className="flex size-6 cursor-grab items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-text-strong active:cursor-grabbing"
-                      aria-label="그룹 순서 드래그해서 변경"
-                      title="그룹 순서 드래그해서 변경"
-                    >
-                      <GripVertical className="size-3.5" />
-                    </span>
-                    <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
-                      {groupIndex + 1}
-                    </span>
-                    <div className="flex flex-col gap-0.5">
-                      <button
-                        type="button"
-                        disabled={groupIndex === 0}
-                        onClick={() => handleMoveGroup(groupIndex, -1)}
-                        aria-label="그룹 위로 이동"
-                        className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                      >
-                        <ChevronUp className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={groupIndex === currentGroupOrder.length - 1}
-                        onClick={() => handleMoveGroup(groupIndex, 1)}
-                        aria-label="그룹 아래로 이동"
-                        className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                      >
-                        <ChevronDown className="size-3.5" />
-                      </button>
-                    </div>
-                    {currentGroupOrder.length > 2 ? (
-                      <Select
-                        value={String(groupIndex + 1)}
-                        onValueChange={(v) => handleGroupJumpToPosition(groupIndex, Number(v) - 1)}
-                      >
-                        <SelectTrigger size="sm" className="h-7 w-14 px-1.5 text-xs" aria-label="그룹순서 바로 변경">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {currentGroupOrder.map((_, i) => (
-                            <SelectItem key={i} value={String(i + 1)}>
-                              {i + 1}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : null}
-                  </div>
-                  {renderGroupHeader(o.delivery_group_id!)}
-                </div>
-              ) : null}
-              {belongsToCollapsedGroup ? null : showReorderControls ? (
-                <div
-                  className={cn("flex items-start gap-2 rounded-xl transition-colors", dragIndex === idx && "opacity-50")}
-                  onDragOver={(e) => {
-                    if (dragIndex === null) return;
-                    e.preventDefault();
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (dragIndex === null || dragIndex === idx) return;
-                    handleJumpToPosition(dragIndex, idx);
-                    setDragIndex(null);
-                  }}
-                >
-                  <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
-                    {/* STEP12-8D: 그룹 순서 Drag&Drop과 같은 상호작용 방식 —
-                        이 손잡이를 잡고 끌면 handleJumpToPosition(기존 ↑/↓·
-                        바로가기 Select와 동일한 reorderShipmentsAction 경로)이
-                        호출된다. */}
-                    <span
-                      draggable
-                      onDragStart={() => setDragIndex(idx)}
-                      onDragEnd={() => setDragIndex(null)}
-                      className="flex size-6 cursor-grab items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-text-strong active:cursor-grabbing"
-                      aria-label="드래그해서 순서 변경"
-                      title="드래그해서 순서 변경"
-                    >
-                      <GripVertical className="size-3.5" />
-                    </span>
-                    <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
-                      {idx + 1}
-                    </span>
-                    <div className="flex flex-col gap-0.5">
-                      <button
-                        type="button"
-                        disabled={idx === 0}
-                        onClick={() => handleMoveRow(idx, -1)}
-                        aria-label="위로 이동"
-                        className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                      >
-                        <ChevronUp className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={idx === currentlyDisplayedOrders.length - 1}
-                        onClick={() => handleMoveRow(idx, 1)}
-                        aria-label="아래로 이동"
-                        className="rounded border border-border bg-surface p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
-                      >
-                        <ChevronDown className="size-3.5" />
-                      </button>
-                    </div>
-                    {/* PART 12: ↑/↓는 한 칸 미세조정, 이 Select는 원하는 순서로 바로 이동 — 배송이 많을 때 ↑/↓만으로는 너무 느리다. */}
-                    {currentlyDisplayedOrders.length > 2 ? (
-                      <Select value={String(idx + 1)} onValueChange={(v) => handleJumpToPosition(idx, Number(v) - 1)}>
-                        <SelectTrigger size="sm" className="h-7 w-14 px-1.5 text-xs" aria-label="배송순서 바로 변경">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {currentlyDisplayedOrders.map((_, i) => (
-                            <SelectItem key={i} value={String(i + 1)}>
-                              {i + 1}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : null}
-                  </div>
-                  <div className="min-w-0 flex-1">{renderRowWithRef(o)}</div>
-                </div>
-              ) : (
-                renderRowWithRef(o)
-              )}
-            </Fragment>
-          );
-        })}
+      {/* R23: 배송건 순서(단일 기사 선택 시)와 그룹 순서(기본/배정필요 탭)는
+          서로 다른 항목 집합을 정렬하므로 각각 별도의 DndContext를 쓴다 —
+          두 모드는 항상 배타적이라(showReorderControls XOR showGroupCards)
+          동시에 두 컨텍스트가 겹치지 않는다. */}
+      {showReorderControls ? (
+        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleRowDragEnd}>
+          <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
+            {renderList()}
+          </SortableContext>
+        </DndContext>
+      ) : showGroupCards ? (
+        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
+          <SortableContext items={currentGroupOrder} strategy={verticalListSortingStrategy}>
+            {renderList()}
+          </SortableContext>
+        </DndContext>
+      ) : (
+        renderList()
+      )}
+    </div>
+  );
+}
+
+/** R23: 배송건 하나를 드래그할 수 있는 항목으로 감싼다 — PointerSensor(마우스)와
+ *  TouchSensor(모바일 터치)가 같은 손잡이에서 동시에 동작한다. */
+function SortableRow({ id, index, children }: { id: string; index: number; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      data-testid={`sortable-row-${id}`}
+      className={cn("flex items-start gap-2 rounded-xl", isDragging && "z-10 opacity-50")}
+    >
+      <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="flex size-6 touch-none cursor-grab items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-text-strong active:cursor-grabbing"
+          aria-label="드래그해서 순서 변경"
+          title="드래그해서 순서 변경"
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+        <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
+          {index + 1}
+        </span>
       </div>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+/** R23: 배송그룹 헤더를 드래그할 수 있는 항목으로 감싼다 — SortableRow와 동일한 상호작용. */
+function SortableGroupHeader({ groupId, index, children }: { groupId: string; index: number; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: groupId });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      data-testid={`group-header-${groupId}`}
+      className={cn("flex items-start gap-2", isDragging && "z-10 opacity-50")}
+    >
+      <div className="flex shrink-0 flex-col items-center gap-1 pt-2">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="flex size-6 touch-none cursor-grab items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-text-strong active:cursor-grabbing"
+          aria-label="그룹 순서 드래그해서 변경"
+          title="그룹 순서 드래그해서 변경"
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+        <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-text-strong">
+          {index + 1}
+        </span>
+      </div>
+      {children}
     </div>
   );
 }

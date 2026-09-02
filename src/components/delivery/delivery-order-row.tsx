@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertTriangle, Check, Copy, Loader2, MapPin, MessageSquare } from "lucide-react";
+import { AlertTriangle, Check, Copy, Loader2, MapPin, MessageSquare, Phone } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -87,13 +87,14 @@ export function DeliveryOrderRow({
   const locked = order.delivery_status === "완료";
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface p-3 text-sm transition-colors hover:bg-muted/40 md:flex-row md:items-start md:gap-3 md:rounded-lg md:p-2.5">
+    <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface p-2.5 text-sm transition-colors hover:bg-muted/40 md:flex-row md:items-start md:gap-3 md:rounded-lg md:p-2">
       <Checkbox className="mt-1 md:mt-2" checked={selected} onCheckedChange={(checked) => onToggleSelect(checked === true)} />
-      {/* STEP12-8F Phase2(R13): 배송관리 카드는 "배송 실무" 우선순위로 정보를
-          배치한다 — 배송순서/이름 → 주소 → 담당기사/가방/override → 상품
-          순(CPO 목업 순서). 주문번호/출처/전화/금액 등 주문관리 성격의
-          메타정보는 이 카드에서 빼고 주문상세 링크 하나로만 남긴다. */}
-      <div className="min-w-0 flex-1 space-y-1.5">
+      {/* R25(STEP12-11, CPO 작업지시): 카드가 세로로 길어 스크롤 피로도가
+          크다는 지적 — 이름+연락처를 같은 줄에 묶고, 주소 블록의 지역요약/
+          도로명을 한 줄로 합쳐 배송 실무에 필요한 정보만 촘촘하게 보여준다.
+          우선순위(STEP12-8F R13)는 그대로: 순서/이름 → 연락처 → 주소 →
+          담당기사/가방 → 상품. */}
+      <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             {/* STEP5-C: route_order는 그대로 표시만 한다 — 값이 없으면(미배정 등) 임의로 번호를 만들지 않는다. */}
@@ -120,6 +121,18 @@ export function DeliveryOrderRow({
                 ? `${order.buyer_name} → ${order.recipient_name}`
                 : order.recipient_name}
             </span>
+            {/* R25: 배송 연락처가 카드에 없어 주문상세를 열어야만 확인 가능하던
+                문제 — 이름 옆에 같은 줄로 붙여 세로 공간을 늘리지 않는다. */}
+            {order.phone_snapshot ? (
+              <a
+                href={`tel:${order.phone_snapshot}`}
+                className="flex items-center gap-1 text-xs text-primary hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Phone className="size-3" />
+                {order.phone_snapshot}
+              </a>
+            ) : null}
           </div>
           <DeliveryStatusControl
             status={order.delivery_status}
@@ -394,21 +407,26 @@ function DeliveryAddressBlock({ order }: { order: OrderShipmentBoardRow }) {
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       <div className="flex items-start gap-1.5">
         <div className="min-w-0 flex-1">
-          {regionSummary ? <p className="text-xs font-medium text-muted-foreground">{regionSummary}</p> : null}
-          <p className="text-base font-semibold break-words text-text-strong">{road ?? "-"}</p>
+          {/* R25: 지역요약(시/군/구/동)과 도로명주소를 두 줄로 나눠 보여주던 것을
+              한 줄로 합친다 — 배송지는 여전히 카드에서 가장 강조되는 정보지만
+              (font-semibold 유지), 세로 공간은 절반으로 줄인다. */}
+          <p className="break-words text-sm font-semibold text-text-strong">
+            {regionSummary ? <span className="font-medium text-muted-foreground">{regionSummary} · </span> : null}
+            {road ?? "-"}
+          </p>
           {order.detail_address_snapshot ? (
-            <p className="text-sm font-medium break-words text-text-strong">{order.detail_address_snapshot}</p>
+            <p className="text-xs font-medium break-words text-text-strong">{order.detail_address_snapshot}</p>
           ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <Button type="button" size="icon" variant="ghost" className="size-7" onClick={copyAddress} aria-label="주소 복사">
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button type="button" size="icon" variant="ghost" className="size-6" onClick={copyAddress} aria-label="주소 복사">
             <Copy className="size-3.5" />
           </Button>
           {fullText ? (
-            <Button asChild type="button" size="icon" variant="ghost" className="size-7" aria-label="지도에서 보기">
+            <Button asChild type="button" size="icon" variant="ghost" className="size-6" aria-label="지도에서 보기">
               <a href={`https://map.kakao.com/link/search/${encodeURIComponent(fullText)}`} target="_blank" rel="noopener noreferrer">
                 <MapPin className="size-3.5" />
               </a>
@@ -416,10 +434,13 @@ function DeliveryAddressBlock({ order }: { order: OrderShipmentBoardRow }) {
           ) : null}
         </div>
       </div>
+      {/* R25/R26: 배송메모는 존재할 때만 노출하고(빈 영역 안 차지) 잘리지
+          않게 전체를 보여준다(line-clamp 제거) — 공동현관 비밀번호처럼 배송
+          중 즉시 확인해야 하는 정보를 줄이면 안 된다는 지시. */}
       {order.delivery_memo ? (
         <p className="flex items-start gap-1 rounded-md bg-warning-soft px-1.5 py-1 text-xs text-warning">
           <MessageSquare className="mt-0.5 size-3 shrink-0" />
-          <span className="line-clamp-2 break-words">{order.delivery_memo}</span>
+          <span className="break-words">{order.delivery_memo}</span>
         </p>
       ) : null}
     </div>
