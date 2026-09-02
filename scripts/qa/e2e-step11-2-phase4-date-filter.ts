@@ -160,7 +160,7 @@ async function run() {
     await confirmAndWait(page);
     resultText = (await page.locator("main").innerText().catch(() => "")) ?? "";
     record(
-      "CaseB-4. 재업로드 — 이미 등록된 상품주문 100건 + 날짜 제외 20건(신규 생성 없음)",
+      "CaseB-4. 재업로드 — 이미 등록된 상품행 100건 + 날짜 제외 20건(신규 생성 없음)",
       resultText.includes("100건") && resultText.includes("날짜 조건 제외") && resultText.includes("20건"),
       resultText.slice(0, 300)
     );

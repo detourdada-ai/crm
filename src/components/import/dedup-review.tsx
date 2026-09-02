@@ -217,7 +217,7 @@ export function DedupReview({
           누적된 주문 엑셀을 매일 업로드해도 됩니다. 이미 등록된 주문은 자동으로 중복 처리되지 않습니다.
         </p>
         <p className="text-sm text-muted-foreground">
-          총 <span className="font-semibold text-text-strong">{analysis.totalProductOrders.toLocaleString()}개 상품주문</span>을
+          총 <span className="font-semibold text-text-strong">{analysis.totalProductOrders.toLocaleString()}개 상품행</span>을
           확인했습니다(주문 묶음 {analysis.totalGroups.toLocaleString()}건).
         </p>
         {/* STEP11-2 Phase4(2026-08 CPO 작업지시): 날짜 필터로 제외된 건은
@@ -241,17 +241,17 @@ export function DedupReview({
         */}
         <dl className="space-y-1.5 text-sm">
           <div className="flex items-baseline justify-between">
-            <dt className="text-muted-foreground">신규 상품주문</dt>
+            <dt className="text-muted-foreground">신규 상품행</dt>
             <dd className="font-medium text-text-strong">{analysis.newCount.toLocaleString()}건</dd>
           </div>
           <div className="flex items-baseline justify-between">
-            <dt className={analysis.candidateCount > 0 ? "text-warning" : "text-muted-foreground"}>중복 가능성이 있는 상품주문</dt>
+            <dt className={analysis.candidateCount > 0 ? "text-warning" : "text-muted-foreground"}>중복 가능성이 있는 상품행</dt>
             <dd className={`font-medium ${analysis.candidateCount > 0 ? "text-warning" : "text-text-strong"}`}>
               {analysis.candidateCount.toLocaleString()}건
             </dd>
           </div>
           <div className="flex items-baseline justify-between">
-            <dt className="text-muted-foreground">이미 등록된 상품주문</dt>
+            <dt className="text-muted-foreground">이미 등록된 상품행</dt>
             <dd className="font-medium text-text-strong">{analysis.confirmedDuplicateCount.toLocaleString()}건</dd>
           </div>
           {analysis.identityConflictCount > 0 ? (
@@ -262,7 +262,7 @@ export function DedupReview({
           ) : null}
           {analysis.repeatConfirmCount > 0 ? (
             <div className="flex items-baseline justify-between">
-              <dt className="text-warning">확인이 필요한 상품주문(주문번호 반복)</dt>
+              <dt className="text-warning">확인이 필요한 상품행(주문번호 반복)</dt>
               <dd className="font-medium text-warning">{analysis.repeatConfirmCount.toLocaleString()}건</dd>
             </div>
           ) : null}
@@ -275,8 +275,8 @@ export function DedupReview({
         </dl>
         {partialGroups.length > 0 ? (
           <p className="text-xs text-muted-foreground">
-            이 중 {partialGroups.length.toLocaleString()}개 주문 묶음은 같은 주문번호 안에 신규/기존 상품주문이 섞여 있어, 신규
-            상품주문만 자동으로 추가 등록됩니다(아래 상세 참고).
+            이 중 {partialGroups.length.toLocaleString()}개 주문 묶음은 같은 주문번호 안에 신규/기존 상품행이 섞여 있어, 신규
+            상품행만 자동으로 추가 등록됩니다(아래 상세 참고).
           </p>
         ) : null}
         {analysis.unrecognizedPaymentStatusCount > 0 ? (
@@ -325,7 +325,7 @@ export function DedupReview({
           <div className="space-y-2 rounded-md border bg-muted/20 p-3">
             <p className="text-sm font-medium text-text-strong">일부만 신규인 주문 {partialGroups.length}건</p>
             <p className="text-xs text-muted-foreground">
-              신규 상품주문은 사용자 확인 없이 기존 주문에 자동으로 추가 등록됩니다(기존 상품/배송/기사배정 정보는 그대로 유지).
+              신규 상품행은 사용자 확인 없이 기존 주문에 자동으로 추가 등록됩니다(기존 상품/배송/기사배정 정보는 그대로 유지).
             </p>
             <div className="space-y-2">
               {partialGroups.map((g) => (

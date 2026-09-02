@@ -127,7 +127,7 @@ async function main() {
     const csv1 = csvOf([{ name: nameA1, phone: phoneA1, address: "서울 강남구 테헤란로 1", deliveryDate: todayIso(), product: "과일세트", quantity: 2 }]);
     await uploadAndGoToReview(page, csv1, "day1.csv");
     let text = await reviewText(page);
-    record("QA-1a. Analyze 결과 — 신규 1건, 이미등록 0건", text.includes("신규 상품주문") && /신규 상품주문[\s\S]{0,20}1건/.test(text));
+    record("QA-1a. Analyze 결과 — 신규 1건, 이미등록 0건", text.includes("신규 상품행") && /신규 상품행[\s\S]{0,20}1건/.test(text));
     await confirmRegister(page);
     const { data: afterQ1 } = await admin.from("orders").select("id").eq("owner_username", OWNER).eq("phone_snapshot", phoneA1).eq("recipient_name", nameA1);
     record("QA-1b. DB에 실제로 1건 등록됨", (afterQ1?.length ?? 0) === 1, JSON.stringify(afterQ1));
@@ -153,7 +153,7 @@ async function main() {
     ]);
     await uploadAndGoToReview(page, csvDay2, "day2.csv");
     text = await reviewText(page);
-    record("QA-3a. 누적 업로드 — 신규 1건 + 이미등록 1건으로 구분", /신규 상품주문[\s\S]{0,20}1건/.test(text) && text.includes("이미 등록된 주문"));
+    record("QA-3a. 누적 업로드 — 신규 1건 + 이미등록 1건으로 구분", /신규 상품행[\s\S]{0,20}1건/.test(text) && text.includes("이미 등록된 주문"));
     await confirmRegister(page);
     const { data: totalAfterQ3 } = await admin.from("orders").select("id").eq("owner_username", OWNER).ilike("recipient_name", `${QA_PREFIX}%`);
     record("QA-3b. 실제 DB 총 2건(A1 중복 제외, A2만 신규 추가)", (totalAfterQ3?.length ?? 0) === 2, JSON.stringify(totalAfterQ3?.length));
@@ -288,7 +288,7 @@ async function main() {
     text = await reviewText(page);
     // "중복 가능성이 있는 주문" 라벨 자체는 요약 통계 줄에 항상 존재한다(건수 0이어도) —
     // 후보가 실제로 있을 때만 렌더되는 "⚠️" 상세 목록 블록의 유무로 판단해야 한다.
-    record("QA-9a. 다른 tenant(OWNER_B)의 동일 정보 주문은 신규로 분류(중복/후보 아님)", /신규 상품주문[\s\S]{0,20}1건/.test(text) && !text.includes("⚠️"));
+    record("QA-9a. 다른 tenant(OWNER_B)의 동일 정보 주문은 신규로 분류(중복/후보 아님)", /신규 상품행[\s\S]{0,20}1건/.test(text) && !text.includes("⚠️"));
     await confirmRegister(page);
     const { data: fCountA } = await admin.from("orders").select("id").eq("owner_username", OWNER).eq("phone_snapshot", phoneF);
     const { data: fCountB } = await admin.from("orders").select("id").eq("owner_username", OWNER_B).eq("phone_snapshot", phoneF);
@@ -310,7 +310,7 @@ async function main() {
     await page.getByRole("button", { name: "다음: 중복 확인", exact: true }).click();
     await page.getByText("엑셀 분석 완료").waitFor({ state: "visible", timeout: 15000 });
     text = await reviewText(page);
-    const wasNewAtAnalyze = /신규 상품주문[\s\S]{0,20}1건/.test(text);
+    const wasNewAtAnalyze = /신규 상품행[\s\S]{0,20}1건/.test(text);
 
     // Analyze 직후, Confirm 누르기 전에 "다른 브라우저에서 먼저 등록한 것"을 흉내낸다.
     const custGId = randomUUID();

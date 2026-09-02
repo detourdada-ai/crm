@@ -1,15 +1,21 @@
 /**
- * STEP8(2026-08-27 CPO 작업지시) — QA 스크립트 공통 안전장치.
+ * STEP8(2026-08-27 CPO 작업지시), STEP12-10 v3(CPO 정책 갱신)로 업데이트된
+ * QA 스크립트 공통 안전장치.
  *
  * 1. assertAllowedQaOwner(): 실행 전 대상 tenant가 허용된 QA tenant인지
- *    확인하고, user1/user2면 즉시 예외를 던져 스크립트를 중단시킨다.
- * 2. assertTenantIsQaSafe(): STEP10-4(2026-08-27 CPO 작업지시) — allowlist만
- *    믿지 않는다. user3/4/5가 "지금은" 비어있어서 안전한 것이지 앞으로도
- *    QA 전용이라는 보장은 없다 — 이 tenant가 나중에 실제 셀러에게 배정돼도
- *    사람이 qa-config.ts를 고치는 걸 잊으면 위 정적 체크는 못 막는다.
- *    그래서 매 실행마다 "이 tenant에 QA_NAME_PREFIX로 시작하지 않는
- *    주문/고객/기사가 하나라도 있는가"를 실제로 조회해서, 하나라도 있으면
- *    (임계치 없이) 즉시 fail-fast한다 — 실제 주문 1건만 있어도 중단이다.
+ *    확인하고, user1/user2면 즉시 예외를 던져 스크립트를 중단시킨다 — 이
+ *    하드 게이트는 정책과 무관하게 항상 유지된다.
+ * 2. assertTenantIsQaSafe(): STEP12-10 v3(CPO 명시적 정책) — user3/4/5는
+ *    "QA 데이터가 아닌 것으로 보이는 기존 데이터가 있는지"와 무관하게
+ *    항상 QA 실행 대상이다(과거 스프린트의 실사업자 롤플레이 시나리오 등
+ *    QA_NAME_PREFIX 없이 쌓인 데이터가 이미 있을 수 있음 — 그 자체가 QA를
+ *    막을 이유는 아니다). 이전 버전은 이런 기존 데이터가 하나라도 있으면
+ *    fail-fast했으나, 이는 v3에서 CPO가 명시적으로 폐기했다. 대신 이
+ *    함수는 그런 기존 데이터의 존재를 콘솔에 정보성으로만 남긴다 —
+ *    "이 tenant를 쓰지 마라"가 아니라 "정리 시 이 기존 데이터를 지우면
+ *    안 된다"는 걸 스크립트 작성자가 인지하게 하기 위함이다. 실제 안전은
+ *    각 스크립트의 cleanup이 RUN_TAG/QA_NAME_PREFIX로 정확히 좁혀서
+ *    지우는 것으로 보장한다(기존 데이터 삭제 금지는 여전히 절대 원칙).
  * 3. makeRunTag(): 모든 QA 데이터(고객/주문/배송/임시기사)에 붙일 추적
  *    가능한 식별자 `QA-{script}-{timestamp}`를 만든다.
  * 4. createQaDriver()/cleanupQaDriver(): "기존 활성 기사 재사용" 대신
@@ -38,11 +44,15 @@ export function assertAllowedQaOwner(owner: string): void {
 }
 
 /**
- * 정적 allowlist 통과 후에도, 이 tenant에 실제로 QA_NAME_PREFIX가 아닌
- * 주문/고객/기사가 존재하는지 실시간으로 확인한다. 하나라도 있으면
- * "이 tenant는 더 이상 QA 전용이 아닐 수 있다"고 보고 즉시 중단한다
- * (임계치를 두지 않는다 — 실제 주문 1건만 있어도 사고이므로 그 자체가
- * 기준이다). 모든 QA 스크립트의 main() 첫 줄에서 호출해야 한다.
+ * 정적 allowlist(user1/user2 금지) 통과 여부만 하드하게 확인한다.
+ * STEP12-10 v3(CPO 정책) — user3/4/5에 QA_NAME_PREFIX가 아닌 기존 데이터가
+ * 있어도 더 이상 실행을 막지 않는다(과거엔 이게 실사업자 롤플레이로 쌓인
+ * 정상 데이터까지 차단하는 오탐이었다). 대신 그 존재를 정보성으로 로그만
+ * 남긴다 — cleanup을 짤 때 "이 기존 데이터는 절대 지우면 안 된다"는 걸
+ * 스크립트 작성자가 놓치지 않게 하기 위함이다. 실제 안전장치는 각
+ * 스크립트가 RUN_TAG/QA_NAME_PREFIX로 정확히 좁혀서 지우는 cleanup 로직
+ * 자체다(qa-config.ts의 FORBIDDEN_QA_OWNERS=user1/user2는 여전히 절대
+ * 예외 없이 차단).
  */
 export async function assertTenantIsQaSafe(owner: string): Promise<void> {
   assertAllowedQaOwner(owner);
@@ -64,9 +74,9 @@ export async function assertTenantIsQaSafe(owner: string): Promise<void> {
   if ((drivers.count ?? 0) > 0) problems.push(`기사 ${drivers.count}건`);
 
   if (problems.length > 0) {
-    throw new Error(
-      `qa-guard: "${owner}"에 QA 데이터(접두사 "${QA_NAME_PREFIX}")가 아닌 것으로 보이는 데이터가 있어 QA 실행을 즉시 중단합니다(${problems.join(", ")}). ` +
-        `이 tenant가 더 이상 QA 전용이 아닐 수 있습니다 — scripts/qa/lib/qa-config.ts의 허용 목록을 재검토하고 CPO 승인 없이는 이 tenant로 QA를 실행하지 마세요.`
+    console.log(
+      `[qa-guard] 안내: "${owner}"에 QA 데이터(접두사 "${QA_NAME_PREFIX}")가 아닌 기존 데이터가 있습니다(${problems.join(", ")}). ` +
+        `CPO 정책상 이는 QA 실행을 막지 않지만, cleanup은 반드시 이번 실행이 만든 RUN_TAG/접두사 데이터만 지워야 합니다.`
     );
   }
 }

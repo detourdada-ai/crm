@@ -168,17 +168,21 @@ async function main() {
     const tabCountForOwner = await page.getByRole("tab", { name: "공지관리" }).count();
     record("B1. user3 설정 화면에 공지관리 탭이 노출되지 않음(권한 경계)", tabCountForOwner === 0, `count=${tabCountForOwner}`);
 
-    // ---- Scenario C: 사장님 공지 목록/상세 ----
+    // ---- Scenario C: 사장님 공지 화면 ----
+    // STEP11-14(CPO 작업지시, 2026-08-31)로 이 화면은 "목록"이 아니라 "가장
+    // 최신 게시중 공지 1건의 본문"만 바로 보여주는 구조로 바뀌었다(과거
+    // 리스트+클릭 진입 UX는 폐기됨) — 이 스크립트가 작성된 시점(STEP9,
+    // 2026-08-27) 이후 벌어진 변경이라 원래 C1~C3는 존재하지 않는 목록을
+    // 찾다가 FATAL로 죽었다. 현재 설계에 맞게 "최신 공지(공지3)의 본문이
+    // 바로 보임"으로 재정의한다. 상세 페이지 직접 URL 접근은 K4에서 별도 확인.
     await page.goto(`${BASE_URL}/announcements`, { waitUntil: "load" });
     await closePopupIfVisible(page);
-    const listHasTitle1 = (await page.getByText(TITLE_1).count()) > 0;
-    record("C1. 사장님 공지 목록에 공지1이 노출됨", listHasTitle1);
-    const listHasTitle3 = (await page.getByText(TITLE_3).count()) > 0;
-    record("C2. 사장님 공지 목록에 공지3(팝업표시 꺼짐)도 목록에는 노출됨", listHasTitle3);
-
-    await page.getByText(TITLE_1).click();
-    const bodyVisible = await waitForCondition(async () => (await page.getByText(`${TITLE_1} 본문입니다.`).count()) > 0);
-    record("C3. 공지1 상세 클릭 시 본문이 정확히 노출됨", bodyVisible, `url=${page.url()}`);
+    const latestIsTitle3 = (await page.getByRole("heading", { name: TITLE_3, exact: true }).count()) > 0;
+    record("C1. 사장님 공지 화면에 가장 최근 게시 공지(공지3)의 본문이 바로 노출됨(목록 아님, STEP11-14 설계)", latestIsTitle3);
+    const bodyVisible = (await page.getByText(`${TITLE_3} 본문입니다.`).count()) > 0;
+    record("C2. 최신 공지 본문 텍스트가 정확히 노출됨", bodyVisible);
+    const olderNotShown = (await page.getByRole("heading", { name: TITLE_1, exact: true }).count()) === 0;
+    record("C3. 더 먼저 게시된 공지1은 화면에 노출되지 않음(최신 1건만 노출)", olderNotShown);
 
     // ---- Scenario D: 로그인 시 공지 팝업 노출 (fresh session = 새 로그인 취급) ----
     await setSession(context, OWNER, "user");

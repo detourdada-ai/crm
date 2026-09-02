@@ -17,10 +17,14 @@ import type { ImportSummary, ImportRowError } from "@/types/domain";
  * 찾아보지 않아도 되도록, 결과 요약 + 바로가기 버튼(주문 확인하기/동일인
  * 검토/오류 확인)을 한 화면에 모은다.
  *
- * S1-4: 건수의 기준은 "상품주문"(엑셀 원본 행)이다 — 한 주문번호에 상품주문이
- * 5개면 5건으로 센다. "원본 행 vs 생성된 주문" 같은 내부 처리 단위 설명이나
- * 좌표/geocoding 같은 기술적 세부사항은 사장님이 볼 필요가 없으므로 이 화면에
- * 노출하지 않는다.
+ * S1-4/STEP12-10 v3(C01, CPO 정책 B안): 건수의 기준은 "상품행"(엑셀 원본
+ * 행)이다 — 한 주문번호에 상품행이 5개면 5건으로 센다. 주문관리/배송관리/
+ * 상품 필터의 "상품주문 N건"(수량합 기준)과 이 화면의 "상품행 N건"(행수
+ * 기준)은 서로 다른 숫자다 — 같은 "상품주문"이라는 문구를 쓰면 두 화면의
+ * 숫자가 다를 때 사장님이 오류로 오인할 수 있어 업로드/분석 계열 화면은
+ * "상품행"으로 문구를 분리했다. "원본 행 vs 생성된 주문" 같은 내부 처리
+ * 단위 설명이나 좌표/geocoding 같은 기술적 세부사항은 사장님이 볼 필요가
+ * 없으므로 이 화면에 노출하지 않는다.
  *
  * UX11-STEP1 P0-1/P0-2(CPO 정책, 2026-08): 일반 엑셀은 배송일 컬럼이 없는
  * 경우가 흔한데, 그 상태로 두면 주문은 등록됐지만 기본 화면(오늘)에는 안
@@ -66,12 +70,12 @@ export function ImportResultCards({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          주문 <span className="font-semibold text-text-strong">{summary.totalOrderGroups.toLocaleString()}건</span> · 상품주문{" "}
+          주문 <span className="font-semibold text-text-strong">{summary.totalOrderGroups.toLocaleString()}건</span> · 상품행{" "}
           <span className="font-semibold text-text-strong">{summary.totalRawRows.toLocaleString()}건</span>
         </p>
         {summary.totalRawRows !== summary.totalOrderGroups ? (
           <p className="text-xs text-muted-foreground">
-            한 주문에 상품이 여러 개 포함된 경우 상품주문 수가 주문 수보다 많습니다(오류 아님).
+            한 주문에 상품이 여러 개 포함된 경우 상품행 수가 주문 수보다 많습니다(오류 아님).
           </p>
         ) : null}
         {summary.dateExcludedRows > 0 ? (
@@ -97,7 +101,7 @@ export function ImportResultCards({
             candidateSkippedRows의 합이 위 totalRawRows와 정확히 일치한다.
           */}
           <div className="flex items-baseline justify-between">
-            <dt className="text-muted-foreground">이미 등록된 상품주문</dt>
+            <dt className="text-muted-foreground">이미 등록된 상품행</dt>
             <dd className="font-medium text-text-strong">{summary.alreadyImportedRows.toLocaleString()}건</dd>
           </div>
           <div className="flex items-baseline justify-between">
@@ -119,8 +123,8 @@ export function ImportResultCards({
         </dl>
         {summary.alreadyImportedRows > 0 ? (
           <p className="text-xs text-muted-foreground">
-            이미 등록된 상품주문(위 {summary.alreadyImportedRows.toLocaleString()}건)은 건너뛰었습니다(재업로드 시 정상) — 부모 주문
-            {summary.alreadyImportedOrders.toLocaleString()}건 전체가 이미 등록된 경우와, 그중 일부 상품주문만 신규였던 경우가 모두
+            이미 등록된 상품행(위 {summary.alreadyImportedRows.toLocaleString()}건)은 건너뛰었습니다(재업로드 시 정상) — 부모 주문
+            {summary.alreadyImportedOrders.toLocaleString()}건 전체가 이미 등록된 경우와, 그중 일부 상품행만 신규였던 경우가 모두
             포함된 숫자입니다.
           </p>
         ) : null}
