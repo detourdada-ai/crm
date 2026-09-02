@@ -405,10 +405,11 @@ export async function createManualOrderAction(
         // 주문(구매자명/수취인명 컬럼 분리)에서만 표시되고 있었다.
         buyer_name: customer.name,
         recipient_name: recipientName,
-        phone_snapshot: formatPhoneNumber(recipientPhoneRaw),
-        // STEP12-10(R04): 원본 두 값을 각각 보존한다. 수동 주문은 수취인
-        // 연락처가 항상 필수 입력이라 phone_snapshot 계산 자체는 그대로
-        // 두고(회귀 방지), 구매자(선택/신규 등록된 고객)의 연락처를 별도로 기록한다.
+        // STEP12-10(R04 v2, CPO 확정): 배송 연락처(phone_snapshot)는 Import
+        // 경로(resolvePhoneCell)와 동일하게 구매자연락처 우선 → 없으면
+        // 수취인연락처다. 수동 주문도 예외 없이 이 정책을 따른다 — 구매자
+        // (선택/신규 등록된 고객)의 연락처가 있으면 그 번호로 기사가 통화한다.
+        phone_snapshot: formatPhoneNumber(customer.phone) ?? formatPhoneNumber(recipientPhoneRaw),
         buyer_phone_snapshot: formatPhoneNumber(customer.phone),
         recipient_phone_snapshot: formatPhoneNumber(recipientPhoneRaw),
         address_snapshot: address,
