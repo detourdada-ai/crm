@@ -11,13 +11,13 @@
  */
 export const QA_DEFAULT_OWNER = "user3";
 /**
- * STEP12-17(2026-09-03, CPO 지시): `user4`에 실제 업무 데이터가 들어와 있는 것이
- * 확인되어 `ALLOWED_TEST_OWNERS`에서 제외됐다. 이 상수를 그대로 쓰는 스크립트는
- * `assertAllowedQaOwner()`에서 즉시 실패한다 — 상수를 지우면 컴파일만 깨지고
- * "왜 못 쓰는지"가 사라지므로, 이유를 남긴 채 fail-fast 시킨다. 교차 tenant
- * 검증이 필요하면 CPO 승인으로 전용 QA tenant를 새로 만들고 여기를 바꾼다.
+ * STEP12-17(2026-09-03): `user4`에 실제 업무 데이터가 들어와 있는 것이 확인되어
+ * 보조 QA tenant에서 제외됐다. STEP12-18(CPO 승인)에서 그 자리를 대신할 순수
+ * QA tenant `user6`을 만들었다 — 교차 tenant 격리/병합/권한 QA는 전부
+ * user3 ↔ user6 사이에서 돈다. 실데이터 tenant(user1/user2/user4/user5)는
+ * 어떤 QA에서도 쓰기 대상이 되지 않는다.
  */
-export const QA_SECONDARY_OWNER = "user4";
+export const QA_SECONDARY_OWNER = "user6";
 export const FORBIDDEN_QA_OWNERS = ["user1", "user2", "user4", "user5"] as const;
 
 /**

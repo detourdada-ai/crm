@@ -152,6 +152,13 @@ async function run() {
     });
     await page.getByRole("option", { name: "QA-테스트기사B-1", exact: false }).click({ timeout: 5000 });
     await page.getByRole("button", { name: "일괄 적용", exact: false }).click({ timeout: 5000 });
+    // STEP11-13 이후 일괄 적용은 화면 Draft에만 반영되고, "변경사항 저장"을 눌러야
+    // 서버에 배정된다("...변경사항에 반영했습니다. 변경사항 저장을 눌러야 실제로
+    // 배정됩니다" 토스트). 이 스크립트는 그 변경 전에 작성돼 저장 클릭이 빠져 있었다.
+    // 드롭/조작 직후 첫 클릭이 삼켜지는 문제(STEP12-16B)도 있어 잠깐 기다린 뒤 누른다.
+    await page.waitForTimeout(800);
+    await page.getByRole("button", { name: "변경사항 저장" }).first().click({ timeout: 8000 });
+    await page.getByText(/저장했습니다/).first().waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
     const assignOk = await waitForCondition(async () => {
       const { count } = await admin.from("order_shipments").select("id", { count: "exact", head: true }).in("order_id", (user4Orders ?? []).map((o) => o.id)).eq("driver_id", createdDriverIds.find((_, i) => driversB?.[i]?.name === "QA-테스트기사B-1") ?? "");
       return count === 2;

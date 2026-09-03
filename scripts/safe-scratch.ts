@@ -39,7 +39,12 @@ type TableName = keyof Database["public"]["Tables"];
  * 이제 QA 쓰기가 허용되는 tenant는 `user3` 하나뿐이며, 목록에 없는 tenant에 대한
  * 쓰기 시도는 예외로 즉시 중단된다(기본 거부). 교차 tenant 격리 검증처럼 두 번째
  * tenant가 꼭 필요한 QA는 CPO가 전용 QA tenant를 새로 만들어줄 때까지 fail-fast
- * 시키는 것이 의도된 동작이다 — 실데이터에 QA를 쓰느니 테스트를 못 도는 편이 낫다.
+ * 시키는 것이 의도된 동작이었다.
+ *
+ * STEP12-18(2026-09-03, CPO 승인): 그 "전용 QA tenant"로 `user6`을 만들었다
+ * (scripts/qa/provision-qa-tenant.ts — 실서비스와 같은 create_seller_signup 경로).
+ * 이제 QA 쓰기가 허용되는 tenant는 `user3`(주) / `user6`(보조) 둘뿐이고,
+ * 교차 tenant 격리 검증은 이 둘 사이에서 한다 — 실데이터 tenant는 관여하지 않는다.
  *
  * STEP8(2026-08-27, CPO 지시): `user2`는 실제 사장님이 테스트를 진행 중인
  * 것으로 확인되어(394건 규모 Excel import 등) 여기서 뺐다 — QA 기본
@@ -47,7 +52,7 @@ type TableName = keyof Database["public"]["Tables"];
  * 보조로 쓴다(scripts/qa/lib/qa-config.ts 참고). `user2`가 다시 순수
  * QA 전용으로 정리되면 CPO 승인 하에 재추가한다.
  */
-export const ALLOWED_TEST_OWNERS = ["user3"];
+export const ALLOWED_TEST_OWNERS = ["user3", "user6"];
 
 interface WithSnapshotOptions {
   table: TableName;

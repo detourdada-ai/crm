@@ -1,7 +1,7 @@
 import "server-only";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { customersRepository } from "@/lib/repositories/customers.repository";
-import { geocodeAddress } from "@/lib/services/geocoding.service";
+import { geocodeBatch, type GeocodeFields } from "@/lib/services/geocoding.service";
 
 export interface GeocodeBackfillResult {
   targeted: number;
@@ -26,13 +26,32 @@ export interface GeocodeBackfillResult {
  * findFailedGeocode()가 이미 owner_username을 함께 내려주므로 추가 조회
  *없이 바로 tenant 범위를 명시할 수 있다.
  */
+/**
+ * STEP12-18(WORKSTREAM 6): 이 backfill은 대상 건마다 카카오 API를 **순차로**
+ * 한 번씩 호출하고 있었다 — 실패 건이 수백 개면 그 왕복이 전부 직렬로 쌓인다.
+ * 새 병렬 처리 장치를 만들지 않고, Excel import가 이미 쓰고 있는
+ * `geocodeBatch()`(동시성 상한이 걸린 기존 헬퍼)를 그대로 재사용한다.
+ * 같은 주소가 여러 건에 걸쳐 있으면 Map 키로 자연히 dedup되어 호출 수 자체도
+ * 줄어든다(주문/고객 backfill 모두 같은 주소가 반복되는 경우가 흔하다).
+ * DB UPDATE는 행마다 좌표 값이 달라 한 문장으로 묶으려면 새 RPC가 필요하므로
+ * 이번 범위에서는 건드리지 않는다(CPO 승인 대상).
+ */
+async function geocodeFailedAddresses(addresses: (string | null)[]): Promise<Map<string, GeocodeFields>> {
+  const unique = new Map<string, string>();
+  for (const a of addresses) {
+    if (a) unique.set(a, a);
+  }
+  if (unique.size === 0) return new Map();
+  return geocodeBatch(unique);
+}
+
 export async function backfillFailedOrderGeocodes(): Promise<GeocodeBackfillResult> {
   const targets = await ordersRepository.findFailedGeocode();
+  const geoByAddress = await geocodeFailedAddresses(targets.map((t) => t.address_snapshot));
   let succeeded = 0;
   for (const t of targets) {
-    if (!t.address_snapshot) continue;
-    const geo = await geocodeAddress(t.address_snapshot);
-    if (geo.geocode_status !== "success") continue;
+    const geo = t.address_snapshot ? geoByAddress.get(t.address_snapshot) : undefined;
+    if (!geo || geo.geocode_status !== "success") continue;
     await ordersRepository.update(t.id, { ...geo, geocoded_at: new Date().toISOString() }, t.owner_username);
     succeeded++;
   }
@@ -41,11 +60,11 @@ export async function backfillFailedOrderGeocodes(): Promise<GeocodeBackfillResu
 
 export async function backfillFailedCustomerGeocodes(): Promise<GeocodeBackfillResult> {
   const targets = await customersRepository.findFailedGeocode();
+  const geoByAddress = await geocodeFailedAddresses(targets.map((t) => t.road_address));
   let succeeded = 0;
   for (const t of targets) {
-    if (!t.road_address) continue;
-    const geo = await geocodeAddress(t.road_address);
-    if (geo.geocode_status !== "success") continue;
+    const geo = t.road_address ? geoByAddress.get(t.road_address) : undefined;
+    if (!geo || geo.geocode_status !== "success") continue;
     await customersRepository.update(t.id, { ...geo, geocoded_at: new Date().toISOString() }, t.owner_username);
     succeeded++;
   }
