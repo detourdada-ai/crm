@@ -286,7 +286,47 @@ export function DeliveryFilterStack({
               </span>
             )}
           </button>
-          {mapExpanded ? (
+          {/* STEP12-16B(CEO 실사용 피드백): progress(배송중) 탭에서는 Route패널이
+              곧 기사별 필터다 — 지도가 기본 접힘(R22)이라 필터를 보려면 지도부터
+              펼쳐야 하는 불필요한 단계가 있었다. 지도는 여전히 접힘 상태를
+              유지하되(후보 A처럼 지도를 강제로 펼치지 않는다), Route패널만 지도
+              펼침 여부와 무관하게 항상 노출한다(후보 C, CPO 지시 — 최소 변경).
+              다른 모드(default)는 기존 동작 그대로 유지한다. */}
+          {mode === "progress" && showRoutePanel ? (
+            mapExpanded ? (
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_320px]">
+                <div className="h-[420px] sm:h-[520px]">
+                  <DeliveryMapView
+                    orders={filteredOrders}
+                    drivers={drivers}
+                    driverColorById={driverColorById}
+                    highlightedOrderId={highlightedOrderId}
+                    onSelectOrder={selectOrder}
+                    emphasizedDriverId={dimDriverId}
+                  />
+                </div>
+                <div className="h-[280px] sm:h-[420px]">
+                  <DeliveryRoutePanel
+                    orders={filteredOrders}
+                    drivers={drivers}
+                    driverColorById={driverColorById}
+                    selectedDriverId={routePanelSelectedId}
+                    onSelectDriver={handleRoutePanelSelectDriver}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="h-[280px] sm:h-[360px]">
+                <DeliveryRoutePanel
+                  orders={filteredOrders}
+                  drivers={drivers}
+                  driverColorById={driverColorById}
+                  selectedDriverId={routePanelSelectedId}
+                  onSelectDriver={handleRoutePanelSelectDriver}
+                />
+              </div>
+            )
+          ) : mapExpanded ? (
             showRoutePanel ? (
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_320px]">
                 <div className="h-[420px] sm:h-[520px]">
