@@ -480,6 +480,10 @@ export interface MergeHistoryRecord {
   orders_moved: number;
   performed_by: string;
   created_at: ISODateString;
+  /** STEP12-15: null이면 이 컬럼이 생기기 전의 과거 병합 — 병합취소 불가. */
+  moved_order_ids: UUID[] | null;
+  unmerged_at: ISODateString | null;
+  unmerged_by: string | null;
 }
 
 export type ChangeLogEntity = "customer_phone" | "customer_address" | "customer_merge" | "customer_info";

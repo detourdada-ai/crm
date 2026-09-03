@@ -1074,17 +1074,6 @@ export const ordersRepository = {
     return data ?? [];
   },
 
-  /** Repoints every order of `fromCustomerId` onto `toCustomerId`. Used by the merge flow. */
-  async reassignCustomer(fromCustomerId: string, toCustomerId: string): Promise<number> {
-    const { data, error } = await getSupabaseAdmin()
-      .from("orders")
-      .update({ customer_id: toCustomerId })
-      .eq("customer_id", fromCustomerId)
-      .select("id");
-    if (error) throw error;
-    return data?.length ?? 0;
-  },
-
   /** Phase 2: excludes 취소 orders — this backs the "총 주문" dashboard stat, and a cancelled order isn't a real one anymore. */
   async count(ownerUsername?: string): Promise<number> {
     let q = getSupabaseAdmin().from("orders").select("*", { count: "exact", head: true }).neq("delivery_status", "취소");

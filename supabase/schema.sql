@@ -615,8 +615,146 @@ create table if not exists merge_history (
   removed_customer_id uuid not null,
   orders_moved integer not null default 0,
   performed_by text not null default 'admin',
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- STEP12-15: 병합취소(Unmerge)를 안전하게 하기 위한 컬럼. moved_order_ids가
+  -- NULL이면(이 컬럼이 생기기 전의 과거 병합) 되돌릴 근거 데이터가 없으므로
+  -- 병합취소를 허용하지 않는다 — 추측으로 주문을 되돌리지 않는다.
+  moved_order_ids uuid[],
+  unmerged_at timestamptz,
+  unmerged_by text
 );
+
+-- STEP12-15: 병합/병합취소를 단일 트랜잭션(Postgres 함수 호출)으로 처리한다 —
+-- 여러 개의 개별 REST 호출로 나뉘어 있으면 중간 실패 시 반쪽 병합이 남을 수
+-- 있다. 0046의 bulk_* RPC와 동일한 패턴.
+create or replace function merge_customers(
+  p_candidate_id uuid,
+  p_performed_by text
+) returns jsonb as $$
+declare
+  v_candidate duplicate_candidates%rowtype;
+  v_moved_ids uuid[];
+  v_merge_history_id uuid;
+  v_incoming_code text;
+  v_existing_code text;
+begin
+  select * into v_candidate from duplicate_candidates where id = p_candidate_id for update;
+  if not found then
+    raise exception 'candidate_not_found';
+  end if;
+  if v_candidate.status <> 'pending' then
+    raise exception 'candidate_not_pending';
+  end if;
+
+  perform 1 from customers where id = v_candidate.existing_customer_id;
+  if not found then
+    raise exception 'existing_customer_not_found';
+  end if;
+  perform 1 from customers where id = v_candidate.new_customer_id;
+  if not found then
+    raise exception 'incoming_customer_not_found';
+  end if;
+
+  with moved as (
+    update orders set customer_id = v_candidate.existing_customer_id
+    where customer_id = v_candidate.new_customer_id
+    returning id
+  )
+  select coalesce(array_agg(id), '{}') into v_moved_ids from moved;
+
+  select customer_code into v_incoming_code from customers where id = v_candidate.new_customer_id;
+  select customer_code into v_existing_code from customers where id = v_candidate.existing_customer_id;
+
+  insert into merge_history (duplicate_candidate_id, kept_customer_id, removed_customer_id, orders_moved, moved_order_ids, performed_by)
+  values (
+    v_candidate.id,
+    v_candidate.existing_customer_id,
+    v_candidate.new_customer_id,
+    coalesce(array_length(v_moved_ids, 1), 0),
+    v_moved_ids,
+    p_performed_by
+  )
+  returning id into v_merge_history_id;
+
+  insert into customer_change_logs (customer_id, entity, field, old_value, new_value, performed_by)
+  values (v_candidate.existing_customer_id, 'customer_merge', 'customer_code', v_incoming_code, v_existing_code, p_performed_by);
+
+  update customers set status = 'merged', merged_into_id = v_candidate.existing_customer_id
+  where id = v_candidate.new_customer_id;
+
+  update duplicate_candidates set status = 'merged', resolved_at = now()
+  where id = v_candidate.id;
+
+  update duplicate_candidates
+  set status = 'rejected', resolved_at = now()
+  where status = 'pending'
+    and id <> v_candidate.id
+    and (existing_customer_id = v_candidate.new_customer_id or new_customer_id = v_candidate.new_customer_id);
+
+  return jsonb_build_object(
+    'merge_history_id', v_merge_history_id,
+    'kept_customer_id', v_candidate.existing_customer_id,
+    'removed_customer_id', v_candidate.new_customer_id,
+    'orders_moved', coalesce(array_length(v_moved_ids, 1), 0)
+  );
+end;
+$$ language plpgsql volatile;
+
+grant execute on function merge_customers(uuid, text) to service_role;
+
+-- 병합취소 — moved_order_ids 중 "지금도 여전히 kept_customer_id 소유인 것만"
+-- 되돌린다. 연쇄 병합 등으로 이미 다른 곳으로 넘어간 주문은 건드리지 않는다.
+create or replace function unmerge_customers(
+  p_merge_history_id uuid,
+  p_performed_by text
+) returns jsonb as $$
+declare
+  v_history merge_history%rowtype;
+  v_restored_ids uuid[];
+  v_total int;
+begin
+  select * into v_history from merge_history where id = p_merge_history_id for update;
+  if not found then
+    raise exception 'merge_history_not_found';
+  end if;
+  if v_history.unmerged_at is not null then
+    raise exception 'already_unmerged';
+  end if;
+  if v_history.moved_order_ids is null then
+    raise exception 'legacy_merge_no_order_tracking';
+  end if;
+
+  v_total := coalesce(array_length(v_history.moved_order_ids, 1), 0);
+
+  with restored as (
+    update orders set customer_id = v_history.removed_customer_id
+    where id = any(v_history.moved_order_ids)
+      and customer_id = v_history.kept_customer_id
+    returning id
+  )
+  select coalesce(array_agg(id), '{}') into v_restored_ids from restored;
+
+  update customers set status = 'active', merged_into_id = null
+  where id = v_history.removed_customer_id;
+
+  insert into customer_change_logs (customer_id, entity, field, old_value, new_value, performed_by)
+  values (v_history.removed_customer_id, 'customer_merge', 'unmerge', 'merged', 'active', p_performed_by);
+
+  update merge_history set unmerged_at = now(), unmerged_by = p_performed_by
+  where id = p_merge_history_id;
+
+  return jsonb_build_object(
+    'merge_history_id', p_merge_history_id,
+    'kept_customer_id', v_history.kept_customer_id,
+    'removed_customer_id', v_history.removed_customer_id,
+    'orders_restored', coalesce(array_length(v_restored_ids, 1), 0),
+    'orders_skipped', v_total - coalesce(array_length(v_restored_ids, 1), 0),
+    'orders_total', v_total
+  );
+end;
+$$ language plpgsql volatile;
+
+grant execute on function unmerge_customers(uuid, text) to service_role;
 
 -- ----------------------------------------------------------------------------
 -- customer_change_logs (phone/address/merge/info change audit trail)

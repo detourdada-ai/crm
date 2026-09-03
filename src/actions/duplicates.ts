@@ -10,6 +10,7 @@ import {
   holdDuplicateCandidate,
   mergeDuplicateCandidate,
   rejectDuplicateCandidate,
+  unmergeCustomer,
 } from "@/lib/services/merge.service";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type { Customer, CustomerStats, DuplicateCandidate } from "@/types/domain";
@@ -87,5 +88,27 @@ export async function holdDuplicateAction(candidateId: string): Promise<Duplicat
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof MergeError ? e.message : "처리 중 오류가 발생했습니다." };
+  }
+}
+
+export interface UnmergeActionResult {
+  ok: boolean;
+  error?: string;
+  ordersRestored?: number;
+  ordersSkipped?: number;
+  ordersTotal?: number;
+}
+
+/** STEP12-15: 잘못 합친 고객을 되돌린다 — moved_order_ids가 없는 과거 병합은 서비스 레이어에서 명시적으로 차단된다. */
+export async function unmergeCustomerAction(mergeHistoryId: string): Promise<UnmergeActionResult> {
+  try {
+    const session = await requireSession();
+    const result = await unmergeCustomer(mergeHistoryId, session);
+    revalidatePath("/customers");
+    revalidatePath(`/customers/${result.keptCustomerId}`);
+    revalidatePath(`/customers/${result.removedCustomerId}`);
+    return { ok: true, ordersRestored: result.ordersRestored, ordersSkipped: result.ordersSkipped, ordersTotal: result.ordersTotal };
+  } catch (e) {
+    return { ok: false, error: e instanceof MergeError ? e.message : "병합취소 중 오류가 발생했습니다." };
   }
 }

@@ -213,9 +213,21 @@ export const customersRepository = {
     return data ?? [];
   },
 
-  /** Batch import: the owner's entire customer pool fetched once, then matched in memory (name/phone/address dedup rules unchanged) instead of 2-3 lookup queries per row. */
+  /**
+   * Batch import: the owner's entire customer pool fetched once, then matched
+   * in memory (name/phone/address dedup rules unchanged) instead of 2-3
+   * lookup queries per row.
+   *
+   * STEP12-15: merged(병합되어 흡수된) 고객은 제외한다 — 포함하면 새 주문이
+   * 이미 숨겨진 고객에게 다시 매칭/연결되는 버그가 난다(고객관리 목록엔 안
+   * 보이는데 그 고객 밑에 새 주문이 쌓이는 현상).
+   */
   async findAllByOwner(ownerUsername: string): Promise<Customer[]> {
-    const { data, error } = await getSupabaseAdmin().from("customers").select("*").eq("owner_username", ownerUsername);
+    const { data, error } = await getSupabaseAdmin()
+      .from("customers")
+      .select("*")
+      .eq("owner_username", ownerUsername)
+      .neq("status", "merged");
     if (error) throw error;
     return data ?? [];
   },

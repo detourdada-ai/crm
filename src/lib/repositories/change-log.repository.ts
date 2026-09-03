@@ -12,12 +12,6 @@ export interface ChangeLogInsert {
 }
 
 export const changeLogRepository = {
-  async create(input: ChangeLogInsert): Promise<CustomerChangeLog> {
-    const { data, error } = await getSupabaseAdmin().from("customer_change_logs").insert(input).select("*").single();
-    if (error) throw error;
-    return data as CustomerChangeLog;
-  },
-
   async createMany(inputs: ChangeLogInsert[]): Promise<void> {
     if (inputs.length === 0) return;
     const { error } = await getSupabaseAdmin().from("customer_change_logs").insert(inputs);

@@ -162,6 +162,14 @@ export interface Database {
         Args: { p_ids: string[]; p_bag_numbers: (string | null)[]; p_bag_returned: boolean[] };
         Returns: void;
       };
+      merge_customers: {
+        Args: { p_candidate_id: string; p_performed_by: string };
+        Returns: unknown;
+      };
+      unmerge_customers: {
+        Args: { p_merge_history_id: string; p_performed_by: string };
+        Returns: unknown;
+      };
     };
     Enums: Record<string, never>;
     Tables: {

@@ -7,6 +7,7 @@ import { getCustomerDetailAction } from "@/actions/customers";
 import { CustomerEditForm } from "@/components/customers/customer-edit-form";
 import { CustomerStatsCards } from "@/components/customers/customer-stats-cards";
 import { CustomerChangeHistory } from "@/components/customers/customer-change-history";
+import { MergeHistoryCard } from "@/components/customers/merge-history-card";
 import { CustomerTimeline } from "@/components/customers/customer-timeline";
 import { CustomerFavoriteButton } from "@/components/customers/customer-favorite-button";
 import { OrderTable } from "@/components/orders/order-table";
@@ -23,7 +24,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const [detail, features] = await Promise.all([getCustomerDetailAction(id), getTenantFeaturesForSession(session)]);
   if (!detail) notFound();
 
-  const { customer, stats, orders, changeLogs, timeline, isVip, mergedIntoCustomer } = detail;
+  const { customer, stats, orders, changeLogs, timeline, isVip, mergedIntoCustomer, mergeHistory } = detail;
 
   return (
     <div className="space-y-6">
@@ -93,6 +94,16 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         </CardHeader>
         <CardContent>
           <CustomerChangeHistory logs={changeLogs} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>병합 이력</CardTitle>
+          <CardDescription>동일인 검토에서 병합된 기록입니다. 최근 병합은 여기서 취소할 수 있습니다.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <MergeHistoryCard items={mergeHistory} />
         </CardContent>
       </Card>
     </div>

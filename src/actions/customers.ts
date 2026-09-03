@@ -4,13 +4,14 @@ import { revalidatePath } from "next/cache";
 import { customersRepository, type CustomerSortField } from "@/lib/repositories/customers.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { changeLogRepository } from "@/lib/repositories/change-log.repository";
+import { mergeHistoryRepository } from "@/lib/repositories/merge-history.repository";
 import { updateCustomerProfile, setCustomerFavorite, resolveCustomerForImportRow } from "@/lib/services/customer.service";
 import { getCustomerTimeline, type TimelineEvent } from "@/lib/services/timeline.service";
 import { getVipCriteria } from "@/lib/services/vip.service";
 import { toActionError } from "@/lib/utils/action-error";
 import { isUuid } from "@/lib/utils/id";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
-import type { Customer, CustomerChangeLog, CustomerStats, Order, CustomerStatus } from "@/types/domain";
+import type { Customer, CustomerChangeLog, CustomerStats, MergeHistoryRecord, Order, CustomerStatus } from "@/types/domain";
 
 export async function searchCustomersAction(
   query: string,
@@ -46,6 +47,14 @@ export async function searchCustomersForOrderAction(query: string): Promise<Cust
   return customers;
 }
 
+/** STEP12-15: 병합 이력 화면에서 "지금 보고 있는 고객" 기준으로 상대방 고객 이름까지 붙여서 내려준다. */
+export interface MergeHistoryView {
+  record: MergeHistoryRecord;
+  /** 이 병합에서 "지금 보고 있는 고객"이 유지된 쪽(true)인지 흡수된 쪽(false)인지. */
+  isCurrentKept: boolean;
+  otherCustomerName: string;
+}
+
 export interface CustomerDetail {
   customer: Customer;
   stats: CustomerStats;
@@ -54,6 +63,7 @@ export interface CustomerDetail {
   timeline: TimelineEvent[];
   isVip: boolean;
   mergedIntoCustomer: Customer | null;
+  mergeHistory: MergeHistoryView[];
 }
 
 export async function getCustomerDetailAction(id: string): Promise<CustomerDetail | null> {
@@ -63,18 +73,31 @@ export async function getCustomerDetailAction(id: string): Promise<CustomerDetai
   if (!customer) return null;
   if (session.role !== "admin" && customer.owner_username !== session.username) return null;
 
-  const [stats, orders, changeLogs, timeline, vipCriteria, mergedIntoCustomer] = await Promise.all([
+  const [stats, orders, changeLogs, timeline, vipCriteria, mergedIntoCustomer, mergeHistoryRecords] = await Promise.all([
     ordersRepository.aggregateStatsByCustomer(id),
     ordersRepository.findByCustomerId(id),
     changeLogRepository.listByCustomer(id),
     getCustomerTimeline(id),
     getVipCriteria(customer.owner_username),
     customer.merged_into_id ? customersRepository.findById(customer.merged_into_id) : Promise.resolve(null),
+    mergeHistoryRepository.listByCustomer(id),
   ]);
 
   const isVip = stats.totalAmount >= vipCriteria.minTotalAmount && stats.totalOrders >= vipCriteria.minOrderCount;
 
-  return { customer, stats, orders, changeLogs, timeline, isVip, mergedIntoCustomer };
+  const otherCustomerIds = Array.from(
+    new Set(mergeHistoryRecords.map((r) => (r.kept_customer_id === id ? r.removed_customer_id : r.kept_customer_id)))
+  );
+  const otherCustomers = otherCustomerIds.length > 0 ? await customersRepository.findByIds(otherCustomerIds) : [];
+  const otherCustomerNameById = new Map(otherCustomers.map((c) => [c.id, c.name]));
+
+  const mergeHistory: MergeHistoryView[] = mergeHistoryRecords.map((record) => {
+    const isCurrentKept = record.kept_customer_id === id;
+    const otherId = isCurrentKept ? record.removed_customer_id : record.kept_customer_id;
+    return { record, isCurrentKept, otherCustomerName: otherCustomerNameById.get(otherId) ?? "알 수 없음" };
+  });
+
+  return { customer, stats, orders, changeLogs, timeline, isVip, mergedIntoCustomer, mergeHistory };
 }
 
 export async function toggleCustomerFavoriteAction(id: string): Promise<{ isFavorite: boolean }> {
