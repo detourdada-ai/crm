@@ -306,7 +306,10 @@ async function main() {
       record("R23-PC-1. 그룹 드래그 후 '변경사항 N건' 배너 노출(Draft 반영)", bannerVisible);
 
       if (bannerVisible) {
-        await page.getByRole("button", { name: "변경사항 저장" }).click();
+        // 행 D&D와 동일 — 드롭 직후 수백 ms 안의 첫 클릭은 삼켜진다(위 R23-행 주석 참조).
+        // 사람이 포인터를 옮기는 최소 시간만큼 기다린 뒤 누른다.
+        await page.waitForTimeout(800);
+        await page.getByRole("button", { name: "변경사항 저장" }).first().click();
         // Production은 서버 액션 왕복(콜드스타트 포함)이 로컬보다 훨씬 느릴 수 있다 —
         // 고정 대기 후 곧바로 navigate하면 저장 요청이 완료되기 전에 페이지 이동으로
         // 요청이 취소되어(navigate가 in-flight fetch를 끊음) 실제로는 저장되지 않은
