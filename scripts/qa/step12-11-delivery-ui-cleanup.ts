@@ -12,7 +12,7 @@ import { triggerDeliveryGroupRegeneration } from "../../src/lib/services/deliver
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { kstTodayIso } from "./lib/qa-data";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, makeRunTag } from "./lib/qa-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, makeRunTag, cleanupQaDeliveryGroups } from "./lib/qa-guard";
 import { registerAnnouncementPopupHandler, dismissAnnouncementPopupIfPresent } from "./lib/qa-popup-guard";
 import type { DeliveryStatus } from "../../src/types/domain";
 
@@ -498,11 +498,16 @@ async function main() {
 
     await context.close();
   } finally {
+    // STEP12-17(C-2): 이 실행이 만든 배송건이 물려 있던 배송그룹 id만 지운다 —
+    // tenant의 그날 그룹을 통째로 지우던 기존 방식은 QA가 만들지 않은 그룹까지
+    // 삭제한다(qa-guard.cleanupQaDeliveryGroups 주석 참조).
+    const { data: ownGroups } = await admin.from("order_shipments").select("delivery_group_id").in("order_id", orderIds);
+    const ownGroupIds = (ownGroups ?? []).map((g) => g.delivery_group_id).filter((id): id is string => !!id);
     await admin.from("order_items").delete().in("order_id", orderIds);
     await admin.from("order_shipments").delete().in("order_id", orderIds);
     await admin.from("orders").delete().in("id", orderIds);
     await admin.from("customers").delete().eq("id", customerId);
-    await admin.from("delivery_groups").delete().eq("owner_username", OWNER).eq("delivery_date", today);
+    await cleanupQaDeliveryGroups(ownGroupIds);
     await triggerDeliveryGroupRegeneration(tenantId, today, OWNER).catch(() => {});
     await cleanupQaDriver(driver);
     await browser.close();

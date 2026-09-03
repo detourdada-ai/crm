@@ -117,6 +117,22 @@ export async function createQaDriver(
   return { driverId, username, name };
 }
 
+/**
+ * STEP12-17(WORKSTREAM C-2): 배송그룹 정리는 지금까지
+ * `delete().eq("owner_username", OWNER).eq("delivery_date", today)`로 그 tenant의
+ * 그날 그룹을 통째로 지웠다 — QA가 만들지 않은 그룹까지 지우는 방식이라
+ * `user3`에 실데이터가 들어오는 순간 사고가 된다. 배송그룹은 앱이 자동 생성해
+ * RUN_TAG를 붙일 수 없으므로, "이번 실행이 만든 배송건이 실제로 물려 있던
+ * 그룹 id"만 받아서 그 id로만 지운다(기본 거부).
+ */
+export async function cleanupQaDeliveryGroups(groupIds: string[]): Promise<void> {
+  const ids = [...new Set(groupIds.filter(Boolean))];
+  if (ids.length === 0) return;
+  const admin = getSupabaseAdmin();
+  const { error } = await admin.from("delivery_groups").delete().in("id", ids);
+  if (error) console.error("[qa-guard] delivery_groups cleanup 실패:", error.message);
+}
+
 /** createQaDriver()로 만든 기사와 그 부산물(로그인 계정/담당지역/오늘자 운행기록)을 정확히 그 driverId 기준으로만 지운다. */
 export async function cleanupQaDriver(fixture: QaDriverFixture): Promise<void> {
   const admin = getSupabaseAdmin();

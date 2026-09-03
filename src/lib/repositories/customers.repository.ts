@@ -277,6 +277,28 @@ export const customersRepository = {
     if (error) throw error;
   },
 
+  /**
+   * STEP12-17(WORKSTREAM E): 엑셀 import에서 기존 고객의 가방번호를 채울 때
+   * 건당 개별 UPDATE를 반복하고 있었다(고객 수만큼 PostgREST 왕복 — 400행짜리
+   * 파일이면 그만큼 늘어난다). 가방번호는 같은 배송에서 여러 고객이 공유하는
+   * 값이라 값별로 묶으면 왕복이 "고객 수"에서 "서로 다른 가방번호 수"로 준다.
+   * 새 RPC/마이그레이션 없이 기존 `.in()` 필터만으로 처리한다.
+   */
+  async updateBagNumbers(updates: { id: string; bagNo: string }[]): Promise<void> {
+    if (updates.length === 0) return;
+    const idsByBagNo = new Map<string, string[]>();
+    for (const u of updates) {
+      const list = idsByBagNo.get(u.bagNo) ?? [];
+      list.push(u.id);
+      idsByBagNo.set(u.bagNo, list);
+    }
+    const admin = getSupabaseAdmin();
+    for (const [bagNo, ids] of idsByBagNo) {
+      const { error } = await admin.from("customers").update({ bag_no: bagNo }).in("id", ids);
+      if (error) throw error;
+    }
+  },
+
   async findByCreatedByImportId(importId: string): Promise<Customer[]> {
     const { data, error } = await getSupabaseAdmin().from("customers").select("*").eq("created_by_import_id", importId);
     if (error) throw error;

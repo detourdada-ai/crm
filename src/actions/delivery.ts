@@ -275,12 +275,21 @@ export async function setDeliveryStatusAction(
     // P8 2번: 완료→배송대기는 "관리자 실수 복구"로 허용하되, 정산이 이미
     // "지급완료"로 확정된 기간의 배송이면 막는다.
     if (status === "배송대기") {
+      // STEP12-17(WORKSTREAM E): 배송건마다 정산 조회를 반복하면 일괄 되돌리기에서
+      // 건수만큼 왕복이 생긴다 — 실제로 확인해야 하는 건 (기사, 완료일) 조합이고
+      // 한 번에 되돌리는 배송건들은 대부분 같은 기사·같은 날짜라 중복이 크다.
+      // 조합을 먼저 유일하게 모은 뒤 그 수만큼만 조회한다.
+      const pairs = new Map<string, { driverId: string; day: string }>();
       for (const shipment of shipments) {
         if (shipment.delivery_status === "완료" && shipment.driver_id && shipment.completed_at) {
-          const paid = await settlementsRepository.findPaidCoveringDate(shipment.driver_id, kstDayStrOf(shipment.completed_at));
-          if (paid) {
-            return { ok: false, error: "이미 지급완료 처리된 정산 기간의 배송입니다. 정산관리에서 확인 후 처리해주세요." };
-          }
+          const day = kstDayStrOf(shipment.completed_at);
+          pairs.set(`${shipment.driver_id}|${day}`, { driverId: shipment.driver_id, day });
+        }
+      }
+      for (const { driverId, day } of pairs.values()) {
+        const paid = await settlementsRepository.findPaidCoveringDate(driverId, day);
+        if (paid) {
+          return { ok: false, error: "이미 지급완료 처리된 정산 기간의 배송입니다. 정산관리에서 확인 후 처리해주세요." };
         }
       }
     }

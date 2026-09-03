@@ -1108,9 +1108,9 @@ export async function runImport({
       const created = await duplicatesRepository.createMany(newDuplicateInserts);
       duplicateCandidateCount = created.length;
     }
-    for (const u of bagNoUpdates) {
-      await customersRepository.update(u.id, { bag_no: u.bagNo });
-    }
+    // STEP12-17: 건당 개별 UPDATE 반복 → 가방번호 값별 배치 UPDATE(왕복 수가
+    // "고객 수"에서 "서로 다른 가방번호 수"로 줄어든다).
+    await customersRepository.updateBagNumbers(bagNoUpdates);
   } catch (e) {
     // 되돌리기: orders를 지우면 order_items/order_shipments는 FK cascade로
     // 함께 삭제된다(schema.sql: on delete cascade). customers를 지우면

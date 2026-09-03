@@ -33,13 +33,21 @@ type TableName = keyof Database["public"]["Tables"];
  * script. Add a new test tenant here explicitly (with a comment saying why)
  * rather than picking whichever account happens to have the most rows.
  *
+ * STEP12-17(2026-09-03, CPO 지시 — WORKSTREAM C): `user4`/`user5`도 여기서 뺐다.
+ * 두 tenant에는 실명·실전화·실제 스토어 export 근거가 있는 데이터가 들어와 있어
+ * "실제 업무 데이터"로 판정됐다(docs/qa/S13-STABILIZATION-SPRINT/CTO-REPORT.md §1).
+ * 이제 QA 쓰기가 허용되는 tenant는 `user3` 하나뿐이며, 목록에 없는 tenant에 대한
+ * 쓰기 시도는 예외로 즉시 중단된다(기본 거부). 교차 tenant 격리 검증처럼 두 번째
+ * tenant가 꼭 필요한 QA는 CPO가 전용 QA tenant를 새로 만들어줄 때까지 fail-fast
+ * 시키는 것이 의도된 동작이다 — 실데이터에 QA를 쓰느니 테스트를 못 도는 편이 낫다.
+ *
  * STEP8(2026-08-27, CPO 지시): `user2`는 실제 사장님이 테스트를 진행 중인
  * 것으로 확인되어(394건 규모 Excel import 등) 여기서 뺐다 — QA 기본
  * tenant는 `user3`, 교차 tenant 격리 검증이 필요한 스크립트는 `user4`를
  * 보조로 쓴다(scripts/qa/lib/qa-config.ts 참고). `user2`가 다시 순수
  * QA 전용으로 정리되면 CPO 승인 하에 재추가한다.
  */
-export const ALLOWED_TEST_OWNERS = ["user3", "user4", "user5"];
+export const ALLOWED_TEST_OWNERS = ["user3"];
 
 interface WithSnapshotOptions {
   table: TableName;

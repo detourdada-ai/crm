@@ -94,13 +94,18 @@ export default async function DeliveryPage({
   // import·삭제 — actions/orders.ts, import.service.ts)에만
   // triggerDeliveryGroupRegeneration()으로 그 날짜 하나만 재계산한다. 알고리즘
   // 자체(regenerateDeliveryGroupsForTenant)는 전혀 바뀌지 않았다.
-  const [features, boardResult, allDrivers, accounts, knownRegions, groupResult] = await Promise.all([
+  // STEP12-17(WORKSTREAM E): standardProducts(productsRepository.listAll)는 session
+  // 외에 아무것도 의존하지 않는데 아래에서 따로 await하고 있어, 배송관리 첫 로드가
+  // "6개 병렬 조회 → 기다림 → 상품목록 조회"라는 2단 직렬 구조였다. 같은 병렬
+  // 묶음으로 옮겨 왕복 한 단계를 줄인다(쿼리 수는 그대로, 직렬 대기만 제거).
+  const [features, boardResult, allDrivers, accounts, knownRegions, groupResult, standardProducts] = await Promise.all([
     getTenantFeaturesForSession(session),
     getDeliveryBoardAction(range?.start ?? null, range?.end),
     listDriversAction(),
     listAccounts(),
     listKnownRegionsAction(),
     isSingleDay && range ? listDeliveryGroupsAction(range.start) : Promise.resolve(null),
+    productsRepository.listAll(ownerScopeFor(session)),
   ]);
   const { orders: fetchedOrders, drivers, itemSummaries, items } = boardResult;
   const isAdmin = session.role === "admin";
@@ -130,7 +135,6 @@ export default async function DeliveryPage({
   // 발상, 여기선 이미 전부 in-memory이므로 Set 필터로 충분하다).
   // STEP12-10(R06/R08): product_id로 별칭 매핑된 상품은 product_id 기준으로
   // 합쳐서 집계/필터한다 — 별칭 없는(미매핑) 상품은 기존처럼 product_name.
-  const standardProducts = await productsRepository.listAll(ownerScopeFor(session));
   const standardProductNameById = new Map(standardProducts.map((p) => [p.id, p.name]));
   const productSummary = aggregateProductSummary(items, "shipment_id", standardProductNameById);
   if (params.product) {
