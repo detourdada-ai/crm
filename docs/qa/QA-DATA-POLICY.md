@@ -19,8 +19,13 @@
 | `user1` | 실제 서비스 계정 | 절대 금지 | 금지 |
 | `user2` | 사장님/CPO 실사용 테스트 계정 | 절대 금지 | 금지 |
 | `user3` | CTO 기본 QA 테넌트 | 허용 | 허용 |
-| `user4` | 교차 테넌트 격리 검증 보조 | 허용 | 허용 |
-| `user5` | Import/CRUD 스트레스 보조 | 허용 | 허용 |
+| `user4` | **실제 업무 데이터 확인됨(S13)** — QA 쓰기 금지 | 금지 | 읽기 전용 허용 |
+| `user5` | **실제 업무 데이터 확인됨(S13)** — QA 쓰기 금지 | 금지 | 읽기 전용 허용 |
+
+STEP12-17(2026-09-03)부터 **기본 거부(Default Deny)** 다 — QA 쓰기가 허용되는 tenant는
+`user3` 하나뿐이고, 목록에 없는 tenant에 쓰려 하면 스크립트가 즉시 예외로 중단된다.
+두 번째 tenant가 필요한 QA(교차 격리/병합/권한)는 CPO가 전용 QA tenant를 만들어줄
+때까지 실행되지 않는 것이 의도된 동작이다.
 
 코드 레벨 강제: `scripts/safe-scratch.ts`의 `ALLOWED_TEST_OWNERS`,
 `scripts/qa/lib/qa-config.ts`의 `FORBIDDEN_QA_OWNERS`,
@@ -66,7 +71,7 @@ QA가 만드는 Excel/CSV는 파일명에 RUN_TAG를 넣는다(예: `p4-stress-{
 
 ### 🟢 삭제 가능
 아래를 **모두** 만족할 때만.
-- `owner_username`이 `user3`/`user4`/`user5`
+- `owner_username`이 `user3`(QA 쓰기가 허용된 유일한 tenant)
 - 이름(고객/수취인/기사)이 `QA-` 접두사로 시작
 - 실제 업무 데이터로 볼 근거가 없음(실명·실전화·실제 스토어 export 파일 없음)
 - 과거 QA 보고서가 그 **row 자체**를 증거로 참조하지 않음
@@ -111,3 +116,4 @@ QA 스크립트는 "임시 파일"이 아니라 **저장소 자산**이다(S13 �
 | 날짜 | 내용 |
 |---|---|
 | 2026-09-03 | Sprint S13에서 최초 제정. `user3` QA 잔존 163건 정리, `user4`/`user5` 1,852건 보존 판정. |
+| 2026-09-03 | STEP12-17: QA 쓰기 tenant를 `user3` 하나로 좁힘(기본 거부). 배송그룹 정리를 id 지정 방식으로 교체(`cleanupQaDeliveryGroups`). 정합성 감사 스크립트 추가. |

@@ -12,7 +12,10 @@
   ```bash
   NODE_OPTIONS="--conditions=react-server" npx tsx -r dotenv/config <경로> dotenv_config_path=.env.local
   ```
-- 대상 테넌트는 전부 `user3`(기본) / `user4`·`user5`(보조). `user1`/`user2`는 절대 대상 아님.
+- QA 쓰기가 허용된 tenant는 `user3` **하나뿐**이다(STEP12-17 기본 거부). `user4`/`user5`는
+  실제 업무 데이터가 확인돼 제외됐고, `user1`/`user2`는 조회조차 하지 않는다.
+- 두 번째 tenant를 쓰던 스크립트 15개는 현재 `assertAllowedQaOwner()`에서 **의도적으로
+  fail-fast** 한다 — 전용 QA tenant가 생기기 전까지 실행되지 않는 것이 정상이다.
 - 대부분 Playwright로 **Production(jumunhanjang.vercel.app)** 을 실제 클릭한다. 실행 시
   QA 데이터를 만들고 `finally`에서 스스로 정리한다.
 
@@ -94,6 +97,7 @@
 
 | 스크립트 | 목적 |
 |---|---|
+| `qa/data-integrity-audit.ts` | **STEP12-17 상시 감사** — 주문↔배송 orphan/중복, 배송상태 조합, `route_order` 중복·구멍, 병합 제거 고객의 주문 연결을 tenant별로 점검(쓰기 없음, user1/user2 조회 거부) |
 | `scripts/production-final-qa-readonly.ts` | Production 데이터 정합성 읽기 전용 점검 |
 | `scripts/step11-8-delivery-group-investigation.ts` | 배송그룹 실사용성 조사 |
 | `scripts/step11-9-delivery-group-redesign-investigation.ts` | 배송그룹 재설계 조사 |

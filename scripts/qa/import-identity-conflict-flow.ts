@@ -106,7 +106,7 @@ async function main() {
       { orderNumber: orderQ2, name: nameQ2, phone: phoneQ2, address: addrQ2, deliveryDate: inDays(1), product: "배", quantity: 1 },
       { orderNumber: orderQ2, name: nameQ2, phone: phoneQ2, address: addrQ2, deliveryDate: inDays(1), product: "감", quantity: 3 },
     ]);
-    await uploadAndGoToReview(page, csvQ2, "q2.csv");
+    await uploadAndGoToReview(page, csvQ2, `q2-${RUN_TAG}.csv`);
     let text = await reviewText(page);
     record(
       "Q2/Q8. 동일 고객 다상품(같은 order_number) — identity_conflict 아님(차단 문구 없음), 반복확인 UI 노출",
@@ -133,7 +133,7 @@ async function main() {
       { orderNumber: orderQRD, name: nameQRD, phone: phoneQRD, address: addrQRD, deliveryDate: inDays(1), product: "오전주문", quantity: 1 },
       { orderNumber: orderQRD, name: nameQRD, phone: phoneQRD, address: addrQRD, deliveryDate: inDays(1), product: "오후주문", quantity: 1 },
     ]);
-    await uploadAndGoToReview(page, csvQRD, "qrd.csv");
+    await uploadAndGoToReview(page, csvQRD, `qrd-${RUN_TAG}.csv`);
     await confirmRegister(page); // "하나의 주문으로 등록" 승인 없이 바로 Confirm
     const { data: qrdOrders } = await admin.from("orders").select("id").eq("owner_username", OWNER).eq("order_number", orderQRD);
     record("Q-repeat-default. 반복확인 미승인 시 기본값은 미등록(0건)", (qrdOrders?.length ?? 0) === 0, JSON.stringify(qrdOrders?.length));
@@ -150,7 +150,7 @@ async function main() {
       { orderNumber: orderQ3, name: nameQ3a, phone: phoneQ3a, address: "서울 강남구 Q3-A", deliveryDate: inDays(1), product: "쌀", quantity: 1 },
       { orderNumber: orderQ3, name: nameQ3b, phone: phoneQ3b, address: "서울 송파구 Q3-B", deliveryDate: inDays(1), product: "쌀", quantity: 1 },
     ]);
-    await uploadAndGoToReview(page, csvQ3, "q3.csv");
+    await uploadAndGoToReview(page, csvQ3, `q3-${RUN_TAG}.csv`);
     text = await reviewText(page);
     record(
       "Q3. 서로 다른 고객 + 같은 주문번호 → 등록 차단 안내 노출",
@@ -179,7 +179,7 @@ async function main() {
         quantity: 1,
       }))
     );
-    await uploadAndGoToReview(page, csvQ4, "q4.csv");
+    await uploadAndGoToReview(page, csvQ4, `q4-${RUN_TAG}.csv`);
     text = await reviewText(page);
     const allFiveNamesShown = q4Customers.every((c) => text.includes(c.name));
     record("Q4/Q5. 5명 서로 다른 고객 — 전원 목록에 노출(일부만 표시하고 나머지 자동병합 아님)", allFiveNamesShown && text.includes("🚫"));
@@ -197,7 +197,7 @@ async function main() {
       { orderNumber: orderQ9, name: nameQ9, phone: "010-9209-0001", address: addrQ9, deliveryDate: inDays(1), product: "우유", quantity: 1 },
       { orderNumber: orderQ9, name: nameQ9, phone: "010-9209-0002", address: addrQ9, deliveryDate: inDays(1), product: "우유", quantity: 1 },
     ]);
-    await uploadAndGoToReview(page, csvQ9, "q9.csv");
+    await uploadAndGoToReview(page, csvQ9, `q9-${RUN_TAG}.csv`);
     text = await reviewText(page);
     record("Q9. 이름 같고 전화번호만 다름 → 등록 차단", text.includes("🚫") && text.includes(nameQ9));
     await confirmRegister(page);
@@ -214,7 +214,7 @@ async function main() {
       { orderNumber: orderQ10, name: nameQ10, phone: phoneQ10, address: "서울 강동구 Q10-A", deliveryDate: inDays(1), product: "휴지", quantity: 1 },
       { orderNumber: orderQ10, name: nameQ10, phone: phoneQ10, address: "서울 강동구 Q10-B", deliveryDate: inDays(1), product: "휴지", quantity: 1 },
     ]);
-    await uploadAndGoToReview(page, csvQ10, "q10.csv");
+    await uploadAndGoToReview(page, csvQ10, `q10-${RUN_TAG}.csv`);
     text = await reviewText(page);
     record("Q10. 전화번호 같고 주소만 다름 → 등록 차단", text.includes("🚫"));
     await confirmRegister(page);
@@ -235,6 +235,11 @@ async function main() {
     if (orderIds.length) await admin.from("orders").delete().in("id", orderIds);
     await admin.from("customers").delete().eq("owner_username", OWNER).ilike("name", `${QA_PREFIX}%`);
     if (importIds.length) await admin.from("imports").delete().in("id", importIds);
+    // STEP12-17(C-2): 이 시나리오는 대부분의 업로드가 "등록 차단"으로 끝나 주문이
+    // 생기지 않는다 — 주문에서 역참조한 import_id만 지우면 차단된 업로드의
+    // imports 행이 매 실행마다 남는다(실제로 user3에 97건까지 쌓여 있었다).
+    // 파일명에 RUN_TAG를 넣었으므로 이번 실행분만 정확히 지운다.
+    await admin.from("imports").delete().eq("owner_username", OWNER).ilike("file_name", `%${RUN_TAG}%`);
 
     const { count: remainingOrders } = await admin
       .from("orders")
