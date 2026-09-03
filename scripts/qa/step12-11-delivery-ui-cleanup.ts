@@ -444,6 +444,20 @@ async function main() {
     const progressToggleText = await page.getByRole("button", { name: /배송 지도/ }).innerText().catch(() => "");
     record("R16B-1. 배송중 탭에서도 지도는 기본 접힘 유지(강제 펼침 없음)", progressToggleText.includes("펼치기"), progressToggleText);
     record("R16B-2. 지도 접힌 상태에서도 기사별 필터(Route패널) 즉시 노출", progressText.includes("기사별 배송순서"));
+    // STEP12-16C: 지도 접힘 상태의 Route패널은 고정 높이(sm:360px)가 아니라 콘텐츠
+    // 높이로 동작해야 한다 — QA 데이터는 기사 1명뿐이라 실제 콘텐츠는 200px 내외다.
+    const routePanelBox = await page
+      .locator("div", { hasText: /^기사별 배송순서/ })
+      .filter({ has: page.getByTestId("route-panel-select-all") })
+      .last()
+      .boundingBox()
+      .catch(() => null);
+    const panelHeight = routePanelBox?.height ?? -1;
+    record(
+      "R16B-5. 지도 접힘 상태 Route패널이 콘텐츠 높이로 조정됨(고정 360px 아님)",
+      panelHeight > 0 && panelHeight < 300,
+      `높이=${Math.round(panelHeight)}px`
+    );
     const driverBtn = page.getByRole("button", { name: driver.name, exact: false }).first();
     const driverBtnCount = await driverBtn.count();
     if (driverBtnCount) await driverBtn.click({ timeout: 8000 }).catch(() => {});

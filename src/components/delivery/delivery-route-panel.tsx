@@ -20,6 +20,7 @@ export function DeliveryRoutePanel({
   driverColorById,
   selectedDriverId,
   onSelectDriver,
+  className,
 }: {
   /** DeliveryFilterStack이 계산한 filteredOrders 그대로 — 완료 포함 오늘 전체 그림이 목적이라 지도(mapEligibleOrders)와 달리 필터링하지 않는다. */
   orders: OrderShipmentBoardRow[];
@@ -27,6 +28,13 @@ export function DeliveryRoutePanel({
   driverColorById: Map<string, string>;
   selectedDriverId: string | null;
   onSelectDriver: (id: string | null) => void;
+  /**
+   * STEP12-16C: 호출부가 높이 정책만 바꿔 끼울 수 있게 한다. 지도와 나란히
+   * 놓일 때는 지금처럼 부모가 준 높이를 h-full로 채우고(기본), 지도가 접힌
+   * 배송중 탭처럼 단독으로 놓일 때는 `h-auto max-h-*`를 넘겨 콘텐츠 높이로
+   * 동작하게 한다 — 컴포넌트 내부 구조는 그대로다.
+   */
+  className?: string;
 }) {
   const ordersByDriverId = new Map<string, OrderShipmentBoardRow[]>();
   let unassignedCount = 0;
@@ -46,7 +54,7 @@ export function DeliveryRoutePanel({
   const visibleRows = selectedDriverId ? driverRows.filter((r) => r.driver.id === selectedDriverId) : driverRows;
 
   return (
-    <div className="flex h-full flex-col gap-2 rounded-lg border bg-card p-3">
+    <div className={cn("flex h-full flex-col gap-2 rounded-lg border bg-card p-3", className)}>
       <div className="shrink-0 space-y-0.5">
         <p className="text-sm font-semibold text-text-strong">기사별 배송순서</p>
         <p className="text-xs text-muted-foreground">배차된 배송의 순서를 확인하고 조정합니다.</p>

@@ -316,15 +316,21 @@ export function DeliveryFilterStack({
                 </div>
               </div>
             ) : (
-              <div className="h-[280px] sm:h-[360px]">
-                <DeliveryRoutePanel
-                  orders={filteredOrders}
-                  drivers={drivers}
-                  driverColorById={driverColorById}
-                  selectedDriverId={routePanelSelectedId}
-                  onSelectDriver={handleRoutePanelSelectDriver}
-                />
-              </div>
+              /* STEP12-16C(CEO 실사용 피드백): 지도가 접힌 배송중 탭에서는 Route패널이
+                 단독으로 놓이는데 여기에 고정 높이(h-[280px] sm:h-[360px])가 걸려 있어
+                 기사가 1~2명일 때 칩/배차목록 아래로 큰 빈 공간이 남았다. 고정 높이를
+                 없애 콘텐츠 높이로 동작시키고, 기사가 많아 길어질 때만 max-h에서
+                 멈추고 내부 목록이 스크롤되게 한다(flex 컨테이너에 max-height가 있으면
+                 min-h-0 + flex-1 자식이 정상적으로 스크롤된다). 지도를 펼친 배치는
+                 지도와 높이를 맞춰야 하므로 기존 고정 높이 그대로 둔다. */
+              <DeliveryRoutePanel
+                orders={filteredOrders}
+                drivers={drivers}
+                driverColorById={driverColorById}
+                selectedDriverId={routePanelSelectedId}
+                onSelectDriver={handleRoutePanelSelectDriver}
+                className="h-auto max-h-[60vh]"
+              />
             )
           ) : mapExpanded ? (
             showRoutePanel ? (
