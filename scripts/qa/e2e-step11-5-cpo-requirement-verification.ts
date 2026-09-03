@@ -26,7 +26,7 @@ import { registerAnnouncementPopupHandler, dismissAnnouncementPopupIfPresent } f
 
 const GATE_ID = "STEP11-5-CPO-REQUIREMENT-VERIFICATION";
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
-const OWNER = QA_SECONDARY_OWNER; // user4
+const OWNER = QA_SECONDARY_OWNER; // user6 (STEP12-18에서 QA 전용 secondary tenant로 교체)
 assertAllowedQaOwner(OWNER);
 const RUN_TAG = String(Date.now());
 const PREFIX = `QA-S115-${RUN_TAG}-`;
@@ -184,6 +184,31 @@ async function countOrders(admin: ReturnType<typeof getSupabaseAdmin>): Promise<
   return count ?? 0;
 }
 
+/**
+ * STEP12-19B: STEP11-13 이후 기사배정(일괄/개별)은 Draft 방식이다 — 조작은 화면에만
+ * 반영되고 "변경사항 저장"을 눌러야 서버로 간다. 이 스크립트는 그 변경 이전에
+ * 작성돼 즉시저장을 전제하고 있었고, 그래서 이후 단계가 "배정된 행"을 찾지 못해
+ * 실패했다. 조작 → 배너 → 저장 → 토스트를 한 흐름으로 처리한다(조작 직후 첫
+ * 클릭이 삼켜지는 STEP12-16B 이슈 때문에 사람 조작 속도만큼 기다린 뒤 누른다).
+ */
+async function saveDraftChanges(page: Page): Promise<boolean> {
+  const banner = page.getByText(/변경사항 \d+건/).first();
+  await banner.waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+  if (!(await banner.isVisible().catch(() => false))) return false;
+  await page.waitForTimeout(800);
+  // 직전 단계의 저장이 늦게 끝나면서 배너가 방금 사라졌을 수 있다 — 그 경우
+  // 버튼이 없다고 예외를 던지는 대신 "저장할 게 남았는지"로 판정한다.
+  const clicked = await page
+    .getByRole("button", { name: "변경사항 저장" })
+    .first()
+    .click({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!clicked) return !(await banner.isVisible().catch(() => false));
+  await page.getByText(/저장했습니다/).first().waitFor({ state: "visible", timeout: 60000 }).catch(() => {});
+  return true;
+}
+
 async function run() {
   console.log(`E2E target: ${BASE_URL}, tenant=${OWNER}, RUN_TAG=${RUN_TAG}, Gate=${GATE_ID}`);
   await assertTenantIsQaSafe(OWNER);
@@ -330,6 +355,7 @@ async function run() {
     await page.getByRole("combobox", { name: "담당 기사 선택" }).click();
     await page.getByRole("option", { name: new RegExp(`S115기사A-${RUN_TAG}`) }).click();
     await page.getByRole("button", { name: "일괄 적용" }).click({ timeout: 8000 });
+    await saveDraftChanges(page);
     await page.getByText("처리하는 중...").waitFor({ state: "hidden", timeout: 60000 }).catch(() => {});
     await page.waitForLoadState("networkidle").catch(() => {});
     await page.waitForTimeout(500);
@@ -374,10 +400,20 @@ async function run() {
     const targetRow = page.locator(`xpath=//a[@href="/orders/${targetOrderId}"]/ancestor::div[contains(@class, "rounded-xl")][1]`);
 
     async function measureIndividualAssign(toDriverId: string, toDriverNamePattern: RegExp): Promise<number> {
+      // STEP12-20 주의: 여기서 나오는 숫자는 **성능 기준값이 아니다.**
+      // 이 함수를 연속 호출하면서 화면을 다시 읽지 않기 때문에, 2·3회차는 저장 후
+      // 재렌더로 낡아버린 노드를 클릭하다 폴링/재시도 타임아웃에 걸린다 — 과거
+      // 4.3s / 35.5s / 20.5s 같은 값이 실행마다 거의 그대로 재현된 이유이고,
+      // 제품 지연이 아니라 측정 구조가 만든 값이다. 매 호출 화면을 새로 읽도록
+      // 바꿔봤으나 이번엔 대상 행이 접힌 그룹 안에 들어가 못 찾는 문제가 생겨
+      // 되돌렸다(이 스크립트의 본래 목적은 요구사항 검증이지 성능 측정이 아니다).
+      // 개별 배정의 실제 성능은 scripts/qa/perf-individual-assign.ts로 측정한다
+      // (같은 150건 조건 12회: min 2.7s / median 3.2s / max 6.5s).
       const t0 = Date.now();
       await targetRow.getByRole("button", { name: /담당기사 변경/ }).click();
       await page.getByRole("menu").waitFor({ state: "visible", timeout: 10000 });
       await page.getByRole("menuitem", { name: toDriverNamePattern }).click();
+      await saveDraftChanges(page);
       await pollUntil(
         async () => (await admin.from("orders").select("driver_id").eq("id", targetOrderId).maybeSingle()).data?.driver_id ?? null,
         (v) => v === toDriverId,
@@ -407,6 +443,8 @@ async function run() {
     const bagInput = targetRow.locator('input[placeholder="가방번호"]');
     await bagInput.fill(`BAG-${RUN_TAG}`);
     await bagInput.blur();
+    // STEP11-13 이후 가방번호/회수여부도 Draft다 — 저장해야 서버에 반영된다.
+    await saveDraftChanges(page);
     const bagCount = await pollUntil(
       async () => (await admin.from("order_shipments").select("id", { count: "exact", head: true }).eq("owner_username", OWNER).eq("bag_number", `BAG-${RUN_TAG}`)).count ?? 0,
       (v) => v >= 1
@@ -416,6 +454,7 @@ async function run() {
     await returnToggle.first().waitFor({ state: "visible", timeout: 15000 });
     if ((await targetRow.getByText("미회수").count()) > 0) {
       await targetRow.getByText("미회수").click();
+      await saveDraftChanges(page);
     }
     const returnedCount = await pollUntil(
       async () =>

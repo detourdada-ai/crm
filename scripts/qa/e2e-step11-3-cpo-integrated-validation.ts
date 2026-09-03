@@ -26,7 +26,7 @@ import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
 import { registerAnnouncementPopupHandler, dismissAnnouncementPopupIfPresent } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
-const OWNER = QA_SECONDARY_OWNER; // user4
+const OWNER = QA_SECONDARY_OWNER; // user6 (STEP12-18에서 QA 전용 secondary tenant로 교체)
 assertAllowedQaOwner(OWNER);
 const RUN_TAG = String(Date.now());
 const PREFIX = `QA-S113-${RUN_TAG}-`;
@@ -209,6 +209,31 @@ async function countOrders(admin: ReturnType<typeof getSupabaseAdmin>): Promise<
   return count ?? 0;
 }
 
+/**
+ * STEP12-19B: STEP11-13 이후 기사배정(일괄/개별)은 Draft 방식이다 — 조작은 화면에만
+ * 반영되고 "변경사항 저장"을 눌러야 서버로 간다. 이 스크립트는 그 변경 이전에
+ * 작성돼 즉시저장을 전제하고 있었고, 그래서 이후 단계가 "배정된 행"을 찾지 못해
+ * 실패했다. 조작 → 배너 → 저장 → 토스트를 한 흐름으로 처리한다(조작 직후 첫
+ * 클릭이 삼켜지는 STEP12-16B 이슈 때문에 사람 조작 속도만큼 기다린 뒤 누른다).
+ */
+async function saveDraftChanges(page: Page): Promise<boolean> {
+  const banner = page.getByText(/변경사항 \d+건/).first();
+  await banner.waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+  if (!(await banner.isVisible().catch(() => false))) return false;
+  await page.waitForTimeout(800);
+  // 직전 단계의 저장이 늦게 끝나면서 배너가 방금 사라졌을 수 있다 — 그 경우
+  // 버튼이 없다고 예외를 던지는 대신 "저장할 게 남았는지"로 판정한다.
+  const clicked = await page
+    .getByRole("button", { name: "변경사항 저장" })
+    .first()
+    .click({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!clicked) return !(await banner.isVisible().catch(() => false));
+  await page.getByText(/저장했습니다/).first().waitFor({ state: "visible", timeout: 60000 }).catch(() => {});
+  return true;
+}
+
 async function run() {
   console.log(`E2E target: ${BASE_URL}, tenant=${OWNER}, RUN_TAG=${RUN_TAG}`);
   await assertTenantIsQaSafe(OWNER);
@@ -311,6 +336,7 @@ async function run() {
     await page.getByRole("combobox", { name: "담당 기사 선택" }).click();
     await page.getByRole("option", { name: new RegExp(`S113기사A-${RUN_TAG}`) }).click();
     await page.getByRole("button", { name: "일괄 적용" }).click({ timeout: 8000 });
+    await saveDraftChanges(page);
     await page.getByText("처리하는 중...").waitFor({ state: "hidden", timeout: 60000 }).catch(() => {});
     await page.waitForLoadState("networkidle").catch(() => {});
     await page.waitForTimeout(500);
@@ -340,6 +366,7 @@ async function run() {
     await firstDriverBtn.click();
     await page.getByRole("menu").waitFor({ state: "visible", timeout: 10000 });
     await page.getByRole("menuitem", { name: new RegExp(`S113기사B-${RUN_TAG}`) }).click();
+    await saveDraftChanges(page);
     const driverBCount = await pollUntil(
       async () => (await admin.from("orders").select("id", { count: "exact", head: true }).eq("owner_username", OWNER).eq("driver_id", driverId2).ilike("order_number", `${PREFIX}%`)).count ?? 0,
       (v) => v >= 1
@@ -363,6 +390,8 @@ async function run() {
     const bagInput = driverBRow.locator('input[placeholder="가방번호"]');
     await bagInput.fill(`BAG-${RUN_TAG}`);
     await bagInput.blur();
+    // STEP11-13 이후 가방번호/회수여부도 즉시저장이 아니라 Draft다 — 저장해야 반영된다.
+    await saveDraftChanges(page);
     const bagCount = await pollUntil(
       async () => (await admin.from("order_shipments").select("id", { count: "exact", head: true }).eq("owner_username", OWNER).eq("bag_number", `BAG-${RUN_TAG}`)).count ?? 0,
       (v) => v >= 1
@@ -372,10 +401,18 @@ async function run() {
     // 서버가 바쁠 때) 배지가 "미회수" 텍스트 대신 로딩 스피너를 보여준다 —
     // DB에는 이미 반영됐어도 클라이언트 요청은 아직 안 끝났을 수 있으므로,
     // 텍스트가 안정될 때까지 기다린 뒤 클릭한다.
-    const returnToggle = driverBRow.getByText("미회수").or(driverBRow.getByText("회수완료"));
+    // 가방번호 저장(서버 액션 + revalidatePath)이 끝나면 150건 목록이 통째로 다시
+    // 렌더되면서 앞서 잡아둔 행 locator가 낡은 노드를 가리킬 수 있다 — 회수여부는
+    // 그 직후 조작이라 특히 잘 어긋난다. 저장이 반영된 화면을 한 번 다시 읽고
+    // 행을 새로 찾은 뒤 토글한다.
+    await page.reload({ waitUntil: "networkidle" });
+    await dismissAnnouncementPopupIfPresent(page);
+    const freshDriverBRow = page.locator(`xpath=//a[@href="/orders/${driverBOrderId}"]/ancestor::div[contains(@class, "rounded-xl")][1]`);
+    const returnToggle = freshDriverBRow.getByText("미회수").or(freshDriverBRow.getByText("회수완료"));
     await returnToggle.first().waitFor({ state: "visible", timeout: 15000 });
-    if ((await driverBRow.getByText("미회수").count()) > 0) {
-      await driverBRow.getByText("미회수").click();
+    if ((await freshDriverBRow.getByText("미회수").count()) > 0) {
+      await freshDriverBRow.getByText("미회수").click();
+      await saveDraftChanges(page);
     }
     const returnedCount = await pollUntil(
       async () =>

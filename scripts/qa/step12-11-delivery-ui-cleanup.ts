@@ -323,13 +323,30 @@ async function main() {
         await page.goto(`${BASE_URL}/delivery?filter=all&dateFilter=today`, { waitUntil: "load" });
         await dismissAnnouncementPopupIfPresent(page);
         await waitForMainTextContaining(page, `${RUN_TAG}-그룹`);
-        for (const sel of [groupHeaderSelA, groupHeaderSelB]) {
-          const detailBtn = page.locator(sel).getByRole("button", { name: "상세보기" });
-          if (await detailBtn.count()) {
-            await detailBtn.click();
-            await page.waitForTimeout(300);
-          }
+        // 화면 문구만으로 판정하면 "순서가 틀렸다"와 "행이 아직 안 그려졌다"를
+        // 구분할 수 없다(실제로 A=-1,B=-1 = 둘 다 없음으로 실패했다).
+        // 저장 결과 자체는 DB의 group_order로 먼저 확인한다.
+        const { data: savedGroups } = await admin
+          .from("delivery_groups")
+          .select("id, group_order")
+          .in("id", [groupIdA!, groupIdB!]);
+        const orderA = savedGroups?.find((g) => g.id === groupIdA)?.group_order ?? null;
+        const orderB = savedGroups?.find((g) => g.id === groupIdB)?.group_order ?? null;
+        record(
+          "R23-PC-3a. 저장 후 DB group_order가 실제로 뒤바뀜(그룹B가 앞)",
+          orderA !== null && orderB !== null && orderB < orderA,
+          `A=${orderA}, B=${orderB}`
+        );
+
+        // 화면 확인용으로 그룹을 모두 펼친다(그룹 id는 저장 후 재생성으로 바뀔 수
+        // 있으므로 id에 의존하지 않는다).
+        const detailButtons = page.getByRole("button", { name: "상세보기" });
+        for (let i = 0; i < (await detailButtons.count()); i++) {
+          await detailButtons.nth(i).click({ timeout: 5000 }).catch(() => {});
         }
+        // 고정 300ms로는 그룹이 펼쳐지기 전에 본문을 읽어 두 마커를 모두 못 찾는
+        // 경우가 있었다(A=-1, B=-1). 실제 배송건 이름이 나타날 때까지 기다린다.
+        await waitForMainTextContaining(page, `${RUN_TAG}-그룹A-1`);
         const textAfterReload = await mainText(page);
         const idxAAfter = textAfterReload.indexOf(`${RUN_TAG}-그룹A-1`);
         const idxBAfter = textAfterReload.indexOf(`${RUN_TAG}-그룹B-1`);

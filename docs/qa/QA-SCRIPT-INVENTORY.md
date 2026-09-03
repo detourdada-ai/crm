@@ -62,7 +62,7 @@
 | `qa/e2e-step11-2-phase4-date-filter.ts` | STEP11-2 Phase4 날짜 기준 접수 |
 | `qa/e2e-step11-2d-assign-performance.ts` | STEP11-2-D 일괄배정 성능 |
 | `qa/e2e-step11-3-cpo-integrated-validation.ts` | STEP11-3 통합 실사용 검증 |
-| `qa/e2e-step11-4-b-bulk-assign-reverify.ts` | STEP11-4-B RPC 벌크 배정 재검증 |
+| `qa/e2e-step11-4-b-bulk-assign-reverify.ts` | **일괄배정 성능 기준선**(10/50/100/150건 × 3회, Draft/저장/DB 구간 분리 측정 + baseline diff) |
 | `qa/e2e-step11-5-cpo-requirement-verification.ts` | STEP11-5 CPO 요구사항 검증 |
 | `qa/e2e-step11-6-individual-assign-perf.ts` | STEP11-6 개별 배정 성능 |
 | `qa/e2e-step11-7-access-boundary.ts` | STEP11-7 role 기반 접근 경계 |
@@ -89,9 +89,10 @@
 | 파일 | 역할 |
 |---|---|
 | `qa/lib/qa-config.ts` | 테넌트 정책 상수, `QA_NAME_PREFIX` |
-| `qa/lib/qa-guard.ts` | `assertAllowedQaOwner` / `assertTenantIsQaSafe` / `makeRunTag` / QA 기사 생성·정리 |
+| `qa/lib/qa-guard.ts` | `assertAllowedQaOwner` / `assertTenantIsQaSafe` / `makeRunTag` / QA 기사 생성·정리 / `cleanupQaDeliveryGroups` / `captureTenantBaseline`·`diffTenantBaseline` |
 | `qa/lib/qa-session.ts` | 위조 세션 토큰(로그인 우회) |
-| `scripts/safe-scratch.ts` | Production 쓰기 스크래치용 스냅샷·자동원복 래퍼 |
+| `scripts/safe-scratch.ts` | Production 쓰기 스크래치용 스냅샷·자동원복 래퍼, `ALLOWED_TEST_OWNERS` |
+| `qa/provision-qa-tenant.ts` | QA 전용 tenant 생성(실서비스와 동일한 create_seller_signup 경로, 멱등) |
 
 ## 4. 조사(읽기 전용) 스크립트
 

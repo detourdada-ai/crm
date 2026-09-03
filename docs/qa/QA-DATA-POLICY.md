@@ -103,6 +103,19 @@ QA가 만드는 Excel/CSV는 파일명에 RUN_TAG를 넣는다(예: `p4-stress-{
    ```
 4. **검증** — 재조회로 잔존 0건 + orphan 0건 확인. 다른 테넌트 건수 무변동 확인.
 
+### baseline 기준 (STEP12-19B 이후 표준)
+"cleanup 후 데이터 0건"은 더 이상 기준이 아니다 — QA tenant에도 기준 데이터가
+생길 수 있기 때문이다. 앞으로는 **QA 실행 전 상태와 실행 후 상태가 같은지**로 본다.
+
+```
+captureTenantBaseline(owner)   // QA 시작 시 테이블별 건수 스냅샷
+   ↓  테스트 데이터 생성 → 검증 → finally cleanup
+diffTenantBaseline(baseline)   // 종료 후 diff가 0이어야 PASS
+```
+
+두 헬퍼는 `scripts/qa/lib/qa-guard.ts`에 있다. 새로 쓰거나 크게 고치는 QA 스크립트는
+이 검증을 마지막 단계로 넣는다(기존 스크립트 전체 일괄 적용은 하지 않는다).
+
 ## 5. QA 스크립트 자산 취급
 
 QA 스크립트는 "임시 파일"이 아니라 **저장소 자산**이다(S13 확정).
@@ -117,3 +130,5 @@ QA 스크립트는 "임시 파일"이 아니라 **저장소 자산**이다(S13 �
 |---|---|
 | 2026-09-03 | Sprint S13에서 최초 제정. `user3` QA 잔존 163건 정리, `user4`/`user5` 1,852건 보존 판정. |
 | 2026-09-03 | STEP12-17: QA 쓰기 tenant를 `user3` 하나로 좁힘(기본 거부). 배송그룹 정리를 id 지정 방식으로 교체(`cleanupQaDeliveryGroups`). 정합성 감사 스크립트 추가. |
+| 2026-09-03 | STEP12-18: QA 전용 secondary tenant `user6` 신설(`provision-qa-tenant.ts`). 쓰기 허용 = user3/user6. |
+| 2026-09-04 | STEP12-19B: cleanup 기준을 "0건"에서 **baseline diff = 0**으로 변경(`captureTenantBaseline`/`diffTenantBaseline`). |

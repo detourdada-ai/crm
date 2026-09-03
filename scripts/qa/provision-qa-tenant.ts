@@ -44,7 +44,8 @@ export async function provisionQaTenant(username: string): Promise<{ created: bo
     p_google_email: `qa-${username}@jumunhanjang.invalid`,
     p_password_hash: hashPassword(QA_TENANT_PASSWORD),
     p_industry: null,
-    p_bag_management: false,
+    // QA tenant는 기능 게이팅에 걸려 테스트가 막히면 안 되므로 가방관리를 켠 채로 만든다.
+    p_bag_management: true,
   });
   if (error) throw error;
 
@@ -60,6 +61,16 @@ export async function provisionQaTenant(username: string): Promise<{ created: bo
  * extend_beta_access RPC로 QA tenant에만 장기 BETA 접근을 준다 — QA 전용 우회
  * 코드를 새로 만들지 않기 위해 실제 운영에서 쓰는 함수를 그대로 쓴다.
  */
+/**
+ * STEP12-19B: user6을 만들 때 bag_management를 끈 채로 생성해, 가방번호 입력 UI가
+ * 아예 렌더되지 않아 STEP11-3 계열 QA가 "입력칸을 못 찾음"으로 실패했다.
+ * QA tenant는 기능 게이팅 때문에 테스트가 막히면 안 되므로 항상 켜둔다.
+ */
+async function ensureQaTenantFeatures(tenantId: string): Promise<void> {
+  const { error } = await admin.from("tenants").update({ bag_management: true }).eq("id", tenantId);
+  if (error) throw error;
+}
+
 async function grantQaBetaAccess(tenantId: string): Promise<void> {
   const { error } = await admin.rpc("extend_beta_access", { p_tenant_id: tenantId, p_days: 3650 });
   if (error) throw error;
@@ -80,6 +91,9 @@ async function main() {
   const { data: membership } = await admin.from("memberships").select("role, status").eq("username", username).maybeSingle();
   console.log(`  memberships: role=${membership?.role} status=${membership?.status}`);
   console.log(`  기존 데이터: customers=${customers} orders=${orders}`);
+  await ensureQaTenantFeatures(tenantId);
+  const { data: features } = await admin.from("tenants").select("bag_management").eq("id", tenantId).maybeSingle();
+  console.log(`  기능 플래그: bag_management=${features?.bag_management}`);
   if (tenant && tenant.access_type !== "BETA") {
     await grantQaBetaAccess(tenantId);
     const { data: after } = await admin.from("tenants").select("access_type, access_expires_at").eq("id", tenantId).maybeSingle();

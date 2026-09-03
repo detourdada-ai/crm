@@ -28,7 +28,7 @@ import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDr
 import { registerAnnouncementPopupHandler, dismissAnnouncementPopupIfPresent } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
-const OWNER = QA_SECONDARY_OWNER; // user4
+const OWNER = QA_SECONDARY_OWNER; // user6 (STEP12-18에서 QA 전용 secondary tenant로 교체)
 assertAllowedQaOwner(OWNER);
 const RUN_TAG = String(Date.now());
 const PREFIX = `QA-S1111-${RUN_TAG}-`;
@@ -136,7 +136,15 @@ async function saveDraftChanges(page: Page): Promise<boolean> {
   await banner.waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
   if (!(await banner.isVisible().catch(() => false))) return false;
   await page.waitForTimeout(800);
-  await page.getByRole("button", { name: "변경사항 저장" }).first().click({ timeout: 10000 });
+  // 직전 단계의 저장이 늦게 끝나면서 배너가 방금 사라졌을 수 있다 — 그 경우
+  // 버튼이 없다고 예외를 던지는 대신 "저장할 게 남았는지"로 판정한다.
+  const clicked = await page
+    .getByRole("button", { name: "변경사항 저장" })
+    .first()
+    .click({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!clicked) return !(await banner.isVisible().catch(() => false));
   await page.getByText(/저장했습니다/).first().waitFor({ state: "visible", timeout: 60000 }).catch(() => {});
   return true;
 }
