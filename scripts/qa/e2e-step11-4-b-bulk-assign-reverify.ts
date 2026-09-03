@@ -122,6 +122,13 @@ async function run() {
         await page.getByRole("combobox", { name: "담당 기사 선택" }).click();
         await page.getByRole("option", { name: new RegExp(driverFixture.name) }).click();
         await page.getByRole("button", { name: "일괄 적용" }).click({ timeout: 8000 });
+        // STEP11-13 이후 "일괄 적용"은 화면 Draft에만 반영되고 "변경사항 저장"을
+        // 눌러야 서버에 배정된다. 이 스크립트는 그 이전에 작성돼 적용 클릭만
+        // 재던 탓에 실제 서버 반영 시간을 재지 못했고(DB 반영 0/150건),
+        // 사용자가 체감하는 시간도 아니었다 — 저장까지를 한 구간으로 측정한다.
+        await page.waitForTimeout(800);
+        await page.getByRole("button", { name: "변경사항 저장" }).first().click({ timeout: 8000 });
+        await page.getByText(/저장했습니다/).first().waitFor({ state: "visible", timeout: 60000 }).catch(() => {});
         await page.getByText("처리하는 중...").waitFor({ state: "hidden", timeout: 60000 }).catch(() => {});
         await page.waitForLoadState("networkidle").catch(() => {});
         const ms = Date.now() - t0;

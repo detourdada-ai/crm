@@ -1,7 +1,7 @@
 {
   "gateId": "STEP11-6-INDIVIDUAL-DRIVER-ASSIGN-PERF",
-  "runTag": "1788074135261",
-  "timestamp": "2026-08-30T07:16:02.284Z",
+  "runTag": "1788427124988",
+  "timestamp": "2026-09-03T09:19:38.424Z",
   "baseUrl": "https://jumunhanjang.vercel.app",
   "beforeBaseline": {
     "note": "STEP11-5 3회 독립 실행 평균",
@@ -13,32 +13,11 @@
   },
   "after": {
     "wallClockMs": [
-      4069,
-      4202,
-      4882
+      15696,
+      15714,
+      15671
     ],
-    "avgWallClockMs": 4384,
-    "serverPhaseTimings": [
-      {
-        "mergedTargetsAndDriverCheck": 683,
-        "mainUpdate": 664,
-        "parallelNormalizeAndSync": 969,
-        "notify": 0,
-        "actionCheck": 1018,
-        "repoTotal": 2316,
-        "revalidate": 0,
-        "clientRoundTrip": 3747
-      },
-      {
-        "mergedTargetsAndDriverCheck": 739,
-        "mainUpdate": 264,
-        "parallelNormalizeAndSync": 1193,
-        "notify": 0,
-        "actionCheck": 592,
-        "repoTotal": 2196,
-        "revalidate": 0,
-        "clientRoundTrip": 3196
-      }
-    ]
+    "avgWallClockMs": 15694,
+    "serverPhaseTimings": []
   }
 }

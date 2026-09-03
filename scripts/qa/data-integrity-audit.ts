@@ -4,8 +4,10 @@
  * **읽기 전용이다.** INSERT/UPDATE/DELETE를 하지 않는다(AGENTS.md의 Production DB
  * 안전 규칙 대상이 아님). 이상을 "발견"만 하고, 고치는 것은 사람이 판단한다.
  *
- * `user1`/`user2`는 CPO 지시로 조회조차 하지 않는다. 기본 대상은 실제 업무 데이터가
- * 있는 `user3`/`user4`/`user5`이며, 인자로 tenant를 직접 지정할 수 있다.
+ * `user1`/`user2`는 CPO 지시로 조회조차 하지 않는다. 기본 대상은 QA tenant
+ * (`user3`/`user6`)와 실제 업무 데이터가 있는 `user4`/`user5`이며, 인자로 tenant를
+ * 직접 지정할 수 있다. QA tenant는 baseline이 "데이터 0건"이므로 QA 종료 후
+ * 잔존 0건이 곧 baseline 복귀 확인이다(STEP12-18 §7).
  *
  * 실행:
  *   NODE_OPTIONS="--conditions=react-server" npx tsx -r dotenv/config \
@@ -14,7 +16,7 @@
 import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { FORBIDDEN_QA_OWNERS } from "./lib/qa-config";
 
-const DEFAULT_TENANTS = ["user3", "user4", "user5"];
+const DEFAULT_TENANTS = ["user3", "user6", "user4", "user5"];
 /** 조회 자체가 금지된 tenant — 인자로 넘어와도 거부한다. */
 const NEVER_READ = ["user1", "user2"];
 

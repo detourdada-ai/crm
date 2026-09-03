@@ -247,6 +247,13 @@ async function run() {
     // "배정필요" 탭(기본값)에서는 사라졌으므로 "전체" 탭으로 다시 진입한다.
     await page.goto(`${BASE_URL}/delivery?filter=all&${dateQs}`, { waitUntil: "networkidle" });
     await dismissAnnouncementPopupIfPresent(page);
+    // STEP12-8F(R12) 이후 그룹 카드는 기본 접힘이라 "상세보기"를 눌러 펼치기 전에는
+    // 배송건 행 자체가 렌더되지 않는다 — 이 스크립트는 그 변경 이전에 작성돼
+    // 곧바로 행을 찾다가 타임아웃났다. 화면의 그룹을 모두 펼친 뒤 진행한다.
+    const expandButtons = page.getByRole("button", { name: "상세보기" });
+    for (let i = 0; i < (await expandButtons.count()); i++) {
+      await expandButtons.nth(i).click({ timeout: 5000 }).catch(() => {});
+    }
     const target1Row = page.locator(`xpath=//a[@href="/orders/${grasium[0].orderId}"]/ancestor::div[contains(@class, "rounded-xl")][1]`);
     await target1Row.getByRole("button", { name: /담당기사 변경/ }).click({ timeout: 8000 });
     await page.getByRole("menu").waitFor({ state: "visible", timeout: 8000 });
