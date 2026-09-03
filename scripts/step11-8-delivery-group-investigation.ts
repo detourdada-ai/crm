@@ -9,7 +9,7 @@
  * 실행: npx tsx --env-file=.env.local scripts/step11-8-delivery-group-investigation.ts
  */
 import { getSupabaseAdmin } from "../src/lib/supabase/admin";
-import { haversineDistanceMeters, computeCentroid } from "../src/lib/services/spatial-grouping.service";
+import { haversineDistanceMeters } from "../src/lib/services/spatial-grouping.service";
 import { buildGroupBuildingCounts } from "../src/lib/utils/delivery-group";
 import * as fs from "node:fs";
 import * as path from "node:path";

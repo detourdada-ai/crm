@@ -72,7 +72,6 @@ async function main() {
   const customerId = randomUUID();
   const orderId = randomUUID();
   const shipmentId = randomUUID();
-  let cleanedUp = false;
 
   const browser = await chromium.launch();
   try {
@@ -163,7 +162,6 @@ async function main() {
     record("R17/R14-기사앱. 상품 3종 전체 수량과 함께 노출('외 N건' 없음)", allProductsShownDriver && !driverText.includes("외 2건") && !driverText.includes("외 1건"), driverText.slice(0, 400));
 
     await context.close();
-    cleanedUp = true;
   } finally {
     await admin.from("order_items").delete().eq("order_id", orderId);
     await admin.from("order_shipments").delete().eq("id", shipmentId);

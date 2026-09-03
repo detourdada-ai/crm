@@ -179,7 +179,7 @@ async function run() {
     // ---- 사장님: 정산관리 화면에서 기사별 확인/금액확인(실시간 자동계산) ----
     await setSession(context, OWNER, "user");
     await page.goto(`${BASE_URL}/settlements`, { waitUntil: "networkidle" });
-    let settlementsText = await mainText(page);
+    const settlementsText = await mainText(page);
     record("I3. 정산관리에 A-1 노출", settlementsText.includes("QA-테스트기사A-1"));
 
     const row = page.locator("tr", { hasText: "QA-테스트기사A-1" }).first();

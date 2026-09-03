@@ -75,6 +75,17 @@ async function createOrderViaUi(page: Page, recipient: string, phone: string, de
   await dialog.getByRole("button", { name: "닫기", exact: true }).click({ timeout: 5000 }).catch(() => {});
 }
 
+/**
+ * `orders!inner(recipient_name)` 임베드 조회 결과에서 수령인명을 꺼낸다.
+ * supabase-js 생성 타입이 임베드 관계를 객체/배열 중 어느 쪽으로 좁힐지
+ * 확정해주지 못해 과거엔 `as any`로 우회했다 — 런타임 shape(객체 또는
+ * 1건 배열) 양쪽을 모두 받아 처리하는 타입 안전한 접근자로 대체한다.
+ */
+function recipientOf(shipment: unknown): string {
+  const orders = (shipment as { orders?: { recipient_name?: string } | { recipient_name?: string }[] }).orders;
+  const row = Array.isArray(orders) ? orders[0] : orders;
+  return row?.recipient_name ?? "";
+}
 async function run() {
   console.log(`E2E target: ${BASE_URL}`);
   await assertTenantIsQaSafe(OWNER);
@@ -154,8 +165,8 @@ async function run() {
         .select("driver_id, orders!inner(recipient_name)")
         .eq("owner_username", OWNER)
         .in("orders.recipient_name", allRecipients);
-      const a1Ok = (data ?? []).filter((s: any) => a1Recipients.includes(s.orders.recipient_name)).every((s) => s.driver_id === driverA1.id);
-      const a2Ok = (data ?? []).filter((s: any) => a2Recipients.includes(s.orders.recipient_name)).every((s) => s.driver_id === driverA2.id);
+      const a1Ok = (data ?? []).filter((s) => a1Recipients.includes(recipientOf(s))).every((s) => s.driver_id === driverA1.id);
+      const a2Ok = (data ?? []).filter((s) => a2Recipients.includes(recipientOf(s))).every((s) => s.driver_id === driverA2.id);
       return a1Ok && a2Ok && (data ?? []).length === 10;
     }, 20000);
     record("GH1. UI 일괄배정 → A-1/A-2에 각각 5건씩 정확히 배정(혼합 없음)", assignOk);
@@ -199,7 +210,7 @@ async function run() {
       const card = page.getByTestId(`delivery-card-${s.id}`);
       const hasCard = await card.count();
       if (!hasCard) {
-        record(`GH5. A-1 카드 노출(${(s as any).orders.recipient_name})`, false, "카드를 찾지 못함");
+        record(`GH5. A-1 카드 노출(${recipientOf(s)})`, false, "카드를 찾지 못함");
         continue;
       }
       const t0 = Date.now();
@@ -216,8 +227,8 @@ async function run() {
         return data?.delivery_status === "완료";
       }, 3000);
       const ownerReflectMs = Date.now() - tOwner0;
-      completionTimes.push({ recipient: (s as any).orders.recipient_name, clickMs, ownerReflectMs });
-      record(`GH5. A-1 배송완료(${(s as any).orders.recipient_name})`, completedOk, undefined, clickMs);
+      completionTimes.push({ recipient: recipientOf(s), clickMs, ownerReflectMs });
+      record(`GH5. A-1 배송완료(${recipientOf(s)})`, completedOk, undefined, clickMs);
     }
 
     // ---- 기사 A-2: 로그인 → 배송완료 5건(운행시작 없이도 완료 가능한지 함께 확인) ----
@@ -234,7 +245,7 @@ async function run() {
       const card = page.getByTestId(`delivery-card-${s.id}`);
       const hasCard = await card.count();
       if (!hasCard) {
-        record(`GH7. A-2 카드 노출(${(s as any).orders.recipient_name})`, false, "카드를 찾지 못함");
+        record(`GH7. A-2 카드 노출(${recipientOf(s)})`, false, "카드를 찾지 못함");
         continue;
       }
       await card.getByRole("button", { name: "배송완료", exact: false }).first().click({ timeout: 8000 });
@@ -245,7 +256,7 @@ async function run() {
         const { data } = await admin.from("order_shipments").select("delivery_status").eq("id", s.id).maybeSingle();
         return data?.delivery_status === "완료";
       });
-      record(`GH7. A-2 배송완료(${(s as any).orders.recipient_name})`, completedOk);
+      record(`GH7. A-2 배송완료(${recipientOf(s)})`, completedOk);
     }
 
     // ---- 교차오염 검증: A-1 완료건에 A-2 driver_id가 섞이지 않았는지 ----
@@ -254,8 +265,8 @@ async function run() {
       .select("driver_id, delivery_status, route_order, orders!inner(recipient_name)")
       .eq("owner_username", OWNER)
       .in("orders.recipient_name", allRecipients);
-    const a1Final = (finalShipments ?? []).filter((s: any) => a1Recipients.includes(s.orders.recipient_name));
-    const a2Final = (finalShipments ?? []).filter((s: any) => a2Recipients.includes(s.orders.recipient_name));
+    const a1Final = (finalShipments ?? []).filter((s) => a1Recipients.includes(recipientOf(s)));
+    const a2Final = (finalShipments ?? []).filter((s) => a2Recipients.includes(recipientOf(s)));
     record("GH8. A-1 5건 전부 driver_id=A-1, 완료 상태(A-2 혼입 없음)", a1Final.length === 5 && a1Final.every((s) => s.driver_id === driverA1.id && s.delivery_status === "완료"));
     record("GH9. A-2 5건 전부 driver_id=A-2, 완료 상태(A-1 혼입 없음)", a2Final.length === 5 && a2Final.every((s) => s.driver_id === driverA2.id && s.delivery_status === "완료"));
 

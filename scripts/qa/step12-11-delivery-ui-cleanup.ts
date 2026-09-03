@@ -241,7 +241,9 @@ async function main() {
     // ================= R21: 상단 주문/배송/상품주문 건수 =================
     await page.goto(`${BASE_URL}/delivery?filter=all&dateFilter=today`, { waitUntil: "load" });
     await dismissAnnouncementPopupIfPresent(page);
-    let text = await waitForNonEmptyMainText(page);
+    // Next.js loading.tsx 스켈레톤도 "비어있지 않은 main 텍스트"라서 waitForNonEmptyMainText만으로는
+    // 스트리밍 완료 전 스켈레톤을 읽고 R21이 산발적으로 실패한다 — 집계줄 마커가 나올 때까지 기다린다.
+    let text = await waitForMainTextContaining(page, "상품주문");
     const hasSummaryLine = /주문\s*\d+건\s*·\s*배송\s*\d+건\s*·\s*상품주문\s*\d+건/.test(text);
     record("R21. 배송관리 상단에 '주문 N건 · 배송 N건 · 상품주문 N건' 표기", hasSummaryLine, text.slice(0, 300));
 
@@ -352,17 +354,40 @@ async function main() {
     await page.getByText(/변경사항 \d+건/).first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
     const rowChangeBanner = await page.getByText(/변경사항 \d+건/).isVisible().catch(() => false);
     record("R23-행-1. 배송건 드래그 후 변경사항 배너 노출", rowChangeBanner);
+    // 드래그 직후(저장 전) 화면 순서가 실제로 뒤바뀌었는지 먼저 본다 —
+    // "드래그 자체가 무효(테스트측)"와 "저장이 유실(제품측)"을 구분하는 기준점이다.
+    const draftText = await mainText(page);
+    const draftIdxR1 = draftText.indexOf(`${RUN_TAG}-순서1`);
+    const draftIdxR2 = draftText.indexOf(`${RUN_TAG}-순서2`);
+    record("R23-행-1a. 드래그 직후(저장 전) 화면 순서가 실제로 뒤바뀜", draftIdxR1 >= 0 && draftIdxR2 >= 0 && draftIdxR2 < draftIdxR1, `${draftIdxR1}/${draftIdxR2}`);
     if (rowChangeBanner) {
       await page.getByRole("button", { name: "변경사항 저장" }).click();
       // Production 서버 액션 왕복 지연을 고려해 저장 완료(토스트)를 확인한 뒤에만 이동한다.
       await page.getByText(/저장했습니다/).first().waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+      // 저장 결과 토스트를 남겨둔다 — 실패 시 "저장 액션이 아예 안 돌았는지"와
+      // "돌았는데 DB에 안 들어갔는지"를 구분하는 유일한 단서다(STEP12-16B 조사).
+      const toastText = await page.locator("[data-sonner-toast], [role='status'], [role='alert']").allInnerTexts().catch(() => [] as string[]);
+      // 저장이 "UI에 안 보이는 것"인지 "DB에 안 들어간 것"인지 구분하기 위해,
+      // 화면 재조회 전에 route_order 자체가 뒤바뀌었는지 먼저 확인한다.
+      let r1Order: number | null = null;
+      let r2Order: number | null = null;
+      const dbDeadline = Date.now() + 20000;
+      let dbPersisted = false;
+      while (Date.now() < dbDeadline) {
+        const { data: roRows } = await admin.from("order_shipments").select("id, route_order").in("id", [shipmentIds.R1, shipmentIds.R2]);
+        r1Order = roRows?.find((s) => s.id === shipmentIds.R1)?.route_order ?? null;
+        r2Order = roRows?.find((s) => s.id === shipmentIds.R2)?.route_order ?? null;
+        if (r1Order !== null && r2Order !== null && r2Order < r1Order) { dbPersisted = true; break; }
+        await page.waitForTimeout(500);
+      }
+      record("R23-행-2a. 저장 후 DB route_order가 실제로 뒤바뀜", dbPersisted, `R1=${r1Order}, R2=${r2Order}, 토스트=${JSON.stringify(toastText)}`);
       await page.goto(`${BASE_URL}/delivery?filter=${encodeURIComponent("배송중")}&driverFilter=${driver.driverId}&dateFilter=today`, { waitUntil: "load" });
       await dismissAnnouncementPopupIfPresent(page);
       routeText = await waitForMainTextContaining(page, `${RUN_TAG}-순서`);
       const idxR1After = routeText.indexOf(`${RUN_TAG}-순서1`);
       const idxR2After = routeText.indexOf(`${RUN_TAG}-순서2`);
       record(
-        "R23-행-2. 새로고침 후 순서2가 순서1보다 먼저 노출(순서 영구 반영)",
+        "R23-행-2b. 새로고침 후 순서2가 순서1보다 먼저 노출(화면 반영)",
         idxR1After >= 0 && idxR2After >= 0 && idxR2After < idxR1After,
         `${idxR1After}/${idxR2After}`
       );
@@ -377,6 +402,33 @@ async function main() {
     const mobileHandleVisible = await page.locator(rowSelR1).isVisible().catch(() => false);
     record("R23-모바일. 390px 뷰포트에서도 드래그 손잡이가 정상 노출(터치 대상)", mobileHandleVisible);
     await page.setViewportSize({ width: 1280, height: 900 });
+
+    // ================= STEP12-16B: 배송중 탭 기사별 필터(Route패널) 즉시 노출 =================
+    // CEO 피드백 "배송중에서 기사를 못 고른다"의 원인은 D&D가 아니라, 기사 필터
+    // 역할을 하는 Route패널이 지도 안에 중첩돼 있고 지도가 기본 접힘(R22)이라
+    // 필터 자체가 화면에 없었던 것이다. progress 모드에서는 지도 펼침 여부와
+    // 무관하게 Route패널이 보여야 하고, 지도는 여전히 접힌 채여야 한다.
+    await page.goto(`${BASE_URL}/delivery?filter=${encodeURIComponent("배송중")}&dateFilter=today`, { waitUntil: "load" });
+    await dismissAnnouncementPopupIfPresent(page);
+    const progressText = await waitForMainTextContaining(page, "기사별 배송순서");
+    const progressToggleText = await page.getByRole("button", { name: /배송 지도/ }).innerText().catch(() => "");
+    record("R16B-1. 배송중 탭에서도 지도는 기본 접힘 유지(강제 펼침 없음)", progressToggleText.includes("펼치기"), progressToggleText);
+    record("R16B-2. 지도 접힌 상태에서도 기사별 필터(Route패널) 즉시 노출", progressText.includes("기사별 배송순서"));
+    const driverBtn = page.getByRole("button", { name: driver.name, exact: false }).first();
+    const driverBtnCount = await driverBtn.count();
+    if (driverBtnCount) await driverBtn.click({ timeout: 8000 }).catch(() => {});
+    const afterSelectText = await mainText(page);
+    record(
+      "R16B-3. Route패널에서 기사 선택 가능 → 해당 기사로 좁혀짐",
+      driverBtnCount > 0 && afterSelectText.includes(driver.name),
+      afterSelectText.slice(0, 200)
+    );
+
+    // 배정필요 탭은 이번 변경의 영향을 받지 않아야 한다(Route패널 없음).
+    await page.goto(`${BASE_URL}/delivery?filter=unassigned&dateFilter=today`, { waitUntil: "load" });
+    await dismissAnnouncementPopupIfPresent(page);
+    const assignText = await waitForNonEmptyMainText(page);
+    record("R16B-4. 배정필요 탭에는 Route패널이 없다(회귀 없음)", !assignText.includes("기사별 배송순서"));
 
     // ================= R26: 기사앱 배송메모 위치(주소/연락처 다음, 상품 앞) =================
     const driverContext = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 390, height: 844 } });

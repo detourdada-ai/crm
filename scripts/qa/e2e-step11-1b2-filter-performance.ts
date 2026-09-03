@@ -15,7 +15,7 @@
  * 실행: npx tsx scripts/qa/e2e-step11-1b2-filter-performance.ts
  */
 import { randomUUID } from "crypto";
-import { chromium, type BrowserContext, type Page } from "playwright";
+import { chromium, type BrowserContext } from "playwright";
 import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { QA_SECONDARY_OWNER } from "./lib/qa-config";

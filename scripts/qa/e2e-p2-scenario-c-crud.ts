@@ -147,7 +147,7 @@ async function run() {
     // — 미래 배송일 테스트 주문을 보려면 deliveryDateFilter=all이 필요하다.
     const tListRefl0 = Date.now();
     await page.goto(`${BASE_URL}/orders?deliveryDateFilter=all`, { waitUntil: "networkidle" });
-    let listText = await mainText(page);
+    const listText = await mainText(page);
     const listMs = Date.now() - tListRefl0;
     record("C-Create-2. 저장 후 목록(주문관리) 반영(새로고침 없이 이동만으로 확인 가능)", listText.includes(readFixture.recipient), undefined, listMs);
 

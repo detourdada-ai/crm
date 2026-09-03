@@ -13,6 +13,17 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // `_` 접두사는 "의도적으로 쓰지 않는 값"이라는 이 저장소의 기존 관례다
+      // (예: customer-notification.service.ts의 미구현 훅 시그니처 `_orderId`).
+      // 파일마다 eslint-disable를 붙이는 대신 규칙 자체를 관례에 맞춘다.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

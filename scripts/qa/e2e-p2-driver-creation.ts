@@ -110,8 +110,8 @@ async function run() {
       try {
         const ms = await createDriverViaUi(page, fixture);
         record(`기사 등록: ${fixture.name} (${fixture.username})`, true, undefined, ms);
-      } catch (e: any) {
-        record(`기사 등록: ${fixture.name} (${fixture.username})`, false, e?.message ?? String(e));
+      } catch (e) {
+        record(`기사 등록: ${fixture.name} (${fixture.username})`, false, e instanceof Error ? e.message : String(e));
       }
     }
 

@@ -339,7 +339,7 @@ async function main() {
     const recipientOfKey = (rowKey: string) => gaDefs.find((d) => k.get(d.key) === rowKey)?.recipient ?? "";
     const namesInSavedOrder = afterSaveReloadKeys.map(recipientOfKey);
     const indicesInDriverApp = namesInSavedOrder.map((name) => driverAppText.indexOf(name));
-    const driverAppOrderMatches = indicesInDriverApp.every((idx, i) => idx >= 0) && indicesInDriverApp.every((idx, i, arr) => i === 0 || arr[i - 1] < idx);
+    const driverAppOrderMatches = indicesInDriverApp.every((idx) => idx >= 0) && indicesInDriverApp.every((idx, i, arr) => i === 0 || arr[i - 1] < idx);
     record(
       "R10-8. 기사 앱에서도 저장된 순서(route_order) 그대로 표시",
       driverAppOrderMatches,
@@ -403,7 +403,6 @@ async function main() {
     );
 
     const { data: groupOrderRows } = await admin.from("delivery_groups").select("id, group_order").in("id", [groupA, groupB, groupC]);
-    const groupOrderOf = (id: string) => groupOrderRows?.find((g) => g.id === id)?.group_order ?? null;
     const sortedByGroupOrder = [...(groupOrderRows ?? [])].sort((a, b) => (a.group_order ?? 0) - (b.group_order ?? 0)).map((g) => g.id);
     record(
       "R11-7. DB group_order도 화면 순서와 정확히 일치",

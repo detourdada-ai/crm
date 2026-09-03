@@ -145,7 +145,7 @@ async function run() {
   const deliveryDate = addDaysIso(29);
 
   const browser = await chromium.launch();
-  const summary: any[] = [];
+  const summary: Awaited<ReturnType<typeof runCase>>[] = [];
   try {
     const context = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1280, height: 900 } });
     const page = await context.newPage();

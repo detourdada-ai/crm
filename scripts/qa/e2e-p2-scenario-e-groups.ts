@@ -36,9 +36,6 @@ async function setSession(context: BrowserContext, username: string, role: "user
     { name: SESSION_COOKIE_NAME, value: qaSessionToken(username, role), domain: url.hostname, path: "/", httpOnly: true, secure: url.protocol === "https:", sameSite: "Lax" },
   ]);
 }
-async function mainText(page: Page): Promise<string> {
-  return (await page.locator("main").innerText().catch(() => "")) ?? "";
-}
 async function waitForCondition(check: () => Promise<boolean>, timeoutMs = 20000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

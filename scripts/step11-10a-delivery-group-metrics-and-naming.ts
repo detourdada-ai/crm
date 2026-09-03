@@ -11,7 +11,7 @@
  * 실행: npx tsx --env-file=.env.local scripts/step11-10a-delivery-group-metrics-and-naming.ts
  */
 import { getSupabaseAdmin } from "../src/lib/supabase/admin";
-import { haversineDistanceMeters, clusterPointsByDistance } from "../src/lib/services/spatial-grouping.service";
+import { clusterPointsByDistance } from "../src/lib/services/spatial-grouping.service";
 import { extractComplexName } from "../src/lib/utils/delivery-group";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -36,15 +36,6 @@ interface GroupResult {
   label: string;
 }
 
-function maxInternalDistance(members: Point[]): number {
-  let max = 0;
-  for (let i = 0; i < members.length; i++)
-    for (let j = i + 1; j < members.length; j++) {
-      const d = haversineDistanceMeters(members[i], members[j]);
-      if (d > max) max = d;
-    }
-  return Math.round(max);
-}
 function majorityDong(members: Point[]): string | null {
   const counts = new Map<string, number>();
   for (const m of members) if (m.eupmyeondong) counts.set(m.eupmyeondong, (counts.get(m.eupmyeondong) ?? 0) + 1);

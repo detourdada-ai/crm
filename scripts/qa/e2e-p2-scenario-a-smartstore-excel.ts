@@ -98,7 +98,6 @@ async function run() {
     }));
     const xlsx1 = buildSmartstoreXlsx(batch1);
 
-    const tUpload0 = Date.now();
     await page.goto(`${BASE_URL}/import`, { waitUntil: "networkidle" });
     await page.locator('input[type="file"]').setInputFiles({
       name: `smartstore-${RUN_TAG}.xlsx`,
