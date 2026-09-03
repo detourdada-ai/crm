@@ -472,9 +472,20 @@ export const orderShipmentsRepository = {
       throw new Error("순서를 변경할 권한이 없는 배송건이 포함되어 있습니다.");
     }
 
-    await Promise.all(
-      orderedShipmentIds.map((id, idx) => admin.from("order_shipments").update({ route_order: idx + 1 }).eq("id", id))
-    );
+    // STEP12-16B 후속(2026-09-03): 여기만 유일하게 건당 개별 UPDATE를
+    // Promise.all로 쏘면서 **각 UPDATE의 error를 한 번도 확인하지 않고**
+    // 있었다 — 일부/전부가 실패해도 이 함수는 정상 반환했고, 상위
+    // reorderShipmentsAction은 ok를 돌려주고 화면엔 "N건 저장했습니다"
+    // 토스트까지 떴다. Production 12회 중 4회에서 "화면 순서는 바뀌었는데
+    // route_order는 그대로"였던 것이 이 조용한 실패다.
+    // 같은 파일의 compactRouteOrder/normalizeRouteOrderOnAssign(배정 경로)이
+    // 이미 쓰고 있는 bulk_update_shipment_route_order RPC로 통일한다 —
+    // 단일 UPDATE 문 1개라 부분 실패 자체가 생기지 않고, 실패하면 throw된다.
+    const { error: rpcError } = await admin.rpc("bulk_update_shipment_route_order", {
+      p_ids: orderedShipmentIds,
+      p_route_orders: orderedShipmentIds.map((_, idx) => idx + 1),
+    });
+    if (rpcError) throw rpcError;
   },
 
   async startDelivery(shipmentIds: string[], ownerUsername?: string): Promise<number> {

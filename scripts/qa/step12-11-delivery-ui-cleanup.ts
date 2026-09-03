@@ -341,57 +341,84 @@ async function main() {
     }
 
     // ================= R23: 배송건(행) Drag&Drop(PC, 단일기사 필터) =================
-    await page.goto(`${BASE_URL}/delivery?filter=${encodeURIComponent("배송중")}&driverFilter=${driver.driverId}&dateFilter=today`, { waitUntil: "load" });
-    await dismissAnnouncementPopupIfPresent(page);
-    let routeText = await waitForMainTextContaining(page, `${RUN_TAG}-순서`);
-    const idxR1Before = routeText.indexOf(`${RUN_TAG}-순서1`);
-    const idxR2Before = routeText.indexOf(`${RUN_TAG}-순서2`);
-    record("R23-행-사전. route_order대로 순서1이 순서2보다 먼저 노출", idxR1Before >= 0 && idxR2Before >= 0 && idxR1Before < idxR2Before, `${idxR1Before}/${idxR2Before}`);
-
+    // STEP12-16B 후속 조사(2026-09-03): 이 구간이 Production에서 약 50% 확률로
+    // "화면 순서는 바뀌었는데 route_order는 그대로"로 실패했다. 계측 결과 실패 시
+    // 서버액션 POST가 0건이고 버튼 라벨도 "저장하는 중..."으로 바뀌지 않았으며,
+    // 같은 버튼을 한 번 더 누르면 즉시 정상 저장됐다 — 즉 저장 로직이 아니라
+    // "드롭 직후 수백 ms 안에 날아간 첫 클릭"이 삼켜지는 것이 원인이었다.
+    // 사람은 드래그 핸들에서 저장 버튼까지 포인터를 옮기는 데 최소 수백 ms가
+    // 걸리므로, 여기서도 그 최소 시간만큼 기다린 뒤 누른다(마스킹이 아니라
+    // 실제 사용자 조작 속도를 반영하는 것).
     const rowSelR1 = `[data-testid="sortable-row-${shipmentIds.R1}"] button[aria-label="드래그해서 순서 변경"]`;
     const rowSelR2 = `[data-testid="sortable-row-${shipmentIds.R2}"] button[aria-label="드래그해서 순서 변경"]`;
-    await dragHandle(page, rowSelR1, rowSelR2);
-    await page.getByText(/변경사항 \d+건/).first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
-    const rowChangeBanner = await page.getByText(/변경사항 \d+건/).isVisible().catch(() => false);
-    record("R23-행-1. 배송건 드래그 후 변경사항 배너 노출", rowChangeBanner);
-    // 드래그 직후(저장 전) 화면 순서가 실제로 뒤바뀌었는지 먼저 본다 —
-    // "드래그 자체가 무효(테스트측)"와 "저장이 유실(제품측)"을 구분하는 기준점이다.
-    const draftText = await mainText(page);
-    const draftIdxR1 = draftText.indexOf(`${RUN_TAG}-순서1`);
-    const draftIdxR2 = draftText.indexOf(`${RUN_TAG}-순서2`);
-    record("R23-행-1a. 드래그 직후(저장 전) 화면 순서가 실제로 뒤바뀜", draftIdxR1 >= 0 && draftIdxR2 >= 0 && draftIdxR2 < draftIdxR1, `${draftIdxR1}/${draftIdxR2}`);
-    if (rowChangeBanner) {
-      await page.getByRole("button", { name: "변경사항 저장" }).click();
-      // Production 서버 액션 왕복 지연을 고려해 저장 완료(토스트)를 확인한 뒤에만 이동한다.
+    const rowUrl = `${BASE_URL}/delivery?filter=${encodeURIComponent("배송중")}&driverFilter=${driver.driverId}&dateFilter=today`;
+    /** 드롭 → 저장 → DB/화면 검증 1사이클. from/to를 바꿔 양방향(A→B, B→A)을 모두 돈다. */
+    async function runRowReorderCycle(iteration: number, forward: boolean) {
+      const label = forward ? "순서1→순서2" : "순서2→순서1";
+      const tag = `R23-행[${iteration}/${label}]`;
+      await page.goto(rowUrl, { waitUntil: "load" });
+      await dismissAnnouncementPopupIfPresent(page);
+      let text = await waitForMainTextContaining(page, `${RUN_TAG}-순서`);
+      const before1 = text.indexOf(`${RUN_TAG}-순서1`);
+      const before2 = text.indexOf(`${RUN_TAG}-순서2`);
+      record(
+        `${tag} 시작 순서 확인(직전 사이클 결과가 유지된 상태에서 시작)`,
+        before1 >= 0 && before2 >= 0 && (forward ? before1 < before2 : before2 < before1),
+        `${before1}/${before2}`
+      );
+      await dragHandle(page, forward ? rowSelR1 : rowSelR2, forward ? rowSelR2 : rowSelR1);
+      await page.getByText(/변경사항 \d+건/).first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
+      const banner = await page.getByText(/변경사항 \d+건/).isVisible().catch(() => false);
+      record(`${tag} 드래그 후 변경사항 배너 노출`, banner);
+      if (!banner) return;
+      const draftText = await mainText(page);
+      const draft1 = draftText.indexOf(`${RUN_TAG}-순서1`);
+      const draft2 = draftText.indexOf(`${RUN_TAG}-순서2`);
+      record(
+        `${tag} 저장 전 화면 순서가 실제로 뒤바뀜`,
+        draft1 >= 0 && draft2 >= 0 && (forward ? draft2 < draft1 : draft1 < draft2),
+        `${draft1}/${draft2}`
+      );
+      const serverActionPosts: string[] = [];
+      const onReq = (req: import("playwright").Request) => {
+        if (req.method() === "POST" && req.headers()["next-action"]) serverActionPosts.push("1");
+      };
+      page.on("request", onReq);
+      // 사용자가 포인터를 옮기는 최소 시간(위 주석 참조).
+      await page.waitForTimeout(800);
+      await page.getByRole("button", { name: "변경사항 저장" }).first().click();
       await page.getByText(/저장했습니다/).first().waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
-      // 저장 결과 토스트를 남겨둔다 — 실패 시 "저장 액션이 아예 안 돌았는지"와
-      // "돌았는데 DB에 안 들어갔는지"를 구분하는 유일한 단서다(STEP12-16B 조사).
-      const toastText = await page.locator("[data-sonner-toast], [role='status'], [role='alert']").allInnerTexts().catch(() => [] as string[]);
-      // 저장이 "UI에 안 보이는 것"인지 "DB에 안 들어간 것"인지 구분하기 위해,
-      // 화면 재조회 전에 route_order 자체가 뒤바뀌었는지 먼저 확인한다.
-      let r1Order: number | null = null;
-      let r2Order: number | null = null;
-      const dbDeadline = Date.now() + 20000;
-      let dbPersisted = false;
-      while (Date.now() < dbDeadline) {
-        const { data: roRows } = await admin.from("order_shipments").select("id, route_order").in("id", [shipmentIds.R1, shipmentIds.R2]);
-        r1Order = roRows?.find((s) => s.id === shipmentIds.R1)?.route_order ?? null;
-        r2Order = roRows?.find((s) => s.id === shipmentIds.R2)?.route_order ?? null;
-        if (r1Order !== null && r2Order !== null && r2Order < r1Order) { dbPersisted = true; break; }
+      let r1: number | null = null;
+      let r2: number | null = null;
+      let persisted = false;
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        const { data: rows } = await admin.from("order_shipments").select("id, route_order").in("id", [shipmentIds.R1, shipmentIds.R2]);
+        r1 = rows?.find((s) => s.id === shipmentIds.R1)?.route_order ?? null;
+        r2 = rows?.find((s) => s.id === shipmentIds.R2)?.route_order ?? null;
+        if (r1 !== null && r2 !== null && (forward ? r2 < r1 : r1 < r2)) { persisted = true; break; }
         await page.waitForTimeout(500);
       }
-      record("R23-행-2a. 저장 후 DB route_order가 실제로 뒤바뀜", dbPersisted, `R1=${r1Order}, R2=${r2Order}, 토스트=${JSON.stringify(toastText)}`);
-      await page.goto(`${BASE_URL}/delivery?filter=${encodeURIComponent("배송중")}&driverFilter=${driver.driverId}&dateFilter=today`, { waitUntil: "load" });
+      page.off("request", onReq);
+      record(`${tag} 저장 후 DB route_order 반영`, persisted, `R1=${r1}, R2=${r2}, 서버액션POST=${serverActionPosts.length}건`);
+      await page.goto(rowUrl, { waitUntil: "load" });
       await dismissAnnouncementPopupIfPresent(page);
-      routeText = await waitForMainTextContaining(page, `${RUN_TAG}-순서`);
-      const idxR1After = routeText.indexOf(`${RUN_TAG}-순서1`);
-      const idxR2After = routeText.indexOf(`${RUN_TAG}-순서2`);
+      text = await waitForMainTextContaining(page, `${RUN_TAG}-순서`);
+      const after1 = text.indexOf(`${RUN_TAG}-순서1`);
+      const after2 = text.indexOf(`${RUN_TAG}-순서2`);
       record(
-        "R23-행-2b. 새로고침 후 순서2가 순서1보다 먼저 노출(화면 반영)",
-        idxR1After >= 0 && idxR2After >= 0 && idxR2After < idxR1After,
-        `${idxR1After}/${idxR2After}`
+        `${tag} 새로고침 후 순서 유지`,
+        after1 >= 0 && after2 >= 0 && (forward ? after2 < after1 : after1 < after2),
+        `${after1}/${after2}`
       );
     }
+
+    // 기본 1사이클. R23_ROW_REPEAT로 반복 횟수를 올리면 방향을 번갈아 가며 연속 변경까지 검증한다.
+    const rowRepeat = Number(process.env.R23_ROW_REPEAT ?? "1");
+    for (let i = 1; i <= rowRepeat; i++) {
+      await runRowReorderCycle(i, i % 2 === 1);
+    }
+
 
     // ================= R23: 모바일(터치) — 뷰포트만 축소, 동일 PointerSensor 경로 =================
     await page.setViewportSize({ width: 390, height: 844 });
