@@ -213,14 +213,43 @@ export function DeliveryBoard({
   }, [hasAnyPendingChange]);
 
   /** 값을 원래(서버) 값으로 되돌리면 그 필드는 Draft에서 자동으로 사라진다(CPO 지시 원칙). */
+  function applyDraftField<K extends keyof ShipmentDraft>(
+    target: Map<string, ShipmentDraft>,
+    shipmentId: string,
+    field: K,
+    value: ShipmentDraft[K],
+    originalValue: ShipmentDraft[K]
+  ) {
+    const entry: ShipmentDraft = { ...(target.get(shipmentId) ?? {}) };
+    if (value === originalValue) delete entry[field];
+    else entry[field] = value;
+    if (Object.keys(entry).length === 0) target.delete(shipmentId);
+    else target.set(shipmentId, entry);
+  }
+
   function setDraftField<K extends keyof ShipmentDraft>(shipmentId: string, field: K, value: ShipmentDraft[K], originalValue: ShipmentDraft[K]) {
     setDrafts((prev) => {
       const next = new Map(prev);
-      const entry: ShipmentDraft = { ...(next.get(shipmentId) ?? {}) };
-      if (value === originalValue) delete entry[field];
-      else entry[field] = value;
-      if (Object.keys(entry).length === 0) next.delete(shipmentId);
-      else next.set(shipmentId, entry);
+      applyDraftField(next, shipmentId, field, value, originalValue);
+      return next;
+    });
+  }
+
+  /**
+   * STEP12-19B(성능): 일괄/그룹 배정이 선택 건수만큼 setDraftField()를 반복 호출하고
+   * 있었다 — 호출마다 Map을 통째로 복사하는 setState 업데이터가 큐에 쌓여
+   * 건수의 제곱에 비례하는 복사가 일어난다(150건 실측: Draft 반영 구간이
+   * 100건 727ms → 150건 3,895ms로 급증, 서버·DB 구간은 규모와 무관하게 일정했다).
+   * 여러 건을 한 번의 상태 업데이트로 반영해 Map 복사를 1회로 줄인다.
+   */
+  function setDraftFieldMany<K extends keyof ShipmentDraft>(
+    updates: { shipmentId: string; value: ShipmentDraft[K]; originalValue: ShipmentDraft[K] }[],
+    field: K
+  ) {
+    if (updates.length === 0) return;
+    setDrafts((prev) => {
+      const next = new Map(prev);
+      for (const u of updates) applyDraftField(next, u.shipmentId, field, u.value, u.originalValue);
       return next;
     });
   }
@@ -389,15 +418,16 @@ export function DeliveryBoard({
    */
   function handleGroupDriverSelectChange(groupId: string, driverId: string, groupLabel: string) {
     const memberIds = groupMemberRowKeys.get(groupId) ?? [];
-    let appliedCount = 0;
+    const groupUpdates: { shipmentId: string; value: string | null; originalValue: string | null }[] = [];
     for (const rowKey of memberIds) {
       const order = orderByRowKey.get(rowKey);
       if (!order) continue;
       if (order.override_driver_id) continue; // 개별 override 건은 그룹 일괄변경 대상에서 제외
       if (order.delivery_status === "완료" || order.delivery_status === "취소") continue;
-      setDraftField(rowKey, "driverId", driverId, order.driver_id);
-      appliedCount++;
+      groupUpdates.push({ shipmentId: rowKey, value: driverId, originalValue: order.driver_id });
     }
+    setDraftFieldMany(groupUpdates, "driverId");
+    const appliedCount = groupUpdates.length;
     if (appliedCount > 0) {
       toast.success(`${groupLabel} ${appliedCount}건을 기사 변경사항에 반영했습니다. "변경사항 저장"을 눌러야 실제로 배정됩니다.`);
     }
@@ -472,10 +502,14 @@ export function DeliveryBoard({
     }
     // STEP11-13: 그룹/일괄 기사배정도 즉시 서버 저장이 아니라 Draft에 반영한다
     // — "변경사항 저장"을 눌러야 실제로 반영되고, 그 전엔 화면에서만 보인다.
-    for (const id of selectedShipmentIdsInDisplayOrder) {
-      const original = orderByRowKey.get(id);
-      setDraftField(id, "driverId", bulkDriverId, original?.driver_id ?? null);
-    }
+    setDraftFieldMany(
+      selectedShipmentIdsInDisplayOrder.map((id) => ({
+        shipmentId: id,
+        value: bulkDriverId,
+        originalValue: orderByRowKey.get(id)?.driver_id ?? null,
+      })),
+      "driverId"
+    );
     toast.success(`${visibleSelected.size}건을 기사 변경사항에 반영했습니다. "변경사항 저장"을 눌러야 실제로 배정됩니다.`);
     setSelected(new Set());
   }

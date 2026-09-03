@@ -212,6 +212,20 @@ async function run() {
       await admin.from("orders").delete().eq("id", o.id);
       await admin.from("customers").delete().eq("id", o.customer_id);
     }
+    // STEP12-19: S11A-9의 "Import 전체삭제"는 주문만 지우므로 고객이 고아로 남는다
+    // (실제로 실행마다 100건씩 잔존했다). 주문 역참조만으로는 절대 안 잡히므로
+    // 이번 실행의 RUN_TAG가 박힌 고객/후보를 이름 기준으로 직접 지운다.
+    const { data: leftoverCustomers } = await admin
+      .from("customers")
+      .select("id")
+      .eq("owner_username", OWNER)
+      .ilike("name", `QA-S11A-%${RUN_TAG}`);
+    const leftoverCustomerIds = (leftoverCustomers ?? []).map((c) => c.id);
+    if (leftoverCustomerIds.length > 0) {
+      await admin.from("duplicate_candidates").delete().in("existing_customer_id", leftoverCustomerIds);
+      await admin.from("duplicate_candidates").delete().in("new_customer_id", leftoverCustomerIds);
+      await admin.from("customers").delete().in("id", leftoverCustomerIds);
+    }
     await admin.from("imports").delete().eq("owner_username", OWNER).ilike("file_name", `s11a-%${RUN_TAG}%`);
     const { data: ownerGroups } = await admin.from("delivery_groups").select("id").eq("owner_username", OWNER);
     for (const g of ownerGroups ?? []) {

@@ -117,6 +117,51 @@ export async function createQaDriver(
   return { driverId, username, name };
 }
 
+/** STEP12-19(§6): QA 시작 시점의 tenant 상태 — 종료 후 여기로 정확히 돌아왔는지 비교한다. */
+export interface TenantBaseline {
+  owner: string;
+  counts: Record<string, number>;
+}
+
+const BASELINE_TABLES = [
+  "customers",
+  "orders",
+  "order_shipments",
+  "drivers",
+  "delivery_groups",
+  "imports",
+  "duplicate_candidates",
+] as const;
+
+/**
+ * STEP12-19(§6): "cleanup 했다"를 눈대중이 아니라 수치로 증명하기 위한 baseline.
+ * QA tenant라도 그 안의 모든 데이터가 QA 데이터라는 보장은 없으므로(QA-DATA-POLICY §1),
+ * "전부 0"이 아니라 **시작 시점 대비 변화 없음**을 기준으로 삼는다.
+ */
+export async function captureTenantBaseline(owner: string): Promise<TenantBaseline> {
+  assertAllowedQaOwner(owner);
+  const admin = getSupabaseAdmin();
+  const counts: Record<string, number> = {};
+  for (const table of BASELINE_TABLES) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 다중 테이블 카운트(읽기 전용)
+    const { count, error } = await (admin.from(table) as any).select("id", { count: "exact", head: true }).eq("owner_username", owner);
+    if (error) throw error;
+    counts[table] = count ?? 0;
+  }
+  return { owner, counts };
+}
+
+/** baseline과 현재 상태를 비교한다 — 남은 게 있으면 어떤 테이블에 몇 건인지 그대로 돌려준다. */
+export async function diffTenantBaseline(baseline: TenantBaseline): Promise<{ restored: boolean; detail: string }> {
+  const now = await captureTenantBaseline(baseline.owner);
+  const diffs: string[] = [];
+  for (const table of BASELINE_TABLES) {
+    const delta = now.counts[table] - baseline.counts[table];
+    if (delta !== 0) diffs.push(`${table} ${delta > 0 ? "+" : ""}${delta}`);
+  }
+  return { restored: diffs.length === 0, detail: diffs.length === 0 ? `baseline 복귀(${baseline.owner})` : `${baseline.owner}: ${diffs.join(", ")}` };
+}
+
 /**
  * STEP12-17(WORKSTREAM C-2): 배송그룹 정리는 지금까지
  * `delete().eq("owner_username", OWNER).eq("delivery_date", today)`로 그 tenant의

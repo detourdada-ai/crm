@@ -125,6 +125,22 @@ async function setSession(page: Page, username: string, role: "user" | "driver")
   ]);
 }
 
+/**
+ * STEP12-19B: 배정은 STEP11-13부터 Draft 방식이다 — 조작은 화면에만 반영되고
+ * "변경사항 저장"을 눌러야 서버로 간다. 조작 → 배너 → 저장 → 토스트까지를
+ * 한 흐름으로 처리한다(드롭/조작 직후 첫 클릭이 삼켜지는 STEP12-16B 이슈 때문에
+ * 사람 조작 속도만큼 기다린 뒤 누른다). 배너가 안 뜨면 false를 돌려준다.
+ */
+async function saveDraftChanges(page: Page): Promise<boolean> {
+  const banner = page.getByText(/변경사항 \d+건/).first();
+  await banner.waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+  if (!(await banner.isVisible().catch(() => false))) return false;
+  await page.waitForTimeout(800);
+  await page.getByRole("button", { name: "변경사항 저장" }).first().click({ timeout: 10000 });
+  await page.getByText(/저장했습니다/).first().waitFor({ state: "visible", timeout: 60000 }).catch(() => {});
+  return true;
+}
+
 async function run() {
   console.log(`E2E target: ${BASE_URL}, tenant=${OWNER}, RUN_TAG=${RUN_TAG}, date=${DATE}`);
   await assertTenantIsQaSafe(OWNER);
@@ -236,6 +252,8 @@ async function run() {
     });
     await page.getByRole("option", { name: new RegExp(driverA.name), exact: false }).click({ timeout: 5000 });
     await page.getByRole("button", { name: "일괄 적용", exact: false }).click({ timeout: 5000 });
+    const bulkDraftSaved = await saveDraftChanges(page);
+    record("UI-4a. 일괄 적용이 Draft로 잡히고 '변경사항 저장'으로 서버 반영됨", bulkDraftSaved);
 
     const bulkOk = await waitFor(async () => {
       const { count } = await admin.from("order_shipments").select("id", { count: "exact", head: true }).in("id", grasium.map((g) => g.shipmentId)).eq("driver_id", driverA.driverId);
@@ -258,11 +276,20 @@ async function run() {
     await target1Row.getByRole("button", { name: /담당기사 변경/ }).click({ timeout: 8000 });
     await page.getByRole("menu").waitFor({ state: "visible", timeout: 8000 });
     await page.getByRole("menuitem", { name: new RegExp(driverB.name) }).click();
+    // STEP11-13 이후 개별 재배정도 즉시저장이 아니다 — Draft로 잡힌 뒤 저장해야 반영된다.
+    const individualDraftSaved = await saveDraftChanges(page);
+    record("A(회귀)-0. 개별 재배정도 Draft로 잡히고 저장으로 반영됨", individualDraftSaved);
     const individualOk = await waitFor(async () => {
       const { data } = await admin.from("order_shipments").select("driver_id").eq("id", grasium[0].shipmentId).maybeSingle();
       return data?.driver_id === driverB.driverId;
     });
-    record("A(회귀). 그룹 내 배송건도 개별 기사 재배정이 정상 동작(즉시저장 구조 유지)", individualOk);
+    record("A(회귀). 그룹 내 배송건도 개별 기사 재배정이 DB에 반영됨", individualOk);
+
+    // 새로고침 후에도 유지되는지(Draft가 아니라 서버에 저장됐는지 확인)
+    await page.reload({ waitUntil: "networkidle" });
+    await dismissAnnouncementPopupIfPresent(page);
+    const { data: afterReload } = await admin.from("order_shipments").select("driver_id").eq("id", grasium[0].shipmentId).maybeSingle();
+    record("A(회귀)-0b. 새로고침 후에도 개별 재배정 결과 유지", afterReload?.driver_id === driverB.driverId);
 
     const othersStillDriverA = await waitFor(async () => {
       const { count } = await admin.from("order_shipments").select("id", { count: "exact", head: true }).in("id", [grasium[1].shipmentId, grasium[2].shipmentId, grasium[3].shipmentId]).eq("driver_id", driverA.driverId);
