@@ -862,6 +862,9 @@ export interface Database {
           orders_moved: number;
           performed_by: string;
           created_at: string;
+          moved_order_ids: string[] | null;
+          unmerged_at: string | null;
+          unmerged_by: string | null;
         };
         Insert: {
           id?: string;
@@ -871,6 +874,9 @@ export interface Database {
           orders_moved?: number;
           performed_by?: string;
           created_at?: string;
+          moved_order_ids?: string[] | null;
+          unmerged_at?: string | null;
+          unmerged_by?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["merge_history"]["Insert"]>;
         Relationships: [];
