@@ -125,7 +125,8 @@ Production에서 **총 12회** 반복 실행했다.
 
 ## 7. Production
 
-- commit: (이 보고서를 포함한 커밋 해시는 커밋 메시지 참조)
+- commit: `411466a` (직전 상태 `41925f4`)
+- Vercel: Build success / Deployment success
 - 배포 대상 코드 변경 없음(`src/` 무변경) — 기능 동작에 영향 없음
 - Production HTTP 200 정상
 
