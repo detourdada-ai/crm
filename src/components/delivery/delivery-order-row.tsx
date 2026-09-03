@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertTriangle, Check, Copy, Loader2, MapPin, MessageSquare, Phone } from "lucide-react";
+import { AlertTriangle, Check, Copy, ListOrdered, Loader2, MapPin, MessageSquare, Phone } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -87,22 +87,30 @@ export function DeliveryOrderRow({
   const locked = order.delivery_status === "완료";
 
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface p-2.5 text-sm transition-colors hover:bg-muted/40 md:flex-row md:items-start md:gap-3 md:rounded-lg md:p-2">
-      <Checkbox className="mt-1 md:mt-2" checked={selected} onCheckedChange={(checked) => onToggleSelect(checked === true)} />
+    // STEP12-16A(CPO 작업지시): PC(사장님 업무화면) 전용 추가 압축 — 모바일
+    // 레이아웃(gap-1/p-2.5)은 그대로 두고, md: 이상에서만 gap/padding을
+    // 더 줄여 한 화면에 보이는 카드 수를 늘린다. 기사 앱은 별도 컴포넌트
+    // (FocusDeliveryCard/UpcomingDeliveryCard)를 쓰므로 영향 없음.
+    <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface p-2.5 text-sm transition-colors hover:bg-muted/40 md:flex-row md:items-start md:gap-2 md:rounded-lg md:p-1.5">
+      <Checkbox className="mt-1 md:mt-1.5" checked={selected} onCheckedChange={(checked) => onToggleSelect(checked === true)} />
       {/* R25(STEP12-11, CPO 작업지시): 카드가 세로로 길어 스크롤 피로도가
           크다는 지적 — 이름+연락처를 같은 줄에 묶고, 주소 블록의 지역요약/
           도로명을 한 줄로 합쳐 배송 실무에 필요한 정보만 촘촘하게 보여준다.
           우선순위(STEP12-8F R13)는 그대로: 순서/이름 → 연락처 → 주소 →
           담당기사/가방 → 상품. */}
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            {/* STEP5-C: route_order는 그대로 표시만 한다 — 값이 없으면(미배정 등) 임의로 번호를 만들지 않는다. */}
+      <div className="min-w-0 flex-1 space-y-1 md:space-y-0.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 md:gap-1.5">
+          <div className="flex flex-wrap items-center gap-2 md:gap-1.5">
+            {/* STEP5-C: route_order는 그대로 표시만 한다 — 값이 없으면(미배정 등) 임의로 번호를 만들지 않는다.
+                STEP12-16A: 맨 앞 숫자만 있으면 의미가 즉시 전달되지 않는다는
+                CPO 지적 — hover title은 그대로 두고, 아이콘을 더해 "배송순서"
+                라는 것을 한눈에 알 수 있게 한다(숫자 제거/카드 확대 없음). */}
             {order.route_order !== null ? (
               <span
-                className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+                className="flex h-5 shrink-0 items-center gap-0.5 rounded-full bg-primary/10 px-1.5 text-xs font-semibold text-primary"
                 title={`배송순서 ${order.route_order}번`}
               >
+                <ListOrdered className="size-3" />
                 {order.route_order}
               </span>
             ) : null}
@@ -145,7 +153,7 @@ export function DeliveryOrderRow({
 
         <DeliveryAddressBlock order={order} />
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 md:gap-1.5">
           <span className="text-xs text-muted-foreground">담당기사</span>
           <DriverAssignInline
             driverId={order.driver_id}

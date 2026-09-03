@@ -111,7 +111,12 @@ export function OrderTable({
                 </TableCell>
                 <TableCell>
                   <Link href={`/orders/${order.id}`} className="font-semibold text-text-strong hover:text-primary">
-                    {order.buyer_name ?? order.recipient_name}
+                    {/* STEP12-16A: 구매자/수취인이 다르면 표시로 알 수 있게 —
+                        같으면 기존처럼 하나만(조용한 폴백은 주문관리 목록에만
+                        있던 정책 공백이었다). */}
+                    {order.buyer_name && order.buyer_name !== order.recipient_name
+                      ? `${order.buyer_name} (${order.recipient_name})`
+                      : (order.buyer_name ?? order.recipient_name)}
                   </Link>
                 </TableCell>
                 <TableCell className="max-w-48 truncate font-medium text-text-strong">

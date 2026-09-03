@@ -318,7 +318,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           </Table>
           <div className="space-y-3">
             {items.map((item) => (
-              <OrderItemRawData key={item.id} extra={item.extra} />
+              <OrderItemRawData
+                key={item.id}
+                extra={item.extra}
+                productName={items.length > 1 ? item.product_name : undefined}
+              />
             ))}
           </div>
         </CardContent>

@@ -7,7 +7,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { extraDisplayEntries } from "@/lib/constants/order-extra";
 import { cn } from "@/lib/utils";
 
-export function OrderItemRawData({ extra }: { extra: Record<string, unknown> }) {
+/**
+ * STEP12-16A: "더보기 (28)" 같은 원본 컬럼 개수 노출은 사장님에게 의미가
+ *없어 제거한다 — 대신 상품이 여러 개인 주문(productName 전달)에서는 이
+ * 섹션이 어느 상품의 원본 데이터인지 라벨로 구분해, 반복 렌더링이 중복처럼
+ * 보이지 않게 한다.
+ */
+export function OrderItemRawData({ extra, productName }: { extra: Record<string, unknown>; productName?: string }) {
   const [open, setOpen] = useState(false);
   const entries = extraDisplayEntries(extra);
 
@@ -15,10 +21,11 @@ export function OrderItemRawData({ extra }: { extra: Record<string, unknown> }) 
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
+      {productName ? <p className="mb-1 text-xs font-medium text-muted-foreground">{productName}</p> : null}
       <CollapsibleTrigger asChild>
         <Button variant="ghost" size="sm" className="text-muted-foreground">
           <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
-          엑셀 원본 데이터 {open ? "닫기" : `더보기 (${entries.length})`}
+          {open ? "추가 원본 데이터 닫기" : "추가 원본 데이터 보기"}
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>
