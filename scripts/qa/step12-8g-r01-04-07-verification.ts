@@ -132,7 +132,12 @@ async function run() {
 
     // ---- R01/R02/R08: Import 결과 화면 이중표기 + 다상품 설명 ----
     const resultText = await mainText(page);
-    record("R01-Import. '주문 2건 · 상품주문 3건' 형식 표기", /주문\s*2\s*건.*상품주문\s*3\s*건/.test(resultText.replace(/\s+/g, "")), resultText.slice(0, 500).replace(/\s+/g, " "));
+    // STEP12 FINAL GATE(DAY2): Import 결과 화면의 문구가 "상품주문" → "상품행"으로
+    // 바뀌었다(배송관리 집계는 여전히 "상품주문"이고, Import 화면만 엑셀 원본 행을
+    // 가리키는 표현으로 구분한다 — 화면에 "상품행 수가 주문 수보다 많습니다(오류
+    // 아님)" 설명이 함께 붙어 있다). 검증 의도(주문 수 + 행 수 이중표기)는 그대로
+    // 두고 현재 문구에 맞춘다.
+    record("R01-Import. '주문 2건 · 상품행 3건' 형식 이중표기", /주문\s*2\s*건.*상품행\s*3\s*건/.test(resultText.replace(/\s+/g, "")), resultText.slice(0, 500).replace(/\s+/g, " "));
     record(
       "R02-Import. 다상품 설명 문구가 상시 노출됨(오류 아님 안내)",
       resultText.includes("오류 아님") || resultText.includes("상품이 여러 개"),
