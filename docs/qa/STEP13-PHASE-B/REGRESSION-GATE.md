@@ -22,6 +22,7 @@ NODE_OPTIONS="--conditions=react-server" npx tsx -r dotenv/config <경로> doten
 |---|---|---|
 | 주문 등록·수정·삭제 (`actions/orders`, `orders.repository`) | `e2e-p2-scenario-c-crud` · `e2e-p2-scenario-d-fulfillment` · `step12-10-r04-phone-policy` | 주문 CRUD와 자체배송/직접수령 분기, 연락처 정책 |
 | 엑셀 Import (`import.service`, `column-mapping.service`) | `import-dedup-flow` · `import-identity-conflict-flow` · `import-step2-product-order` · `e2e-p2-scenario-a-smartstore-excel` · `e2e-p2-scenario-b-standard-excel` | 중복 판정·identity 충돌이 가장 자주 깨진 지점 |
+| 주문 가져오기 범위·접수 설정 (`import-scope-settings.service`, `column-mapping-form`) | `step14-import-scope-default` + 위 Import 3종 | 기본값이 조용히 바뀌면 잘못된 범위로 접수된다 |
 | 고객 연결·병합 (`customers.repository`, 동일인 후보) | `step12-15-merge-unmerge` · `e2e-step11-1a1-orphan-customer-rootcause` | 병합/병합취소 후 주문 연결이 끊긴 사고 이력 |
 | 배송 목록·필터·그룹 (`delivery-board`, `delivery-groups`) | `step12-11-delivery-ui-cleanup` · `delivery-group-ux-flow` · `delivery-group-partial-failure-flow` · `region-filter-flow` | UI 정리 회귀 기준선 + 유령 그룹 정합성 |
 | **저장(Draft) 경로** (`saveDeliveryDraftAction`, 일괄저장) | `step11-13-draft-batch-save` · `step12-8f-phase4-r10-r11-dnd` · `step11-14-delivery-assignment-ux` | 조용한 부분 저장 실패가 가장 위험 |

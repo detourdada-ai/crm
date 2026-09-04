@@ -83,6 +83,7 @@
 | `qa/step12-11-r15-19-driver-verification.ts` | STEP12-11 R15~R19 기사앱 |
 | `qa/step12-12-permission-attack-surface.ts` | STEP12-12 R27~R30 권한 공격면 |
 | `qa/step12-15-merge-unmerge.ts` | STEP12-15 고객 병합/병합취소 |
+| `qa/step14-import-scope-default.ts` | **STEP14 주문 가져오기 범위 기본 설정** — 케이스 1~5(미저장/저장/이번만 변경/기본값 변경/테넌트 격리) + 전체주문 안전장치 + 전체·오늘·특정날짜 회귀. 설정값도 스냅샷 후 원복 |
 | `qa/perf-save-cost-breakdown.ts` | **P2 저장 고정비 계측** — 저장 1회를 전송/서버/다운로드/화면으로 분해(보드 1~150건 × 5회, 제품 코드 무침습). 결과는 `docs/qa/P2-SAVE-COST/MEASUREMENT-REPORT.md` |
 | `qa/perf-individual-assign.ts` | 개별 배정 구간별 성능 기준선 |
 
