@@ -74,6 +74,35 @@ async function waitForSaveToSettle(page: Page, beforeText: string, timeoutMs = 2
 }
 
 /** showReorderControls 모드(기사 필터 1명)에서 화면에 보이는 배송건 순서. */
+/**
+ * STEP12 FINAL GATE(DAY 1, CPO B안): R10의 "배송순서 바로 변경" Select와 ↑/↓ 버튼은
+ * STEP12-11(R25-보조)에서 제품에서 제거됐다 — 현재 배송순서 변경 수단은 D&D 하나뿐이다.
+ * 없어진 UI를 조작하던 구간만 현재 요구사항(D&D)으로 바꾸고, Draft/저장/DB/새로고침
+ * 유지 검증은 그대로 유지한다.
+ */
+async function dragRowTo(page: Page, sourceRowKey: string, targetRowKey: string) {
+  const sourceSel = `[data-testid="sortable-row-${sourceRowKey}"] button[aria-label="드래그해서 순서 변경"]`;
+  const targetSel = `[data-testid="sortable-row-${targetRowKey}"] button[aria-label="드래그해서 순서 변경"]`;
+  const source = page.locator(sourceSel);
+  const target = page.locator(targetSel);
+  await source.waitFor({ state: "visible", timeout: 20000 });
+  await target.waitFor({ state: "visible", timeout: 20000 });
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
+  const sBox = await source.boundingBox();
+  const tBox = await target.boundingBox();
+  if (!sBox || !tBox) throw new Error("드래그 손잡이 좌표를 얻지 못했다");
+  const sx = sBox.x + sBox.width / 2;
+  const sy = sBox.y + sBox.height / 2;
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  await page.waitForTimeout(100);
+  await page.mouse.move(sx, sy + 12, { steps: 5 });
+  await page.mouse.move(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2, { steps: 20 });
+  await page.waitForTimeout(100);
+  await page.mouse.up();
+}
+
 async function getVisibleRowKeys(page: Page): Promise<string[]> {
   const handles = await page.locator('[data-testid^="shipment-row-"]').all();
   const keys: string[] = [];
@@ -83,6 +112,30 @@ async function getVisibleRowKeys(page: Page): Promise<string[]> {
   }
   return keys;
 }
+/** 그룹 순서도 현재는 D&D 하나뿐이다(바로가기 Select/그룹 ↑ 버튼은 STEP12-11에서 제거). */
+async function dragGroupTo(page: Page, sourceGroupId: string, targetGroupId: string) {
+  const sourceSel = `[data-testid="group-header-${sourceGroupId}"] button[aria-label="그룹 순서 드래그해서 변경"]`;
+  const targetSel = `[data-testid="group-header-${targetGroupId}"] button[aria-label="그룹 순서 드래그해서 변경"]`;
+  const source = page.locator(sourceSel);
+  const target = page.locator(targetSel);
+  await source.waitFor({ state: "visible", timeout: 20000 });
+  await target.waitFor({ state: "visible", timeout: 20000 });
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
+  const sBox = await source.boundingBox();
+  const tBox = await target.boundingBox();
+  if (!sBox || !tBox) throw new Error("그룹 드래그 손잡이 좌표를 얻지 못했다");
+  const sx = sBox.x + sBox.width / 2;
+  const sy = sBox.y + sBox.height / 2;
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  await page.waitForTimeout(100);
+  await page.mouse.move(sx, sy + 12, { steps: 5 });
+  await page.mouse.move(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2, { steps: 20 });
+  await page.waitForTimeout(100);
+  await page.mouse.up();
+}
+
 /** 그룹 보기 모드에서 화면에 보이는 그룹 순서(위→아래). */
 async function getVisibleGroupIds(page: Page): Promise<string[]> {
   const handles = await page.locator('[data-testid^="group-header-"]').all();
@@ -268,13 +321,11 @@ async function main() {
     const lastRowKey = initialRowKeys[initialRowKeys.length - 1];
     const lastRowIdInDb = [...k.entries()].find(([, v]) => v === lastRowKey)?.[0];
 
-    // ① 맨 마지막 건을 "바로가기 Select"로 1번 위치로 이동
-    const jumpSelects = page.getByRole("combobox", { name: "배송순서 바로 변경" });
-    await jumpSelects.nth(initialRowKeys.length - 1).click();
-    await page.getByRole("option", { name: "1", exact: true }).click();
+    // ① 맨 마지막 건을 D&D로 1번 위치로 이동(현재 제품의 유일한 순서변경 수단)
+    await dragRowTo(page, lastRowKey, initialRowKeys[0]);
     const afterJumpKeys = await getVisibleRowKeys(page);
     record(
-      `R10-1. 마지막 건(${lastRowIdInDb})을 맨 위로 이동 → 순서 변경 확인`,
+      `R10-1. 마지막 건(${lastRowIdInDb})을 D&D로 맨 위로 이동 → 순서 변경 확인`,
       afterJumpKeys[0] === lastRowKey && afterJumpKeys.length === 3,
       `순서=${afterJumpKeys.join(",")}`
     );
@@ -291,18 +342,22 @@ async function main() {
       `실제=${afterReloadNoSaveKeys.join(",")}`
     );
 
-    // ③ 다시 이동(이번엔 ↑ 버튼으로 — 모바일에서도 동작하는 방법) → 저장 → 새로고침 유지 확인
-    const upButtons = page.getByRole("button", { name: "위로 이동" });
-    await upButtons.nth(2).click(); // 3번째(마지막) 건을 한 칸 위로
-    await upButtons.nth(1).click(); // 다시 한 칸 위로 → 맨 위로
+    // ③ 다시 D&D로 맨 위 이동 → 저장 → 새로고침 유지 확인
+    // (기존에는 ↑ 버튼으로 한 번 더 확인했으나, 그 컨트롤은 STEP12-11에서 제거됐다.)
+    const rowKeysBeforeSecondDrag = await getVisibleRowKeys(page);
+    await dragRowTo(page, rowKeysBeforeSecondDrag[rowKeysBeforeSecondDrag.length - 1], rowKeysBeforeSecondDrag[0]);
     const afterButtonsKeys = await getVisibleRowKeys(page);
     record(
-      "R10-4. ↑ 버튼(모바일 대응 컨트롤)으로도 동일하게 맨 위 이동 가능",
+      "R10-4. D&D로 다시 맨 위 이동 가능(저장 대상 Draft 생성)",
       afterButtonsKeys[0] === lastRowKey,
       `순서=${afterButtonsKeys.join(",")}`
     );
 
     const beforeSaveR10 = await draftCountText(page);
+    // STEP12-16B 실증: 드롭 직후 수백 ms 안의 첫 클릭은 삼켜진다(서버 액션이 아예
+    // 호출되지 않아 저장이 조용히 사라진다). 사람이 포인터를 옮기는 최소 시간만큼
+    // 기다린 뒤 누른다 — 결과를 눈감아 주는 게 아니라 실제 조작 속도를 반영하는 것.
+    await page.waitForTimeout(800);
     await page.getByRole("button", { name: "변경사항 저장" }).click();
     await waitForSaveToSettle(page, beforeSaveR10);
     const draftAfterSaveR10 = await draftCountText(page);
@@ -361,12 +416,10 @@ async function main() {
     );
 
     const lastGroupId = initialGroupIds[initialGroupIds.length - 1];
-    // ① 바로가기 Select로 마지막 그룹을 맨 위로
-    const groupJumpSelects = page.getByRole("combobox", { name: "그룹순서 바로 변경" });
-    await groupJumpSelects.nth(initialGroupIds.length - 1).click();
-    await page.getByRole("option", { name: "1", exact: true }).click();
+    // ① D&D로 마지막 그룹을 맨 위로(현재 제품의 유일한 그룹 순서변경 수단)
+    await dragGroupTo(page, lastGroupId, initialGroupIds[0]);
     const afterGroupJump = await getVisibleGroupIds(page);
-    record("R11-1. 마지막 그룹을 맨 위로 이동 → 순서 변경 확인", afterGroupJump[0] === lastGroupId, `순서=${afterGroupJump.join(",")}`);
+    record("R11-1. 마지막 그룹을 D&D로 맨 위로 이동 → 순서 변경 확인", afterGroupJump[0] === lastGroupId, `순서=${afterGroupJump.join(",")}`);
     const draftAfterGroupJump = await draftCountText(page);
     record("R11-2. 그룹 이동 직후 Draft 배너 노출(즉시저장 아님)", /변경사항 [0-9]+건/.test(draftAfterGroupJump), draftAfterGroupJump);
 
@@ -380,14 +433,18 @@ async function main() {
       `실제=${afterReloadNoSaveGroups.join(",")}`
     );
 
-    // ③ 다시 이동(이번엔 그룹 ↑ 버튼 — 모바일 대응 신규 컨트롤) → 저장 → 새로고침 유지
-    const groupUpButtons = page.getByRole("button", { name: "그룹 위로 이동" });
-    await groupUpButtons.nth(2).click();
-    await groupUpButtons.nth(1).click();
+    // ③ 다시 D&D로 맨 위 이동 → 저장 → 새로고침 유지
+    // (기존에는 "그룹 위로 이동" 버튼으로 확인했으나 그 컨트롤은 STEP12-11에서 제거됐다.)
+    const groupsBeforeSecondDrag = await getVisibleGroupIds(page);
+    await dragGroupTo(page, groupsBeforeSecondDrag[groupsBeforeSecondDrag.length - 1], groupsBeforeSecondDrag[0]);
     const afterGroupButtons = await getVisibleGroupIds(page);
-    record("R11-4. 그룹 ↑ 버튼(신규 추가)으로도 동일하게 맨 위 이동 가능", afterGroupButtons[0] === lastGroupId, `순서=${afterGroupButtons.join(",")}`);
+    record("R11-4. D&D로 다시 그룹 맨 위 이동 가능(저장 대상 Draft 생성)", afterGroupButtons[0] === lastGroupId, `순서=${afterGroupButtons.join(",")}`);
 
     const beforeSaveR11 = await draftCountText(page);
+    // STEP12-16B 실증: 드롭 직후 수백 ms 안의 첫 클릭은 삼켜진다(서버 액션이 아예
+    // 호출되지 않아 저장이 조용히 사라진다). 사람이 포인터를 옮기는 최소 시간만큼
+    // 기다린 뒤 누른다 — 결과를 눈감아 주는 게 아니라 실제 조작 속도를 반영하는 것.
+    await page.waitForTimeout(800);
     await page.getByRole("button", { name: "변경사항 저장" }).click();
     await waitForSaveToSettle(page, beforeSaveR11);
     const draftAfterSaveR11 = await draftCountText(page);
