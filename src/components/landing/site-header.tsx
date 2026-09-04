@@ -7,8 +7,8 @@ import { logoutAction } from "@/actions/auth";
 import type { SessionPayload } from "@/lib/auth/session";
 
 const NAV_LINKS = [
-  { href: "#service", label: "서비스 소개" },
-  { href: "#recruit", label: "사장님 모집" },
+  { href: "#flow", label: "어떻게 관리되나요" },
+  { href: "#screens", label: "실제 화면" },
 ];
 
 export function SiteHeader({ session }: { session: SessionPayload | null }) {
@@ -48,7 +48,7 @@ export function SiteHeader({ session }: { session: SessionPayload | null }) {
                 <Link href="/login">로그인</Link>
               </Button>
               <Button asChild size="sm">
-                <a href="#recruit">베타 신청하기</a>
+                <Link href="/login">무료로 시작하기</Link>
               </Button>
             </>
           )}
@@ -98,7 +98,7 @@ export function SiteHeader({ session }: { session: SessionPayload | null }) {
               ) : (
                 <>
                   <Button asChild>
-                    <a href="#recruit">베타 신청하기</a>
+                    <Link href="/login">무료로 시작하기</Link>
                   </Button>
                   <Button asChild variant="outline">
                     <Link href="/login">로그인</Link>

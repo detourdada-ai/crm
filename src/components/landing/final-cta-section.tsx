@@ -1,28 +1,53 @@
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { RecruitForm } from "./recruit-form";
 
 /**
- * STEP10-6(2026-08-28 CPO 작업지시) — 마지막 CTA의 톤을 "지금 먼저 써보세요"
- * (제품 사용 유도)에서 "우리 운영 방식에도 사용할 수 있을까요?"(도입 상담
- * 유도)로 바꾼다. 방문자의 마지막 질문은 "이게 우리한테 맞을까?"이므로,
- * 헤드라인이 그 질문을 그대로 던지고 서브카피가 "함께 검토해드린다"는
- * 상담 프레임으로 답한다. 실제 진입 경로(RecruitForm 제출 → 담당자 확인
- * 후 연락)는 그대로 유지 — 새 폼을 만들지 않는다.
+ * LANDING REPOSITIONING v1(CPO 작업지시, 2026-09-04) — 마지막 CTA.
+ *
+ * 예전에는 마지막 행동이 "베타 신청 폼 작성" 하나뿐이었다. 실제로는 Google
+ * 계정으로 바로 시작할 수 있으므로(auth/callback → /signup → 워크스페이스
+ * 생성), **시작하기를 1순위**로 두고 상담 폼은 "먼저 물어보고 싶은 분"을 위한
+ * 보조 경로로 내린다. 랜딩 전체에서 1순위 CTA 문구는 "무료로 시작하기"로
+ * 통일한다.
  */
 export function FinalCtaSection() {
   return (
-    <section id="recruit" className="bg-gradient-to-b from-background to-primary-soft/30 py-20">
-      <div className="mx-auto max-w-2xl px-4 sm:px-6">
+    <section id="start" className="bg-gradient-to-b from-background to-primary-soft/40 py-14 sm:py-24">
+      <div className="mx-auto max-w-3xl px-4 sm:px-6">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-text-strong sm:text-3xl">우리 운영 방식에도 사용할 수 있을까요?</h2>
-          <p className="mt-4 text-muted-foreground">
-            현재 주문을 어떻게 받고, 어떻게 배송하고 있는지 알려주세요.
+          <h2 className="text-2xl leading-snug font-bold text-text-strong sm:text-4xl">
+            흩어진 주문을
             <br />
-            주문:한장이 지금 운영 방식에 맞는지 함께 검토해드립니다.
+            한곳에서 관리해보세요.
+          </h2>
+          <p className="mt-5 text-base text-muted-foreground sm:text-lg">
+            Google 계정으로 시작하면 바로 주문을 등록할 수 있습니다.
           </p>
+          <div className="mt-8 flex justify-center">
+            <Button asChild size="lg" className="w-full gap-2 sm:w-auto">
+              <Link href="/login">
+                무료로 시작하기
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">현재 베타 기간 동안 무료로 사용하실 수 있습니다</p>
         </div>
 
-        <div className="mt-10">
-          <RecruitForm />
+        <div id="recruit" className="mt-16 border-t border-border pt-14">
+          <div className="text-center">
+            <h3 className="text-xl font-bold text-text-strong sm:text-2xl">먼저 물어보고 싶으신가요?</h3>
+            <p className="mt-3 text-sm text-muted-foreground sm:text-base">
+              지금 주문을 어떻게 받고 어떻게 배송하고 있는지 알려주시면,
+              <br className="hidden sm:block" />
+              운영 방식에 맞는지 함께 검토해드립니다.
+            </p>
+          </div>
+          <div className="mt-8">
+            <RecruitForm />
+          </div>
         </div>
       </div>
     </section>

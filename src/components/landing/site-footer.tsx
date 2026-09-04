@@ -35,8 +35,8 @@ export function SiteFooter() {
                 </a>
               </li>
               <li>
-                <a href="#recruit" className="hover:text-foreground">
-                  베타 신청
+                <a href="#start" className="hover:text-foreground">
+                  무료로 시작하기
                 </a>
               </li>
               <li>

@@ -1,7 +1,15 @@
 "use client";
 
-import { useState, type ReactNode, type TouchEvent } from "react";
-import { CheckCircle2, Navigation, Play } from "lucide-react";
+/**
+ * LANDING REPOSITIONING v1(CPO 작업지시, 2026-09-04) — 랜딩에서 쓰는 "실제 제품
+ * 화면" 미리보기 모음. 예전에는 feature-showcase.tsx 안에 탭 UI와 함께 묶여
+ * 있었는데, 새 랜딩은 이 화면들을 탭 뒤에 숨기지 않고 흐름 위에 크게 펼쳐
+ * 보여주므로 화면 컴포넌트만 따로 뗀다. 내용(문구/수치)은 그대로 옮겼다 —
+ * 제품에 없는 기능을 새로 그리지 않는다.
+ */
+
+import { useState } from "react";
+import { Navigation, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,7 +22,7 @@ const ORDER_ROWS: PreviewTableRow[] = [
 ];
 
 /** 실제 화면 — 주문관리. */
-function OrdersPreview() {
+export function OrdersPreview() {
   return (
     <ProductPreview screen="주문관리">
       <div className="flex flex-wrap gap-2 text-xs">
@@ -35,7 +43,7 @@ const CUSTOMERS = [
 ];
 
 /** 실제 화면 — 고객관리. */
-function CustomersPreview() {
+export function CustomersPreview() {
   const [selected, setSelected] = useState(0);
   const customer = CUSTOMERS[selected];
 
@@ -84,7 +92,7 @@ const DRIVERS = ["홍길동", "김철수", "이영희"];
  * 실제 화면에서 쓰는 문구를 그대로 재사용한다("이 그룹 N건 선택", "선택한
  * N건 일괄 적용", "변경사항 N건 저장하지 않으면 반영되지 않습니다").
  */
-function DeliveryPreview() {
+export function DeliveryPreview() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [driver, setDriver] = useState("홍길동");
   const [groupChecked, setGroupChecked] = useState(true);
@@ -164,7 +172,7 @@ function DeliveryPreview() {
  * 실제 화면 — 기사 앱(현재/다음 배송 카드 + 배송완료 버튼 + 운행 시작/종료).
  * 실제 고객 개인정보는 절대 사용하지 않고, 다른 화면과 동일하게 가상값만 쓴다.
  */
-function DriverAppPreview() {
+export function DriverAppPreview() {
   const [running, setRunning] = useState(false);
 
   return (
@@ -212,7 +220,7 @@ const DRIVER_LOCATIONS = [
  * "실시간 관제/GPS 추적"이라는 표현은 절대 쓰지 않는다 — 실제로는 주기적
  * 갱신 + 마지막 갱신 시각 표시 구조이기 때문이다(§CPO 원칙).
  */
-function DeliveryStatusPreview() {
+export function DeliveryStatusPreview() {
   return (
     <ProductPreview screen="배송 현황">
       <div className="grid grid-cols-3 gap-2 text-center">
@@ -241,7 +249,7 @@ const SETTLEMENTS = [
 ];
 
 /** 실제 화면 — 정산관리(배송완료→정산대상→정산완료 흐름 + 지급 확정/기사별 이력). */
-function SettlementPreview() {
+export function SettlementPreview() {
   const [selected, setSelected] = useState<string | null>(null);
 
   return (
@@ -284,219 +292,5 @@ function SettlementPreview() {
       </div>
       <p className="mt-3 text-xs text-muted-foreground">정산 완료 처리 시 정산일과 금액을 직접 확정하고, 기사별 일별 이력도 확인할 수 있습니다.</p>
     </ProductPreview>
-  );
-}
-
-interface SubScreen {
-  label: string;
-  /** 화면 위에 붙는 한 줄 소개. */
-  lead: string;
-  /** 화면 아래 붙는 한 줄 업무 효과("→"로 시작). */
-  result: string;
-  node: ReactNode;
-}
-
-interface WorkflowGroup {
-  label: string;
-  screens: SubScreen[];
-}
-
-/**
- * STEP12-6(CPO 작업지시, 2026-08-31) — STEP12-5에서 6개 화면을 전부
- * 복구한 판단은 맞았지만, 그룹마다 고정된 긴 설명 문단(headline+
- * description)이 화면이 바뀌어도 그대로 남아있어 "화면당 텍스트 반복"
- * 이라는 새로운 문제가 생겼다는 CPO 2차 검수 지적을 반영한다. 그룹
- * 단위 설명 문단을 없애고, 화면 하나마다 "한 줄 소개 + 실제 화면 +
- * 한 줄 결과"로 통일한다(CPO 예시: "오늘 보낼 주문을 바로 정리합니다 /
- * [배송관리 화면] / → 기사 배정과 가방번호를 한 번에 입력하고, 확인 후
- * 한 번에 저장합니다"). 큰 구조(3개 업무 흐름 탭 + 그 안의 서브탭)는
- * 그대로 유지 — 문제는 6개 기능이 아니라 화면당 반복되는 설명 분량이었다.
- */
-const WORKFLOW_GROUPS: WorkflowGroup[] = [
-  {
-    label: "주문이 모입니다",
-    screens: [
-      {
-        label: "주문관리",
-        lead: "여러 곳에서 들어오는 주문을 한 화면에 모읍니다.",
-        result: "→ 신규/처리중 상태별로 바로 확인하고 처리합니다.",
-        node: <OrdersPreview />,
-      },
-      {
-        label: "고객관리",
-        lead: "주문할수록 고객 정보와 주문 이력이 함께 쌓입니다.",
-        result: "→ 재주문 고객을 한눈에 알아보고 이력을 확인합니다.",
-        node: <CustomersPreview />,
-      },
-    ],
-  },
-  {
-    label: "배송이 정리됩니다",
-    screens: [
-      {
-        label: "배송관리",
-        lead: "오늘 보낼 주문을 바로 정리합니다.",
-        result: "→ 기사 배정과 가방번호를 한 번에 입력하고, 확인 후 한 번에 저장합니다.",
-        node: <DeliveryPreview />,
-      },
-    ],
-  },
-  {
-    label: "배송이 끝까지 이어집니다",
-    screens: [
-      {
-        label: "기사 앱",
-        lead: "정리된 배송은 기사님에게 그대로 전달됩니다.",
-        result: "→ 오늘 배송을 순서대로 확인하고 배송완료를 바로 처리합니다.",
-        node: <DriverAppPreview />,
-      },
-      {
-        label: "배송 현황",
-        lead: "배송이 진행되는 상황을 확인할 수 있습니다.",
-        result: "→ 기사별 운행 상태와 마지막 갱신 시각을 확인합니다.",
-        node: <DeliveryStatusPreview />,
-      },
-      {
-        label: "정산관리",
-        lead: "배송이 끝나면 정산까지 이어집니다.",
-        result: "→ 기사별 정산 금액을 확정하고 이력을 관리합니다.",
-        node: <SettlementPreview />,
-      },
-    ],
-  },
-];
-
-const SWIPE_THRESHOLD_PX = 40;
-
-export function FeatureShowcase() {
-  const [active, setActive] = useState(0);
-  const [subActive, setSubActive] = useState(0);
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
-  const current = WORKFLOW_GROUPS[active];
-  const currentScreen = current.screens[subActive] ?? current.screens[0];
-
-  function selectGroup(i: number) {
-    setActive(i);
-    setSubActive(0);
-  }
-
-  function handleTouchStart(e: TouchEvent<HTMLDivElement>) {
-    setTouchStartX(e.touches[0].clientX);
-  }
-
-  function handleTouchEnd(e: TouchEvent<HTMLDivElement>) {
-    if (touchStartX === null) return;
-    const delta = e.changedTouches[0].clientX - touchStartX;
-    if (Math.abs(delta) > SWIPE_THRESHOLD_PX) {
-      if (delta < 0 && active < WORKFLOW_GROUPS.length - 1) selectGroup(active + 1);
-      if (delta > 0 && active > 0) selectGroup(active - 1);
-    }
-    setTouchStartX(null);
-  }
-
-  return (
-    <section id="features" className="bg-gradient-to-b from-background via-secondary/30 to-background py-20">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6">
-        <div className="text-center">
-          <span className="text-xs font-semibold tracking-wide text-primary uppercase">제품 살펴보기</span>
-          <h2 className="mt-2 text-2xl font-bold text-text-strong sm:text-3xl">주문:한장은 이렇게 정리합니다</h2>
-        </div>
-
-        {/* 모바일: 상단 pill 탭(업무 흐름 3단계, 탭+스와이프 겸용) */}
-        <div className="mt-8 flex justify-center gap-2 sm:hidden">
-          {WORKFLOW_GROUPS.map((group, i) => (
-            <button
-              key={group.label}
-              type="button"
-              onClick={() => selectGroup(i)}
-              className={cn(
-                "rounded-full px-3.5 py-2 text-xs font-semibold transition-colors",
-                i === active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-              )}
-            >
-              {group.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-6 grid gap-8 sm:mt-10 sm:grid-cols-[280px_1fr] sm:gap-10">
-          {/* 데스크톱: 왼쪽 업무 흐름 3단계 라벨 목록 */}
-          <div className="hidden flex-col gap-3 sm:flex">
-            {WORKFLOW_GROUPS.map((group, i) => (
-              <button
-                key={group.label}
-                type="button"
-                onClick={() => selectGroup(i)}
-                className={cn(
-                  "rounded-2xl border px-5 py-4 text-left transition-colors",
-                  i === active
-                    ? "border-primary/40 bg-primary-soft/60 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-                    : "border-border bg-surface hover:bg-secondary/40"
-                )}
-              >
-                <p className={cn("text-base font-bold", i === active ? "text-primary" : "text-text-strong")}>{group.label}</p>
-                <p className="mt-1.5 text-xs text-muted-foreground">{group.screens.map((s) => s.label).join(" · ")}</p>
-              </button>
-            ))}
-          </div>
-
-          {/* 오른쪽(모바일은 전체 폭): 선택된 업무 흐름의 실제 화면(들) — 화면 하나마다 한 줄 소개 + 화면 + 한 줄 결과로 통일한다(STEP12-6). */}
-          <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-            {/* 업무 흐름 안의 실제 화면이 2개 이상이면 작은 서브탭으로 전환(배송관리는 1개라 노출 안 됨) */}
-            {current.screens.length > 1 ? (
-              <div className="flex gap-1.5">
-                {current.screens.map((screen, i) => (
-                  <button
-                    key={screen.label}
-                    type="button"
-                    onClick={() => setSubActive(i)}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                      i === subActive
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-surface text-muted-foreground hover:bg-secondary/50"
-                    )}
-                  >
-                    {screen.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            <p className={cn("text-center text-sm font-medium text-text-strong sm:text-left", current.screens.length > 1 && "mt-4")}>
-              {currentScreen.lead}
-            </p>
-
-            <div className="relative mt-4">
-              <div aria-hidden className="absolute inset-6 -z-10 rounded-full bg-primary/10 blur-3xl" />
-              {currentScreen.node}
-            </div>
-
-            <p className="mt-3 text-center text-xs font-medium text-primary sm:text-left">{currentScreen.result}</p>
-
-            <div className="mt-4 flex justify-center gap-1.5 sm:hidden">
-              {WORKFLOW_GROUPS.map((group, i) => (
-                <span
-                  key={group.label}
-                  aria-hidden
-                  className={cn("size-1.5 rounded-full transition-colors", i === active ? "bg-primary" : "bg-border-strong")}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="mx-auto mt-16 max-w-2xl text-center">
-          <div className="flex items-center justify-center gap-2 text-sm font-medium text-primary">
-            <CheckCircle2 className="size-4 shrink-0" />
-            주문 접수부터 배송 완료, 정산까지 하나의 흐름으로 이어집니다.
-          </div>
-          <Button asChild size="lg" className="mt-6 gap-2">
-            <a href="#recruit">베타 신청하고 먼저 써보기</a>
-          </Button>
-          <p className="mt-3 text-xs text-muted-foreground">우리 가게에도 맞을지 직접 이야기해보세요.</p>
-        </div>
-      </div>
-    </section>
   );
 }
