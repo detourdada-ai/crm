@@ -34,7 +34,10 @@ import { orderShipmentsRepository, type OrderShipmentBoardRow } from "../../src/
 import { deliveryGroupsRepository } from "../../src/lib/repositories/delivery-groups.repository";
 import { clusterPointsByDistance } from "../../src/lib/services/spatial-grouping.service";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, type QaDriverFixture } from "./lib/qa-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, type QaDriverFixture , cleanupQaDeliveryGroups, cleanupEmptyQaDeliveryGroupsSince} from "./lib/qa-guard";
+
+/** STEP13: 이번 실행 시작 시각 — 이후에 생긴 빈 배송그룹만 정리 대상으로 삼는다. */
+const RUN_STARTED_AT = new Date().toISOString();
 
 const OWNER = QA_DEFAULT_OWNER;
 assertAllowedQaOwner(OWNER);
@@ -169,14 +172,25 @@ async function seedShipments(
 }
 
 async function cleanupScenario(admin: ReturnType<typeof getSupabaseAdmin>, tenantId: string, dateStr: string, seed: SeedResult) {
+  // STEP13(P1-A): 예전엔 `tenant_id + delivery_date`로 그 날짜의 배송그룹을 통째로
+  // 지웠다 — QA가 만들지 않은 그룹까지 지우는 방식이라 QA tenant에 기준 데이터가
+  // 생기는 순간 사고가 된다. 배송건을 지우기 전에 "이 시나리오가 만든 배송건이
+  // 실제로 물려 있던 그룹 id"만 모아두고, 그 id로만 지운다.
+  const { data: ownGroupRows } = await admin
+    .from("order_shipments")
+    .select("delivery_group_id")
+    .in("id", seed.shipmentIds);
+  const ownGroupIds = (ownGroupRows ?? []).map((r) => r.delivery_group_id).filter((v): v is string => !!v);
+  void tenantId;
+  void dateStr;
+
   // AGENTS.md 삭제 순서: order_shipments → orders → customers.
   await chunkedDelete(admin, "order_shipments", seed.shipmentIds);
   await chunkedDelete(admin, "orders", seed.orderIds);
   const { error: custErr } = await admin.from("customers").delete().eq("id", seed.customerId);
   if (custErr) throw custErr;
-  // 재계산을 다시 돌리지 않으므로 이 시나리오가 만든 delivery_groups도 직접 지운다.
-  const { error: groupErr } = await admin.from("delivery_groups").delete().eq("tenant_id", tenantId).eq("delivery_date", dateStr);
-  if (groupErr) throw groupErr;
+  await cleanupQaDeliveryGroups(ownGroupIds);
+  await cleanupEmptyQaDeliveryGroupsSince(OWNER, RUN_STARTED_AT);
 }
 
 async function fetchGroupSnapshot(admin: ReturnType<typeof getSupabaseAdmin>, tenantId: string, dateStr: string, shipmentIds: string[]) {

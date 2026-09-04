@@ -117,6 +117,46 @@ export async function createQaDriver(
   return { driverId, username, name };
 }
 
+/**
+ * STEP13(P1-A): 배송그룹은 앱이 자동 생성하므로 RUN_TAG를 붙일 수 없고, 재계산
+ * 과정에서 **멤버가 없는 그룹**이 여러 개 만들어질 수 있다. 이런 그룹은 배송건에서
+ * 역참조가 안 되므로 `cleanupQaDeliveryGroups(id[])`만으로는 잡히지 않는다
+ * (실측: 성능 시나리오 1회 실행에 빈 그룹 180개 잔존).
+ *
+ * 그렇다고 tenant/날짜로 통삭제하면 QA가 만들지 않은 그룹까지 지운다. 그래서
+ * "이번 실행 시작 이후에 생겼고 + 지금 멤버가 하나도 없는" 그룹만 지운다 —
+ * 기존 그룹과 멤버가 있는 그룹은 어떤 경우에도 건드리지 않는다.
+ */
+export async function cleanupEmptyQaDeliveryGroupsSince(owner: string, sinceIso: string): Promise<number> {
+  assertAllowedQaOwner(owner);
+  const admin = getSupabaseAdmin();
+  const { data: groups, error } = await admin
+    .from("delivery_groups")
+    .select("id")
+    .eq("owner_username", owner)
+    .gte("created_at", sinceIso);
+  if (error) {
+    console.error("[qa-guard] delivery_groups 조회 실패:", error.message);
+    return 0;
+  }
+  const ids = (groups ?? []).map((g) => g.id);
+  if (ids.length === 0) return 0;
+
+  const used = new Set<string>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const { data: members } = await admin.from("order_shipments").select("delivery_group_id").in("delivery_group_id", chunk);
+    for (const m of members ?? []) if (m.delivery_group_id) used.add(m.delivery_group_id);
+  }
+  const empties = ids.filter((id) => !used.has(id));
+  if (empties.length === 0) return 0;
+  for (let i = 0; i < empties.length; i += 100) {
+    const { error: delErr } = await admin.from("delivery_groups").delete().in("id", empties.slice(i, i + 100));
+    if (delErr) console.error("[qa-guard] 빈 delivery_groups 삭제 실패:", delErr.message);
+  }
+  return empties.length;
+}
+
 /** STEP12-19(§6): QA 시작 시점의 tenant 상태 — 종료 후 여기로 정확히 돌아왔는지 비교한다. */
 export interface TenantBaseline {
   owner: string;

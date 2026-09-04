@@ -25,7 +25,10 @@ import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { regenerateDeliveryGroupsForTenant } from "../../src/lib/services/delivery-group-regeneration.service";
 import { orderShipmentsRepository, type OrderShipmentBoardRow } from "../../src/lib/repositories/order-shipments.repository";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
-import { assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, type QaDriverFixture } from "./lib/qa-guard";
+import { assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, type QaDriverFixture , cleanupQaDeliveryGroups, cleanupEmptyQaDeliveryGroupsSince} from "./lib/qa-guard";
+
+/** STEP13: 이번 실행 시작 시각 — 이후에 생긴 빈 배송그룹만 정리 대상으로 삼는다. */
+const RUN_STARTED_AT = new Date().toISOString();
 
 const OWNER = QA_DEFAULT_OWNER;
 const QA_PREFIX = "QA-PARTIALFAIL-";
@@ -349,13 +352,22 @@ async function main() {
     );
   } finally {
     orderShipmentsRepository.assignShipmentsToGroup = originalAssign;
+    // STEP13(P1-A): 배송건을 지우기 전에 이 실행이 물려 있던 배송그룹 id만 모아둔다
+    // (예전엔 tenant_id + delivery_date로 그 날짜 그룹을 통째로 지웠다).
+    const seededShipmentIds = [seedA, seedB, seedC, seedLocked]
+      .filter((s): s is NonNullable<typeof s> => !!s)
+      .flatMap((s) => s.shipmentIds);
+    const { data: ownGroupRows } = seededShipmentIds.length
+      ? await admin.from("order_shipments").select("delivery_group_id").in("id", seededShipmentIds)
+      : { data: [] as { delivery_group_id: string | null }[] };
+    const ownGroupIds = (ownGroupRows ?? []).map((r) => r.delivery_group_id).filter((v): v is string => !!v);
     if (seedA) await cleanupCluster(admin, seedA);
     if (seedB) await cleanupCluster(admin, seedB);
     if (seedC) await cleanupCluster(admin, seedC);
     if (seedLocked) await cleanupCluster(admin, seedLocked);
     if (qaDriver) await cleanupQaDriver(qaDriver);
-    const { error: groupErr } = await admin.from("delivery_groups").delete().eq("tenant_id", tenantId).eq("delivery_date", DATE_STR);
-    if (groupErr) console.error("[cleanup] delivery_groups 실패:", groupErr.message);
+    await cleanupQaDeliveryGroups(ownGroupIds);
+    await cleanupEmptyQaDeliveryGroupsSince(OWNER, RUN_STARTED_AT);
 
     const { count: remainingOrders } = await admin
       .from("orders")
