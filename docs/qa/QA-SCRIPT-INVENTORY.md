@@ -83,6 +83,8 @@
 | `qa/step12-11-r15-19-driver-verification.ts` | STEP12-11 R15~R19 기사앱 |
 | `qa/step12-12-permission-attack-surface.ts` | STEP12-12 R27~R30 권한 공격면 |
 | `qa/step12-15-merge-unmerge.ts` | STEP12-15 고객 병합/병합취소 |
+| `qa/perf-save-cost-breakdown.ts` | **P2 저장 고정비 계측** — 저장 1회를 전송/서버/다운로드/화면으로 분해(보드 1~150건 × 5회, 제품 코드 무침습). 결과는 `docs/qa/P2-SAVE-COST/MEASUREMENT-REPORT.md` |
+| `qa/perf-individual-assign.ts` | 개별 배정 구간별 성능 기준선 |
 
 ## 3. 공통 라이브러리 (삭제 시 전 스크립트 동작 불가)
 
