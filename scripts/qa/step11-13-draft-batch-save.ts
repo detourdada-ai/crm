@@ -296,6 +296,19 @@ async function main() {
     record("A5. 저장 후 변경사항 바 사라짐", draftTextAfterA === "", draftTextAfterA);
 
     // ============ 시나리오 B: 같은 건 반복 편집 → 원래값 복귀 시 draft 소멸 ============
+    // 이 시나리오는 "서버 원래값으로 되돌리면 draft가 자동으로 사라진다"를 본다.
+    // 그러려면 화면이 A에서 저장한 값("7")을 원래값으로 알고 있어야 하는데, 저장
+    // 직후에는 목록 데이터가 아직 갱신 전일 수 있어 옛 값이 원래값으로 잡히고
+    // draft가 남는다(실측: B2가 간헐적으로 "변경사항 1건"). 서버 상태를 반영한
+    // 화면에서 시작하도록 새로고침한 뒤, 입력칸에 "7"이 보이는 것까지 확인한다.
+    await page.reload({ waitUntil: "networkidle" });
+    await dismissAnnouncementPopupIfPresent(page);
+    await ensureRowVisible(page, k.get("IND2")!);
+    await page
+      .locator(`[data-testid="shipment-row-${k.get("IND2")!}"] input[placeholder="가방번호"]`)
+      .first()
+      .waitFor({ state: "visible", timeout: 20000 })
+      .catch(() => {});
     await setBagNumber(page, k.get("IND2")!, "9");
     const draftTextB1 = await draftCountText(page);
     record("B1. 값 변경 시 변경사항 1건 등장", draftTextB1.includes("1건"), draftTextB1);
@@ -304,6 +317,16 @@ async function main() {
     record("B2. 원래값으로 되돌리면 변경사항 0건(자동 제거)", draftTextB2 === "", draftTextB2);
 
     // ============ 시나리오 C: 그룹 일괄배정 + 개별 override ============
+    // 앞 시나리오에서 체크한 행이 남아 있으면 그룹 3건 + 잔여 선택분이 함께
+    // 일괄적용돼 "변경사항 4건"이 된다(간헐 실패로 관측). 이 시나리오는 "그룹
+    // 3건만 적용"을 검증하므로 선택 상태를 초기화한 뒤 시작한다.
+    // 이 시나리오는 "그룹 3건만 일괄적용 → draft 정확히 3건"을 본다. 앞 시나리오의
+    // 선택/Draft 상태가 조금이라도 남아 있으면 계수가 흔들리므로(실측: 선택 0인데
+    // draft 4건) 화면을 새로 읽어 확실한 시작 상태에서 측정한다.
+    await page.reload({ waitUntil: "networkidle" });
+    await dismissAnnouncementPopupIfPresent(page);
+    const draftBeforeC = await draftCountText(page);
+    console.log(`  [C 진단] 새로고침 후 시작 draft="${draftBeforeC}"`);
     await page.locator("label", { hasText: "이 그룹" }).filter({ hasText: "3건" }).getByRole("checkbox").click();
     await page.getByRole("combobox", { name: "담당 기사 선택" }).click();
     await page.getByRole("option", { name: driver1.name }).click();
@@ -314,6 +337,15 @@ async function main() {
     await page.waitForTimeout(300);
     record("C1. 그룹 일괄적용도 즉시저장 아님(서버요청 0회)", counter.count() === 0, `실제=${counter.count()}`);
     let draftTextC = await draftCountText(page);
+    if (!draftTextC.includes("3건")) {
+      const groupLabels = await page.locator("label", { hasText: "이 그룹" }).allInnerTexts().catch(() => [] as string[]);
+      const bulkBar = await page.locator("main").innerText().catch(() => "");
+      void bulkBar;
+      const checked = await page.locator('input[type="checkbox"]:checked').count().catch(() => -1);
+      console.log(
+        `  [C2 진단] 체크된박스=${checked} draft="${draftTextC}" 그룹라벨=${JSON.stringify(groupLabels)}`
+      );
+    }
     record("C2. 그룹 3건 일괄적용 → 변경사항 3건", draftTextC.includes("3건"), draftTextC);
 
     await assignDriverInline(page, k.get("G1B")!, driver2.name);
