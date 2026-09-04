@@ -3,7 +3,20 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { DedupAnalysis, DedupGroupResult, DedupOrderSnapshot, DedupProductOrderItem } from "@/types/excel";
+import type {
+  DedupAnalysis,
+  DedupGroupResult,
+  DedupOrderSnapshot,
+  DedupProductOrderItem,
+  ImportDateFilterInput,
+} from "@/types/excel";
+
+/** STEP14: 이 결과가 "어떤 범위로 만들어진 결과인지"를 숫자 옆에서 바로 확인시킨다. */
+function scopeLabelOf(dateFilter: ImportDateFilterInput | undefined): string {
+  if (!dateFilter || dateFilter.mode === "all") return "전체 주문";
+  if (dateFilter.mode === "today") return "오늘 주문";
+  return `${dateFilter.date ?? "선택한 날짜"} 주문`;
+}
 
 /**
  * 주문관리·표준엑셀·배송관리 UX 개선(2026-08 CPO 작업지시) §3-2/§4 Phase1:
@@ -183,10 +196,12 @@ function PartialGroupCard({ group }: { group: DedupGroupResult }) {
  */
 export function DedupReview({
   analysis,
+  dateFilter,
   onConfirm,
   isSubmitting,
 }: {
   analysis: DedupAnalysis;
+  dateFilter?: ImportDateFilterInput;
   onConfirm: (approvedGroupKeys: string[]) => void;
   isSubmitting: boolean;
 }) {
@@ -216,10 +231,22 @@ export function DedupReview({
         <p className="text-sm text-muted-foreground">
           누적된 주문 엑셀을 매일 업로드해도 됩니다. 이미 등록된 주문은 자동으로 중복 처리되지 않습니다.
         </p>
+        {/* STEP14: 경고를 한 번 더 반복하는 게 아니라, 내가 어떤 필터로 이
+            결과를 만들었는지 확인시키는 용도다. */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">이번에 가져온 주문 범위</span>
+          <span className="rounded-md bg-secondary px-2 py-0.5 font-medium text-text-strong">{scopeLabelOf(dateFilter)}</span>
+        </div>
         <p className="text-sm text-muted-foreground">
           총 <span className="font-semibold text-text-strong">{analysis.totalProductOrders.toLocaleString()}개 상품행</span>을
           확인했습니다(주문 묶음 {analysis.totalGroups.toLocaleString()}건).
         </p>
+        {!dateFilter || dateFilter.mode === "all" ? (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-800">
+            전체 주문을 선택하여 엑셀에 포함된 누적 주문을 확인했습니다. 오늘 처리할 주문만 접수하려면 이전 단계에서 &lsquo;오늘 주문
+            가져오기&rsquo;를 선택하세요.
+          </p>
+        ) : null}
         {/* STEP11-2 Phase4(2026-08 CPO 작업지시): 날짜 필터로 제외된 건은
             중복/신규 판정 자체를 받지 않으므로 위 total과 별개로 먼저
             보여준다 — "왜 파일 건수보다 적게 처리됐는지"를 바로 알 수 있게. */}

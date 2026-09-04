@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ExcelParseError, parseSpreadsheet } from "@/lib/services/excel-parser.service";
 import { autoMapColumns } from "@/lib/services/column-mapping.service";
 import { getSavedColumnMapping, saveColumnMapping } from "@/lib/services/import-mapping-settings.service";
+import { getDefaultImportScope, saveDefaultImportScope } from "@/lib/services/import-scope-settings.service";
 import { runImport, deleteImport, deleteAllImports } from "@/lib/services/import.service";
 import { classifyDuplicates } from "@/lib/services/import-dedup.service";
 import { importsRepository } from "@/lib/repositories/imports.repository";
@@ -13,7 +14,14 @@ import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
-import type { ColumnMapping, MappableField, ParsedSheet, DedupAnalysis, ImportDateFilterInput } from "@/types/excel";
+import type {
+  ColumnMapping,
+  MappableField,
+  ParsedSheet,
+  DedupAnalysis,
+  ImportDateFilterInput,
+  ImportDateFilterMode,
+} from "@/types/excel";
 import type { ImportRecord, ImportSummary, ImportRowError } from "@/types/domain";
 
 export interface AnalyzeImportResult {
@@ -23,6 +31,8 @@ export interface AnalyzeImportResult {
   mapping: ColumnMapping;
   unmapped: MappableField[];
   unrecognizedHeaders: string[];
+  /** 이 사업장이 앞으로 쓰기로 저장해둔 주문 범위. 저장한 적 없으면 null(미설정 허용). */
+  defaultScope: ImportDateFilterMode | null;
 }
 export interface AnalyzeImportError {
   ok: false;
@@ -41,9 +51,12 @@ export async function analyzeImportFileAction(
     const session = await requireSession();
     const buffer = await file.arrayBuffer();
     const parsed = parseSpreadsheet(buffer, file.name);
-    const savedMapping = await getSavedColumnMapping(session.username);
+    const [savedMapping, defaultScope] = await Promise.all([
+      getSavedColumnMapping(session.username),
+      getDefaultImportScope(session.username),
+    ]);
     const { mapping, unmapped, unrecognizedHeaders } = autoMapColumns(parsed.headers, savedMapping ?? undefined);
-    return { ok: true, fileName: file.name, parsed, mapping, unmapped, unrecognizedHeaders };
+    return { ok: true, fileName: file.name, parsed, mapping, unmapped, unrecognizedHeaders, defaultScope };
   } catch (e) {
     if (e instanceof ExcelParseError) return { ok: false, error: e.message };
     return { ok: false, error: "파일 처리 중 오류가 발생했습니다." };
@@ -65,6 +78,23 @@ export interface AnalyzeDuplicatesError {
  * 단계 원칙). 결과는 사용자가 검토 화면에서 신규/이미등록/확인필요를
  * 구분해서 볼 수 있도록 그대로 돌려준다.
  */
+/**
+ * STEP14: "앞으로 이 방식을 기본으로 사용" 체크박스를 켰을 때만 호출된다.
+ * 업로드 진행 자체가 기본값을 바꾸는 경로는 만들지 않는다 — 한 번의 예외적인
+ * 선택이 사업장의 기본 운영 방식을 자동으로 바꾸면 안 되기 때문이다.
+ */
+export async function saveDefaultImportScopeAction(
+  mode: ImportDateFilterMode
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const session = await requireSession();
+    await saveDefaultImportScope(session.username, mode);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "기본 주문 범위를 저장하지 못했습니다.") };
+  }
+}
+
 export async function analyzeDuplicatesAction(
   parsed: ParsedSheet,
   mapping: ColumnMapping,

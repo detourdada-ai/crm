@@ -3,8 +3,20 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { analyzeImportFileAction, analyzeDuplicatesAction, confirmImportAction } from "@/actions/import";
-import type { ColumnMapping, MappableField, ParsedSheet, DedupAnalysis, ImportDateFilterInput } from "@/types/excel";
+import {
+  analyzeImportFileAction,
+  analyzeDuplicatesAction,
+  confirmImportAction,
+  saveDefaultImportScopeAction,
+} from "@/actions/import";
+import type {
+  ColumnMapping,
+  MappableField,
+  ParsedSheet,
+  DedupAnalysis,
+  ImportDateFilterInput,
+  ImportDateFilterMode,
+} from "@/types/excel";
 import type { ImportSummary, ImportRowError } from "@/types/domain";
 import { ImportDropzone } from "./import-dropzone";
 import { ColumnMappingForm } from "./column-mapping-form";
@@ -37,6 +49,9 @@ type Stage =
 export function ImportWorkspace() {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>({ step: "idle" });
+  // STEP14: 이 사업장이 저장해둔 기본 주문 범위. 파일 분석 응답으로 받아오고,
+  // 사용자가 명시적으로 기본값을 바꿨을 때만 갱신한다(미설정 = null 유지).
+  const [defaultScope, setDefaultScope] = useState<ImportDateFilterMode | null>(null);
   const [isAnalyzing, startAnalyzing] = useTransition();
   const [isCheckingDuplicates, startCheckingDuplicates] = useTransition();
   const [isConfirming, startConfirming] = useTransition();
@@ -80,16 +95,28 @@ export function ImportWorkspace() {
         unmapped: result.unmapped,
         unrecognizedHeaders: result.unrecognizedHeaders,
       });
+      setDefaultScope(result.defaultScope);
     });
   }
 
   // §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08): 컬럼 매핑 확정 →
   // 즉시 등록이 아니라 중복 분석(읽기 전용)을 먼저 거친다. 사용자가 검토
   // 화면에서 확인한 뒤에만 실제 등록(handleFinalConfirm)이 실행된다.
-  function handleCheckDuplicates(mapping: ColumnMapping, dateFilter: ImportDateFilterInput) {
+  function handleCheckDuplicates(mapping: ColumnMapping, dateFilter: ImportDateFilterInput, saveAsDefault: boolean) {
     if (stage.step !== "mapping") return;
     const { fileName, parsed } = stage;
     startCheckingDuplicates(async () => {
+      // 기본값 저장은 체크박스를 켠 경우에만 — 실패해도 이번 업로드는 계속
+      // 진행한다(설정 저장 실패로 접수를 막지 않는다).
+      if (saveAsDefault) {
+        const saved = await saveDefaultImportScopeAction(dateFilter.mode);
+        if (saved.ok) {
+          setDefaultScope(dateFilter.mode);
+          toast.success("앞으로 이 방식을 기본으로 사용합니다.");
+        } else {
+          toast.error(saved.error);
+        }
+      }
       const result = await analyzeDuplicatesAction(parsed, mapping, dateFilter);
       if (!result.ok) {
         toast.error(result.error);
@@ -137,7 +164,12 @@ export function ImportWorkspace() {
           </Button>
         </div>
       ) : stage.step === "review" ? (
-        <DedupReview analysis={stage.analysis} onConfirm={handleFinalConfirm} isSubmitting={isConfirming} />
+        <DedupReview
+          analysis={stage.analysis}
+          dateFilter={stage.dateFilter}
+          onConfirm={handleFinalConfirm}
+          isSubmitting={isConfirming}
+        />
       ) : stage.step === "mapping" ? (
         <Card>
           <CardHeader>
@@ -146,6 +178,7 @@ export function ImportWorkspace() {
           <CardContent className="space-y-4">
             <LargeFileNotice rowCount={stage.parsed.rows.length} />
             <ColumnMappingForm
+              defaultScope={defaultScope}
               parsed={stage.parsed}
               initialMapping={stage.mapping}
               initialUnmapped={stage.unmapped}

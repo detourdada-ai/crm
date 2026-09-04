@@ -18,6 +18,26 @@ const NONE_VALUE = "__none__";
  *  3개 중 실제 매핑된 것만 "기준 날짜 컬럼" 후보로 제시한다. */
 const DATE_FILTER_FIELDS: ImportDateFilterField[] = ["delivery_date", "order_date", "shipped_at"];
 
+/** §5 — 세 가지 방식의 차이를 고르기 전에 읽게 한다. "(기본)" 표기는 제거했다
+ *  ("추천 설정"처럼 읽혀 그대로 진행하게 만들던 표현이다). */
+const SCOPE_OPTIONS: { mode: ImportDateFilterMode; title: string; lines: string[] }[] = [
+  {
+    mode: "today",
+    title: "오늘 주문 가져오기",
+    lines: ["오늘 처리할 주문만 가져옵니다.", "매일 주문을 접수하는 경우에 적합합니다."],
+  },
+  {
+    mode: "specific_date",
+    title: "특정 날짜 주문 가져오기",
+    lines: ["선택한 날짜의 주문만 가져옵니다."],
+  },
+  {
+    mode: "all",
+    title: "전체 주문 가져오기",
+    lines: ["엑셀에 포함된 누적 주문을 모두 확인합니다.", "이전 주문이나 이미 처리한 주문도 함께 포함될 수 있습니다."],
+  },
+];
+
 function labelOf(field: ImportDateFilterField): string {
   return MAPPABLE_FIELDS.find((f) => f.key === field)?.label ?? field;
 }
@@ -34,6 +54,7 @@ export function ColumnMappingForm({
   initialMapping,
   initialUnmapped,
   unrecognizedHeaders,
+  defaultScope,
   onConfirm,
   isSubmitting,
 }: {
@@ -41,7 +62,9 @@ export function ColumnMappingForm({
   initialMapping: ColumnMapping;
   initialUnmapped: MappableField[];
   unrecognizedHeaders: string[];
-  onConfirm: (mapping: ColumnMapping, dateFilter: ImportDateFilterInput) => void;
+  /** 이 사업장이 저장해둔 기본 주문 범위. 미설정이면 null — 추측해서 채우지 않는다. */
+  defaultScope: ImportDateFilterMode | null;
+  onConfirm: (mapping: ColumnMapping, dateFilter: ImportDateFilterInput, saveAsDefault: boolean) => void;
   isSubmitting: boolean;
 }) {
   const [mapping, setMapping] = useState<ColumnMapping>(initialMapping);
@@ -58,7 +81,10 @@ export function ColumnMappingForm({
   // 주문 가져오기"만 존재하는 것과 동일한 결과 — 기존 사용자 흐름에
   // 영향 없음).
   const availableDateFields = useMemo(() => DATE_FILTER_FIELDS.filter((f) => !!mapping[f]), [mapping]);
-  const [dateFilterMode, setDateFilterMode] = useState<ImportDateFilterMode>("all");
+  // 기본 설정이 있으면 진입 시 자동 선택한다(§6). 미설정이면 기존과 동일하게
+  // "all"에서 시작하되, 화면은 "이번 방식을 선택하세요"로 안내한다(§8).
+  const [dateFilterMode, setDateFilterMode] = useState<ImportDateFilterMode>(defaultScope ?? "all");
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [dateFilterField, setDateFilterField] = useState<ImportDateFilterField>(availableDateFields[0] ?? "delivery_date");
   const [specificDate, setSpecificDate] = useState(kstTodayIso());
 
@@ -68,7 +94,7 @@ export function ColumnMappingForm({
       field: dateFilterField,
       date: dateFilterMode === "specific_date" ? specificDate : undefined,
     };
-    onConfirm(mapping, dateFilter);
+    onConfirm(mapping, dateFilter, saveAsDefault && dateFilterMode !== defaultScope);
   }
 
   return (
@@ -157,57 +183,114 @@ export function ColumnMappingForm({
       ) : null}
 
       {availableDateFields.length > 0 ? (
-        <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-          <p className="text-sm font-medium text-text-strong">가져올 주문 범위</p>
-          <p className="text-xs text-muted-foreground">
-            기본값은 파일의 모든 주문을 그대로 가져오는 것입니다. 특정 날짜의 주문만 골라 받고 싶다면 아래에서 기준 날짜 컬럼과 범위를
-            선택하세요.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={dateFilterMode} onValueChange={(v) => setDateFilterMode(v as ImportDateFilterMode)}>
-              <SelectTrigger className="w-56" aria-label="가져올 주문 범위">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체 주문 가져오기(기본)</SelectItem>
-                <SelectItem value="today">오늘 주문만 가져오기</SelectItem>
-                <SelectItem value="specific_date">특정 날짜 주문만 가져오기</SelectItem>
-              </SelectContent>
-            </Select>
-            {dateFilterMode !== "all" ? (
-              <>
-                <span className="text-sm text-muted-foreground">기준:</span>
-                <Select value={dateFilterField} onValueChange={(v) => setDateFilterField(v as ImportDateFilterField)}>
-                  <SelectTrigger className="w-40" aria-label="기준 날짜 컬럼">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableDateFields.map((f) => (
-                      <SelectItem key={f} value={f}>
-                        {labelOf(f)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </>
-            ) : null}
-            {dateFilterMode === "specific_date" ? (
-              <Input
-                type="date"
-                aria-label="특정 날짜"
-                value={specificDate}
-                onChange={(e) => setSpecificDate(e.target.value)}
-                className="w-40"
-              />
-            ) : null}
+        <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+          <div>
+            <p className="text-sm font-medium text-text-strong">가져올 주문 범위</p>
+            {defaultScope ? (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                현재 기본 설정: <span className="font-medium text-text-strong">{SCOPE_OPTIONS.find((o) => o.mode === defaultScope)?.title}</span>
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-muted-foreground">이번 주문 가져오기 방식을 선택하세요.</p>
+            )}
           </div>
+
+          {/* 모바일에서 Select 안의 설명을 읽을 수 없어(트리거에 한 줄만 남음)
+              라디오 카드로 바꾼다 — 세 방식의 차이를 고르기 전에 읽는 것이
+              이번 작업의 목적이다. */}
+          <div className="space-y-2" role="radiogroup" aria-label="가져올 주문 범위">
+            {SCOPE_OPTIONS.map((option) => {
+              const selected = dateFilterMode === option.mode;
+              return (
+                <label
+                  key={option.mode}
+                  className={`flex cursor-pointer gap-2.5 rounded-md border p-2.5 ${
+                    selected ? "border-primary bg-primary-soft/30" : "border-border bg-card"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="import-order-scope"
+                    className="mt-1 size-4 shrink-0 accent-primary"
+                    checked={selected}
+                    onChange={() => setDateFilterMode(option.mode)}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-text-strong">{option.title}</span>
+                    {option.lines.map((line) => (
+                      <span key={line} className="block text-xs leading-relaxed text-muted-foreground">
+                        {line}
+                      </span>
+                    ))}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+
+          {dateFilterMode !== "all" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted-foreground">기준:</span>
+              <Select value={dateFilterField} onValueChange={(v) => setDateFilterField(v as ImportDateFilterField)}>
+                <SelectTrigger className="w-40" aria-label="기준 날짜 컬럼">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableDateFields.map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {labelOf(f)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {dateFilterMode === "specific_date" ? (
+                <Input
+                  type="date"
+                  aria-label="특정 날짜"
+                  value={specificDate}
+                  onChange={(e) => setSpecificDate(e.target.value)}
+                  className="w-40"
+                />
+              ) : null}
+            </div>
+          ) : null}
+
           {dateFilterMode !== "all" ? (
             <p className="text-xs text-muted-foreground">
               {labelOf(dateFilterField)} 기준으로 {dateFilterMode === "today" ? "오늘" : specificDate || "선택한 날짜"}에 해당하지 않는
               주문은 등록되지 않고 &ldquo;날짜 조건 제외&rdquo;로 별도 집계됩니다(중복/오류와 다름).
             </p>
+          ) : (
+            /* 전체 주문을 막지 않는다 — 의도적으로 쓰는 사장님도 있다. 다만
+               "누적 주문이 다 들어온다"는 사실을 고를 때 알려준다(§9). */
+            <p className="rounded-md bg-amber-50 px-2.5 py-2 text-xs leading-relaxed text-amber-800">
+              ⚠️ 전체 주문을 가져옵니다. 엑셀에 포함된 누적 주문이 모두 확인됩니다.
+              <br />
+              오늘 처리할 주문만 접수하려면 &lsquo;오늘 주문 가져오기&rsquo;를 선택하세요.
+            </p>
+          )}
+
+          {/* 기본값 변경은 명시적 행동으로만 — 체크박스 기본값은 항상 OFF다. */}
+          {dateFilterMode !== defaultScope ? (
+            <label className="flex items-center gap-2 text-sm text-text-strong">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={saveAsDefault}
+                onChange={(e) => setSaveAsDefault(e.target.checked)}
+              />
+              앞으로 이 방식을 기본으로 사용
+            </label>
           ) : null}
         </div>
+      ) : defaultScope && defaultScope !== "all" ? (
+        /* 기본 설정은 있는데 이 파일에는 기준으로 삼을 날짜 컬럼이 매핑되지
+           않았다 — 조용히 전체를 가져오면 사고가 되므로 사실대로 알린다.
+           (날짜 필터 정책 자체는 이번 작업에서 바꾸지 않는다.) */
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          기본 설정({SCOPE_OPTIONS.find((o) => o.mode === defaultScope)?.title})을 적용할 날짜 컬럼이 이 파일에 없어, 이번에는 전체
+          주문을 가져옵니다.
+        </p>
       ) : null}
 
       <div className="flex items-center justify-between">
