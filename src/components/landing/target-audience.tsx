@@ -9,23 +9,22 @@ import { Check } from "lucide-react";
  * 참고용으로만 남긴다(업종 나열이 주인공이 되면 다시 범용 SaaS처럼 보인다).
  */
 const CRITERIA = [
-  "스마트스토어·엑셀·전화 등 여러 경로에서 주문을 받는다",
-  "주문이 늘면서 엑셀 관리가 복잡해졌다",
-  "같은 고객의 정보를 반복해서 다시 찾는다",
-  "배송 담당자나 자체 배송기사를 운영한다",
+  "자체 배송을 운영하는 사업자",
+  "배송기사를 직접 관리하는 사업자",
+  "주문이 여러 채널에서 들어오는 사업자",
+  "엑셀과 메시지로 주문을 정리하는 사업자",
+  "주문이 늘면서 관리가 복잡해진 사업자",
 ];
 
 const INDUSTRY_EXAMPLES = ["반찬·도시락", "꽃·화환", "케이크·답례품", "식품", "자체배송 사업자"];
 
 export function TargetAudience() {
   return (
-    <section className="border-y border-border bg-secondary/40 py-14 sm:py-24">
+    <section className="border-y border-border bg-secondary/40 py-14 sm:py-20">
       <div className="mx-auto max-w-3xl px-4 sm:px-6">
         <div className="text-center">
           <h2 className="text-2xl leading-snug font-bold text-text-strong sm:text-4xl">
-            이런 방식으로 운영하고 있다면
-            <br />
-            주문:한장이 도움이 됩니다.
+            이런 사업자에게 맞습니다
           </h2>
         </div>
 

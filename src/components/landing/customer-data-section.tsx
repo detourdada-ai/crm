@@ -8,10 +8,10 @@
  * 약속하지 않는다.** 현재 제품이 실제로 하는 것만 적는다 — 주문 등록 시 기존
  * 고객 확인, 동일인 후보 안내, 고객별 주문 이력, 병합/병합취소.
  */
-const POINTS = [
-  { title: "다시 찾지 않아도 됩니다", body: "주문을 등록하면 기존 고객인지 먼저 확인합니다." },
-  { title: "같은 고객으로 보이면 알려줍니다", body: "이름·연락처가 비슷하면 동일인 후보로 안내하고, 확인 후 합치거나 되돌릴 수 있습니다." },
-  { title: "이력이 남습니다", body: "고객별로 지난 주문을 그대로 확인할 수 있습니다." },
+const SEQUENCE = [
+  { when: "첫 주문", what: "고객이 만들어집니다" },
+  { when: "두 번째 주문", what: "같은 고객인지 확인해 연결합니다" },
+  { when: "주문이 쌓이면", what: "그 고객의 주문 이력이 남습니다" },
 ];
 
 export function CustomerDataSection() {
@@ -31,14 +31,18 @@ export function CustomerDataSection() {
           </p>
         </div>
 
-        <div className="mt-12 grid gap-4 sm:grid-cols-3">
-          {POINTS.map((point) => (
-            <div key={point.title} className="rounded-2xl border border-border bg-surface px-6 py-6">
-              <p className="text-base font-bold text-text-strong sm:text-lg">{point.title}</p>
-              <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{point.body}</p>
-            </div>
+        <ol className="mx-auto mt-12 max-w-xl space-y-2.5">
+          {SEQUENCE.map((item, i) => (
+            <li key={item.when} className="flex items-center gap-4 rounded-xl border border-border bg-surface px-5 py-4">
+              <span className="w-24 shrink-0 text-sm font-bold text-primary sm:w-28 sm:text-base">{item.when}</span>
+              <span className="text-sm text-text-strong sm:text-base">{item.what}</span>
+              {i === 0 ? null : null}
+            </li>
           ))}
-        </div>
+        </ol>
+        <p className="mt-8 text-center text-sm text-muted-foreground sm:text-base">
+          주문을 처리할수록 우리 가게의 고객 정보가 함께 쌓입니다.
+        </p>
       </div>
     </section>
   );

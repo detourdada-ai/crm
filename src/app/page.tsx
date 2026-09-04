@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { SiteHeader } from "@/components/landing/site-header";
 import { HeroSection } from "@/components/landing/hero-section";
 import { ProblemSolutionSection } from "@/components/landing/problem-solution-section";
-import { OrderFlowSection } from "@/components/landing/order-flow-section";
 import { ProductScreensSection } from "@/components/landing/product-screens-section";
 import { CustomerDataSection } from "@/components/landing/customer-data-section";
 import { WorkChangeSection } from "@/components/landing/work-change-section";
@@ -86,11 +85,10 @@ export default async function LandingPage() {
       <main className="flex-1">
         <HeroSection />
         <ProblemSolutionSection />
-        <OrderFlowSection />
+        <WorkChangeSection />
         <ProductScreensSection />
         <CustomerDataSection />
         <DeliveryOperationSection />
-        <WorkChangeSection />
         <TargetAudience />
         <FaqSection />
         <FinalCtaSection />

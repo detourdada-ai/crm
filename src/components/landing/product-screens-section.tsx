@@ -13,32 +13,32 @@ import { OrdersPreview, CustomersPreview, DeliveryPreview } from "./product-prev
  */
 const SCREENS = [
   {
-    step: "①·② 주문과 고객",
-    title: "들어온 주문을 한 화면에서 확인합니다",
-    body: "주문 상태와 상품, 배송일을 한 줄로 봅니다. 주문이 등록되면 고객 정보도 함께 정리됩니다.",
+    step: "주문",
+    title: "어디서 들어온 주문이든 한곳으로",
+    body: "스마트스토어 엑셀도, 전화로 받은 주문도 같은 목록에서 봅니다. 채널마다 다른 표를 만들 필요가 없습니다.",
     node: <OrdersPreview />,
   },
   {
-    step: "② 고객",
-    title: "주문이 쌓일수록 고객 정보도 쌓입니다",
-    body: "같은 고객의 이전 주문을 다시 찾지 않아도 됩니다. 고객별 주문 이력이 그대로 남습니다.",
+    step: "고객",
+    title: "주문이 반복될수록 고객은 더 정확해집니다",
+    body: "같은 고객인지 매번 확인하지 않아도 됩니다. 이전 주문이 그대로 붙어 있어 바로 확인할 수 있습니다.",
     node: <CustomersPreview />,
   },
   {
-    step: "③ 배송",
-    title: "오늘 보낼 배송을 정리하고 기사에게 넘깁니다",
-    body: "가까운 배송지는 그룹으로 묶이고, 기사 배정과 가방번호를 함께 입력한 뒤 한 번에 저장합니다.",
+    step: "배송",
+    title: "오늘 처리할 배송만 바로 정리",
+    body: "가까운 배송지는 묶여서 보이고, 기사 배정과 가방번호를 함께 입력한 뒤 한 번에 저장합니다.",
     node: <DeliveryPreview />,
   },
 ];
 
 export function ProductScreensSection() {
   return (
-    <section id="screens" className="border-y border-border bg-secondary/30 py-14 sm:py-24">
+    <section id="screens" className="border-y border-border bg-secondary/30 py-16 sm:py-28">
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
         <div className="text-center">
-          <h2 className="text-2xl leading-snug font-bold text-text-strong sm:text-4xl">실제 사용하는 화면입니다</h2>
-          <p className="mt-4 text-base text-muted-foreground sm:text-lg">지금 주문:한장에서 그대로 쓰고 있는 화면을 그대로 보여드립니다.</p>
+          <h2 className="text-[1.75rem] leading-snug font-bold text-text-strong sm:text-5xl">실제로 이렇게 씁니다</h2>
+          <p className="mt-4 text-base text-muted-foreground sm:text-lg">지금 주문:한장에서 쓰고 있는 화면 그대로입니다.</p>
         </div>
 
         <div className="mt-14 space-y-12 sm:space-y-20">

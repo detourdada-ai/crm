@@ -23,9 +23,11 @@ export function DeliveryOperationSection() {
           <div>
             <p className="text-sm font-semibold text-primary">④ 기사에게 전달</p>
             <h2 className="mt-3 text-2xl leading-snug font-bold text-text-strong sm:text-4xl">
-              정리한 배송이
+              주문을 정리한 뒤,
               <br />
-              기사에게 그대로 갑니다.
+              다시 다른 곳에서
+              <br />
+              배송을 관리할 필요가 없습니다.
             </h2>
             <ul className="mt-7 space-y-3">
               {POINTS.map((point) => (
