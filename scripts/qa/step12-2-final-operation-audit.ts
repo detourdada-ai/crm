@@ -16,8 +16,8 @@ import { triggerDeliveryGroupRegeneration } from "../../src/lib/services/deliver
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { kstTodayIso } from "./lib/qa-data";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver } from "./lib/qa-guard";
-import { registerAnnouncementPopupHandler, dismissAnnouncementPopupIfPresent } from "./lib/qa-popup-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver , cleanupQaDeliveryGroups} from "./lib/qa-guard";
+import { registerAnnouncementPopupHandler, dismissAnnouncementPopupIfPresent , ensureShipmentRowVisible} from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -51,18 +51,21 @@ function rowLocator(page: Page, rowKey: string) {
 }
 
 async function assignDriverInline(page: Page, rowKey: string, driverName: string) {
+  await ensureShipmentRowVisible(page, rowKey);
   const row = rowLocator(page, rowKey);
   await row.getByRole("button", { name: /담당기사 변경/ }).click();
   await page.getByRole("menuitem", { name: driverName, exact: false }).first().click();
 }
 
 async function setBagNumber(page: Page, rowKey: string, value: string) {
+  await ensureShipmentRowVisible(page, rowKey);
   const input = rowLocator(page, rowKey).locator('input[placeholder="가방번호"]');
   await input.fill(value);
   await input.blur();
 }
 
 async function toggleBagReturned(page: Page, rowKey: string) {
+  await ensureShipmentRowVisible(page, rowKey);
   await rowLocator(page, rowKey).locator("text=/미회수|회수완료/").click();
 }
 
@@ -185,7 +188,10 @@ async function main() {
     record("D2. 그룹 선택 후 스크린샷 확보(일괄배정 바 등장)", true);
 
     // ---- 스크린샷 3: 체크박스로 개별 2건 추가 선택(그룹 3 + 개별 2 = 5) ----
+    // 그룹 접힘 + 공지 modal 때문에 행이 안 보이는 경우가 있어 먼저 노출을 보장한다.
+    await ensureShipmentRowVisible(page, k.get("IND1")!);
     await rowLocator(page, k.get("IND1")!).getByRole("checkbox").click();
+    await ensureShipmentRowVisible(page, k.get("IND2")!);
     await rowLocator(page, k.get("IND2")!).getByRole("checkbox").click();
     await page.screenshot({ path: `${SCREENSHOT_DIR}/step12-2-d3-mixed-selection.png`, fullPage: false });
     const selectedCountAfterMix = await page.getByText(/^5건 선택$/).count();
@@ -224,6 +230,7 @@ async function main() {
 
     await page.reload({ waitUntil: "networkidle" });
     await dismissAnnouncementPopupIfPresent(page);
+    await ensureShipmentRowVisible(page, k.get("G1C")!);
     const bagAfterReload = await rowLocator(page, k.get("G1C")!).locator('input[placeholder="가방번호"]').inputValue();
     record("C4. 새로고침 후 데이터 유지(가방번호)", bagAfterReload === "301", `실제="${bagAfterReload}"`);
     const { data: dbCheck } = await admin.from("order_shipments").select("id, driver_id, bag_number, bag_returned").in("id", [k.get("G1A")!, k.get("G1B")!, k.get("IND1")!, k.get("IND2")!]);
@@ -274,6 +281,15 @@ async function main() {
     await cleanupQaDriver(perfDriver);
     await perfContext.close();
   } finally {
+    // STEP12 FINAL GATE(P1-A): 배송그룹 정리가 `owner_username + delivery_date`로
+    // 그 tenant의 그날 그룹을 통째로 지우고 있었다 — QA가 만들지 않은 그룹까지
+    // 지우는 방식이라 user3/user6에 기준 데이터가 생기는 순간 사고가 된다.
+    // 배송건을 지우기 **전에** 이번 실행이 실제로 물려 있던 그룹 id만 모아둔다.
+    const { data: ownGroupRows } = await admin
+      .from("order_shipments")
+      .select("delivery_group_id")
+      .in("id", allShipmentIds);
+    const ownGroupIds = (ownGroupRows ?? []).map((r) => r.delivery_group_id).filter((v): v is string => !!v);
     if (allShipmentIds.length > 0) {
       const { error } = await admin.from("order_shipments").delete().in("id", allShipmentIds);
       if (error) console.error("[cleanup] shipment 삭제 실패:", error.message);
@@ -284,7 +300,7 @@ async function main() {
     }
     const { error: custDelErr } = await admin.from("customers").delete().eq("id", customerId);
     if (custDelErr) console.error("[cleanup] customer 삭제 실패:", custDelErr.message);
-    await admin.from("delivery_groups").delete().eq("owner_username", OWNER).eq("delivery_date", today);
+    await cleanupQaDeliveryGroups(ownGroupIds);
     await cleanupQaDriver(driverA);
     await cleanupQaDriver(driverB);
     await browser.close();

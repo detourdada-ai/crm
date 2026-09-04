@@ -56,3 +56,33 @@ export async function dismissAnnouncementPopupIfPresent(page: Page): Promise<voi
     await announcementDialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
   }
 }
+
+/**
+ * STEP12 FINAL GATE(P1-A): 배송건 행이 화면에 나타날 때까지 준비시킨다.
+ *
+ * 두 가지가 겹쳐서 여러 노후 QA가 "행을 못 찾음"으로 타임아웃났다.
+ *  1) STEP12-8F(R12) 이후 배송그룹 카드는 기본 접힘이라 그룹 소속 행은
+ *     "상세보기"를 눌러 펼치기 전에는 아예 렌더되지 않는다.
+ *  2) 공지 팝업이 modal dialog로 열려 있으면 배경이 접근성 트리에서 제외돼
+ *     `getByRole("button", { name: "상세보기" })`가 0개로 잡힌다
+ *     (실측: dialog=1, 상세보기버튼=0, 본문에는 버튼 텍스트가 보이는 상태).
+ *
+ * 그래서 팝업을 먼저 닫고, 버튼은 role이 아닌 CSS 기준으로 찾아 펼친다.
+ */
+export async function ensureShipmentRowVisible(page: Page, rowKey: string, timeoutMs = 30000): Promise<boolean> {
+  const row = page.locator(`[data-testid="shipment-row-${rowKey}"]`);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await row.first().isVisible().catch(() => false)) return true;
+    await dismissAnnouncementPopupIfPresent(page);
+    const detailButtons = page.locator("button", { hasText: "상세보기" });
+    const n = await detailButtons.count();
+    for (let i = 0; i < n; i++) {
+      await detailButtons.nth(i).click({ timeout: 3000 }).catch(() => {});
+    }
+    if (await row.first().isVisible().catch(() => false)) return true;
+    await page.waitForTimeout(500);
+  }
+  console.log(`  [ensureShipmentRowVisible 실패] rowKey=${rowKey} — 그룹 펼침/팝업 처리 후에도 행이 보이지 않음`);
+  return false;
+}

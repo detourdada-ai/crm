@@ -18,8 +18,8 @@ import { triggerDeliveryGroupRegeneration } from "../../src/lib/services/deliver
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { kstTodayIso } from "./lib/qa-data";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, type QaDriverFixture } from "./lib/qa-guard";
-import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, type QaDriverFixture , cleanupQaDeliveryGroups} from "./lib/qa-guard";
+import { registerAnnouncementPopupHandler, dismissAnnouncementPopupIfPresent } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -59,19 +59,56 @@ function rowLocator(page: Page, rowKey: string) {
   return page.locator(`[data-testid="shipment-row-${rowKey}"]`);
 }
 
+/**
+ * STEP12 FINAL GATE(P1-A): STEP12-8F(R12) 이후 배송그룹 카드는 기본 접힘이라
+ * 그룹에 속한 배송건 행은 "상세보기"를 눌러 펼치기 전에는 렌더되지 않는다.
+ * 이 스크립트는 그 변경 이전에 작성돼 곧바로 행을 찾다가 타임아웃났다.
+ * 행이 보이지 않으면 화면의 그룹을 모두 펼친 뒤 다시 기다린다.
+ */
+async function ensureRowVisible(page: Page, rowKey: string) {
+  const row = rowLocator(page, rowKey);
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (await row.first().isVisible().catch(() => false)) return;
+    // 공지 팝업(modal dialog)이 열려 있으면 배경이 접근성 트리에서 제외돼
+    // getByRole로는 "상세보기" 버튼이 0개로 잡힌다(실측: dialog=1, 상세보기버튼=0).
+    // 팝업을 먼저 닫고, 버튼도 role이 아닌 CSS 기준으로 찾는다.
+    await dismissAnnouncementPopupIfPresent(page);
+    const detailButtons = page.locator("button", { hasText: "상세보기" });
+    const n = await detailButtons.count();
+    for (let i = 0; i < n; i++) {
+      await detailButtons.nth(i).click({ timeout: 3000 }).catch(() => {});
+    }
+    if (await row.first().isVisible().catch(() => false)) return;
+    await page.waitForTimeout(500);
+  }
+  // 30초 안에 못 찾으면 화면 상태를 남긴다 — 조용히 지나가면 상위에서 30초 더
+  // 기다렸다가 원인 없는 타임아웃으로 끝난다.
+  const detailCount = await page.getByRole("button", { name: "상세보기" }).count();
+  const rowCount = await row.count();
+  const dialogOpen = await page.getByRole("dialog").count();
+  const bodyLen = (await page.locator("main").innerText().catch(() => "")).length;
+  console.log(
+    `  [ensureRowVisible 실패] rowKey=${rowKey} row=${rowCount} 상세보기버튼=${detailCount} dialog=${dialogOpen} main길이=${bodyLen}`
+  );
+}
+
 async function assignDriverInline(page: Page, rowKey: string, driverName: string) {
+  await ensureRowVisible(page, rowKey);
   const row = rowLocator(page, rowKey);
   await row.getByRole("button", { name: /담당기사 변경/ }).click();
   await page.getByRole("menuitem", { name: driverName, exact: false }).first().click();
 }
 
 async function setBagNumber(page: Page, rowKey: string, value: string) {
+  await ensureRowVisible(page, rowKey);
   const input = rowLocator(page, rowKey).locator('input[placeholder="가방번호"]');
   await input.fill(value);
   await input.blur();
 }
 
 async function toggleBagReturned(page: Page, rowKey: string) {
+  await ensureRowVisible(page, rowKey);
   await rowLocator(page, rowKey).locator("text=/미회수|회수완료/").click();
 }
 
@@ -488,6 +525,15 @@ async function main() {
 
     await context.close();
   } finally {
+    // STEP12 FINAL GATE(P1-A): 배송그룹 정리가 `owner_username + delivery_date`로
+    // 그 tenant의 그날 그룹을 통째로 지우고 있었다 — QA가 만들지 않은 그룹까지
+    // 지우는 방식이라 user3/user6에 기준 데이터가 생기는 순간 사고가 된다.
+    // 배송건을 지우기 **전에** 이번 실행이 실제로 물려 있던 그룹 id만 모아둔다.
+    const { data: ownGroupRows } = await admin
+      .from("order_shipments")
+      .select("delivery_group_id")
+      .in("id", allShipmentIds);
+    const ownGroupIds = (ownGroupRows ?? []).map((r) => r.delivery_group_id).filter((v): v is string => !!v);
     if (allShipmentIds.length > 0) {
       const { error } = await admin.from("order_shipments").delete().in("id", allShipmentIds);
       if (error) console.error("[cleanup] shipment 삭제 실패:", error.message);
@@ -499,7 +545,7 @@ async function main() {
     const { error: custDelErr } = await admin.from("customers").delete().eq("id", customerId);
     if (custDelErr) console.error("[cleanup] customer 삭제 실패:", custDelErr.message);
     // delivery_groups는 order_shipments 삭제로 orphan될 수 있어 QA_PREFIX 소유 데이터 기준으로 정리.
-    await admin.from("delivery_groups").delete().eq("owner_username", OWNER).eq("delivery_date", today);
+    await cleanupQaDeliveryGroups(ownGroupIds);
 
     await cleanupQaDriver(driver1);
     if (driver2) await cleanupQaDriver(driver2);

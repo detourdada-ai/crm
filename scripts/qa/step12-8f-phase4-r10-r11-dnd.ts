@@ -21,7 +21,7 @@ import { triggerDeliveryGroupRegeneration } from "../../src/lib/services/deliver
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { kstTodayIso } from "./lib/qa-data";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
-import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver } from "./lib/qa-guard";
+import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver , cleanupQaDeliveryGroups} from "./lib/qa-guard";
 import { registerAnnouncementPopupHandler, dismissAnnouncementPopupIfPresent } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
@@ -441,6 +441,15 @@ async function main() {
 
     await browserCtx.close();
   } finally {
+    // STEP12 FINAL GATE(P1-A): 배송그룹 정리가 `owner_username + delivery_date`로
+    // 그 tenant의 그날 그룹을 통째로 지우고 있었다 — QA가 만들지 않은 그룹까지
+    // 지우는 방식이라 user3/user6에 기준 데이터가 생기는 순간 사고가 된다.
+    // 배송건을 지우기 **전에** 이번 실행이 실제로 물려 있던 그룹 id만 모아둔다.
+    const { data: ownGroupRows } = await admin
+      .from("order_shipments")
+      .select("delivery_group_id")
+      .in("id", allShipmentIds);
+    const ownGroupIds = (ownGroupRows ?? []).map((r) => r.delivery_group_id).filter((v): v is string => !!v);
     if (allShipmentIds.length > 0) {
       const { error } = await admin.from("order_shipments").delete().in("id", allShipmentIds);
       if (error) console.error("[cleanup] shipment 삭제 실패:", error.message);
@@ -451,7 +460,7 @@ async function main() {
     }
     const { error: custDelErr } = await admin.from("customers").delete().eq("id", customerId);
     if (custDelErr) console.error("[cleanup] customer 삭제 실패:", custDelErr.message);
-    await admin.from("delivery_groups").delete().eq("owner_username", OWNER).eq("delivery_date", today);
+    await cleanupQaDeliveryGroups(ownGroupIds);
 
     await cleanupQaDriver(driverX);
     await cleanupQaDriver(driverY);
