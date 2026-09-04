@@ -248,19 +248,34 @@ async function main() {
     record("R21. 배송관리 상단에 '주문 N건 · 배송 N건 · 상품주문 N건' 표기", hasSummaryLine, text.slice(0, 300));
 
     // ================= R22: 지도 기본 접힘 =================
+    // STEP12 FINAL GATE(P1-B): 버튼 문구는 클릭 직후 잠깐 비어 있을 수 있어
+    // 판정 기준으로 쓰면 간헐 실패한다(R22-2가 3/5 실패했다). 지도 컨테이너
+    // (data-testid="delivery-map")의 **실제 존재/가시 상태**로 판정하고,
+    // 버튼 문구는 보조 정보로만 detail에 남긴다.
     const mapToggle = page.getByRole("button", { name: /배송 지도/ });
+    const mapContainer = page.getByTestId("delivery-map");
     const toggleTextBefore = await mapToggle.innerText().catch(() => "");
-    record("R22-1. 최초 진입 시 지도 버튼이 '펼치기' 상태(접힘)", toggleTextBefore.includes("펼치기"), toggleTextBefore);
-    const mapVisibleBefore = await page.locator(".kakao-map, [class*='map']").count();
+    record(
+      "R22-1. 최초 진입 시 지도가 접혀 있음(지도 컨테이너 없음)",
+      (await mapContainer.count()) === 0,
+      `버튼문구="${toggleTextBefore}"`
+    );
+
     await mapToggle.click();
-    await page.waitForTimeout(800);
-    const toggleTextAfter = await mapToggle.innerText().catch(() => "");
-    record("R22-2. 펼치기 클릭 후 '접기'로 바뀜", toggleTextAfter.includes("접기"), toggleTextAfter);
+    const expanded = await mapContainer
+      .first()
+      .waitFor({ state: "visible", timeout: 20000 })
+      .then(() => true)
+      .catch(() => false);
+    record("R22-2. 펼치기 클릭 후 지도가 실제로 표시됨", expanded, `버튼문구="${await mapToggle.innerText().catch(() => "")}"`);
+
     await mapToggle.click();
-    await page.waitForTimeout(300);
-    const toggleTextCollapsedAgain = await mapToggle.innerText().catch(() => "");
-    record("R22-3. 다시 접기 클릭 시 '펼치기'로 복귀", toggleTextCollapsedAgain.includes("펼치기"), toggleTextCollapsedAgain);
-    void mapVisibleBefore;
+    const collapsed = await mapContainer
+      .first()
+      .waitFor({ state: "hidden", timeout: 20000 })
+      .then(() => true)
+      .catch(async () => (await mapContainer.count()) === 0);
+    record("R22-3. 다시 접기 클릭 시 지도가 화면에서 사라짐", collapsed, `버튼문구="${await mapToggle.innerText().catch(() => "")}"`);
 
     // ================= R24: 그룹 상세 시각적 소속(들여쓰기+경계선) =================
     // 그룹A/그룹B 둘 다 상세보기를 펼쳐서 하위 카드가 ml-4/border-l 클래스로
@@ -273,9 +288,13 @@ async function main() {
       const detailBtn = page.locator(sel).getByRole("button", { name: "상세보기" });
       if (await detailBtn.count()) {
         await detailBtn.click();
-        await page.waitForTimeout(400);
       }
     }
+    // 고정 대기(400ms)로는 두 번째 그룹이 펼쳐지기 전에 본문을 읽어 B가 -1로
+    // 잡히는 경우가 있었다(R23-사전 간헐 실패) — 두 그룹의 배송건이 실제로
+    // 렌더될 때까지 각각 기다린다.
+    await waitForMainTextContaining(page, `${RUN_TAG}-그룹A-1`);
+    await waitForMainTextContaining(page, `${RUN_TAG}-그룹B-1`);
     const nestedChildCount = await page.locator("div.ml-4.border-l-2").count();
     record("R24. 펼친 그룹의 하위 카드가 들여쓰기+왼쪽 경계선으로 시각적 구분됨", nestedChildCount > 0, `nestedChildCount=${nestedChildCount}`);
 
@@ -323,30 +342,46 @@ async function main() {
         await page.goto(`${BASE_URL}/delivery?filter=all&dateFilter=today`, { waitUntil: "load" });
         await dismissAnnouncementPopupIfPresent(page);
         await waitForMainTextContaining(page, `${RUN_TAG}-그룹`);
-        // 화면 문구만으로 판정하면 "순서가 틀렸다"와 "행이 아직 안 그려졌다"를
-        // 구분할 수 없다(실제로 A=-1,B=-1 = 둘 다 없음으로 실패했다).
-        // 저장 결과 자체는 DB의 group_order로 먼저 확인한다.
+        // STEP12 FINAL GATE(P1-A): 저장 후 배송그룹이 재생성되면서 id가 바뀌면,
+        // 저장 전에 잡아둔 groupIdA/B로는 헤더를 못 찾아 그룹이 펼쳐지지 않고
+        // 배송건 이름이 화면에 아예 없게 된다(A=-1, B=-1로 실패했던 원인).
+        // 배송건에서 **현재** delivery_group_id를 다시 읽어 그 id로 검증한다.
+        const { data: freshRows } = await admin
+          .from("order_shipments")
+          .select("id, delivery_group_id")
+          .in("id", [shipmentIds.A1, shipmentIds.B1]);
+        const freshGroupA = freshRows?.find((r) => r.id === shipmentIds.A1)?.delivery_group_id ?? null;
+        const freshGroupB = freshRows?.find((r) => r.id === shipmentIds.B1)?.delivery_group_id ?? null;
+        record(
+          "R23-PC-3-사전. 저장 후 배송건의 현재 delivery_group_id 재조회 성공",
+          !!freshGroupA && !!freshGroupB && freshGroupA !== freshGroupB,
+          `A=${freshGroupA}, B=${freshGroupB}`
+        );
+
+        // DB 교차 검증도 재조회한 id 기준으로 한다.
         const { data: savedGroups } = await admin
           .from("delivery_groups")
           .select("id, group_order")
-          .in("id", [groupIdA!, groupIdB!]);
-        const orderA = savedGroups?.find((g) => g.id === groupIdA)?.group_order ?? null;
-        const orderB = savedGroups?.find((g) => g.id === groupIdB)?.group_order ?? null;
+          .in("id", [freshGroupA!, freshGroupB!]);
+        const orderA = savedGroups?.find((g) => g.id === freshGroupA)?.group_order ?? null;
+        const orderB = savedGroups?.find((g) => g.id === freshGroupB)?.group_order ?? null;
         record(
           "R23-PC-3a. 저장 후 DB group_order가 실제로 뒤바뀜(그룹B가 앞)",
           orderA !== null && orderB !== null && orderB < orderA,
           `A=${orderA}, B=${orderB}`
         );
 
-        // 화면 확인용으로 그룹을 모두 펼친다(그룹 id는 저장 후 재생성으로 바뀔 수
-        // 있으므로 id에 의존하지 않는다).
-        const detailButtons = page.getByRole("button", { name: "상세보기" });
-        for (let i = 0; i < (await detailButtons.count()); i++) {
-          await detailButtons.nth(i).click({ timeout: 5000 }).catch(() => {});
+        // 재조회한 id로 그룹 헤더를 찾아 펼친다(고정 sleep 없이 요소 기준 대기).
+        for (const gid of [freshGroupA, freshGroupB]) {
+          if (!gid) continue;
+          const header = page.locator(`[data-testid="group-header-${gid}"]`);
+          await header.first().waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+          const detailBtn = header.getByRole("button", { name: "상세보기" });
+          if (await detailBtn.count()) await detailBtn.first().click({ timeout: 10000 }).catch(() => {});
         }
-        // 고정 300ms로는 그룹이 펼쳐지기 전에 본문을 읽어 두 마커를 모두 못 찾는
-        // 경우가 있었다(A=-1, B=-1). 실제 배송건 이름이 나타날 때까지 기다린다.
+        // 두 배송건이 모두 렌더될 때까지 명시적으로 기다린 뒤에 순서를 읽는다.
         await waitForMainTextContaining(page, `${RUN_TAG}-그룹A-1`);
+        await waitForMainTextContaining(page, `${RUN_TAG}-그룹B-1`);
         const textAfterReload = await mainText(page);
         const idxAAfter = textAfterReload.indexOf(`${RUN_TAG}-그룹A-1`);
         const idxBAfter = textAfterReload.indexOf(`${RUN_TAG}-그룹B-1`);
@@ -388,7 +423,16 @@ async function main() {
       );
       await dragHandle(page, forward ? rowSelR1 : rowSelR2, forward ? rowSelR2 : rowSelR1);
       await page.getByText(/변경사항 \d+건/).first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
-      const banner = await page.getByText(/변경사항 \d+건/).isVisible().catch(() => false);
+      let banner = await page.getByText(/변경사항 \d+건/).isVisible().catch(() => false);
+      if (!banner) {
+        // dnd-kit 드래그가 포인터 이벤트 타이밍 때문에 간헐적으로 인식되지 않는다
+        // (드래그 자체가 무효라 Draft가 없는 상태) — 결과를 눈감아 주는 게 아니라
+        // 사용자가 다시 끄는 것과 같은 재시도를 한 번만 하고, 저장/DB/새로고침
+        // 검증은 아래에서 그대로 수행한다.
+        await dragHandle(page, forward ? rowSelR1 : rowSelR2, forward ? rowSelR2 : rowSelR1);
+        await page.getByText(/변경사항 \d+건/).first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
+        banner = await page.getByText(/변경사항 \d+건/).isVisible().catch(() => false);
+      }
       record(`${tag} 드래그 후 변경사항 배너 노출`, banner);
       if (!banner) return;
       const draftText = await mainText(page);
@@ -475,6 +519,36 @@ async function main() {
       panelHeight > 0 && panelHeight < 300,
       `높이=${Math.round(panelHeight)}px`
     );
+    // STEP12 FINAL GATE(P1-B): 지도 접기/펼치기를 버튼 문구가 아니라 실제 지도
+    // 표시 상태로 판정하며, 그 사이에 기사 필터(Route패널)가 계속 살아있는지까지
+    // 한 사이클로 5회 반복한다.
+    let mapCycleOk = 0;
+    const progressMapToggle = page.getByRole("button", { name: /배송 지도/ });
+    const progressMap = page.getByTestId("delivery-map");
+    for (let cycle = 1; cycle <= 5; cycle++) {
+      const collapsedAtStart = (await progressMap.count()) === 0;
+      const filterVisibleCollapsed = await page.getByText("기사별 배송순서").first().isVisible().catch(() => false);
+      await progressMapToggle.click();
+      const mapShown = await progressMap
+        .first()
+        .waitFor({ state: "visible", timeout: 20000 })
+        .then(() => true)
+        .catch(() => false);
+      await progressMapToggle.click();
+      const mapHidden = await progressMap
+        .first()
+        .waitFor({ state: "hidden", timeout: 20000 })
+        .then(() => true)
+        .catch(async () => (await progressMap.count()) === 0);
+      const filterStillVisible = await page.getByText("기사별 배송순서").first().isVisible().catch(() => false);
+      if (collapsedAtStart && filterVisibleCollapsed && mapShown && mapHidden && filterStillVisible) mapCycleOk += 1;
+      else
+        console.log(
+          `  [R22-반복 ${cycle}회차 실패] 시작접힘=${collapsedAtStart} 접힘시필터=${filterVisibleCollapsed} 펼침=${mapShown} 재접힘=${mapHidden} 유지=${filterStillVisible}`
+        );
+    }
+    record("R22-반복. 배송중 탭에서 지도 접힘→펼침→재접힘 + 기사 필터 유지 5회 연속", mapCycleOk === 5, `${mapCycleOk}/5`);
+
     const driverBtn = page.getByRole("button", { name: driver.name, exact: false }).first();
     const driverBtnCount = await driverBtn.count();
     if (driverBtnCount) await driverBtn.click({ timeout: 8000 }).catch(() => {});

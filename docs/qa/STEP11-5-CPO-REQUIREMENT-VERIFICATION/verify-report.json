@@ -1,18 +1,18 @@
 {
   "gateId": "STEP11-5-CPO-REQUIREMENT-VERIFICATION",
-  "runTag": "1788453603385",
-  "timestamp": "2026-09-03T16:43:05.402Z",
+  "runTag": "1788479501703",
+  "timestamp": "2026-09-03T23:54:38.279Z",
   "baseUrl": "https://jumunhanjang.vercel.app",
   "results": [
     {
       "step": "A-1. [오늘] 40건 중 오늘30+내일10 → 실제 생성 30건",
       "pass": true,
-      "detail": "got=30 (16597ms)"
+      "detail": "got=30 (14650ms)"
     },
     {
       "step": "A-2. [오늘] 누적70건(어제의 내일분 오늘 전환+신규30) → 실제 생성 70건, 중복 0",
       "pass": true,
-      "detail": "got=70 (17406ms)"
+      "detail": "got=70 (16752ms)"
     },
     {
       "step": "A-3. [특정 날짜] 5건 중 지정일(FUTURE5) 3건만 생성, 오늘 2건 제외",
@@ -30,9 +30,9 @@
       "detail": "지역 미확인:46,강동구:30"
     },
     {
-      "step": "B-1. 시군구(강동구) 체크 → 506ms 내 반영 + 서버 재조회(POST) 0건",
+      "step": "B-1. 시군구(강동구) 체크 → 600ms 내 반영 + 서버 재조회(POST) 0건",
       "pass": true,
-      "detail": "clickMs=506 post=0"
+      "detail": "clickMs=600 post=0"
     },
     {
       "step": "B-2. 읍면동 목록 펼치기 정상 동작",
@@ -42,12 +42,12 @@
     {
       "step": "C-1. 71건 일괄배정 — 실제 DB 반영 + 8초 이내(STEP11-4-B 목표)",
       "pass": true,
-      "detail": "assigned=71/71 bulkMs=5277"
+      "detail": "assigned=71/71 bulkMs=5586"
     },
     {
       "step": "C-2. 개별(단건) 기사배정 체감 속도 실측(참고— CPO 판정 대상, PASS/FAIL 아님)",
       "pass": true,
-      "detail": "측정값=3732,35796,20357ms 평균=19962ms"
+      "detail": "측정값=4374,35784,20632ms 평균=20263ms"
     },
     {
       "step": "D-1. 가방번호 개별 저장 확인",
@@ -62,7 +62,7 @@
     {
       "step": "D-3. 새로고침 후 기사명/가방번호/회수여부 화면 유지",
       "pass": true,
-      "detail": "hasA=true hasB=true bagValue=BAG-1788453603385 hasReturned=true"
+      "detail": "hasA=true hasB=true bagValue=BAG-1788479501703 hasReturned=true"
     },
     {
       "step": "정리-1. Import 전체삭제 후 이 실행분 전부 제거",
@@ -79,17 +79,17 @@
     {
       "requirement": "지역 필터에서 '기타'가 너무 많아 실사용 어려움 + 필터 선택 느림",
       "feature": "시군구→읍면동→건물명 3단 구조 + 클라이언트 필터링",
-      "measured": "클릭반영 506ms, POST /delivery 0건"
+      "measured": "클릭반영 600ms, POST /delivery 0건"
     },
     {
       "requirement": "기사 일괄 배정 속도",
       "feature": "STEP11-4-B RPC 기반 벌크 UPDATE",
-      "measured": "71건, 5277ms (DB반영 71/71)"
+      "measured": "71건, 5586ms (DB반영 71/71)"
     },
     {
       "requirement": "개별 기사 배정 체감 속도(사장님: '느리다')",
       "feature": "DriverAssignInline 단건 배정(assignDriverAction, N=1)",
-      "measured": "3732ms / 35796ms / 20357ms, 평균 19962ms — STEP11-4-B는 일괄배정만 수정, 단건은 이번에 처음 측정"
+      "measured": "4374ms / 35784ms / 20632ms, 평균 20263ms — STEP11-4-B는 일괄배정만 수정, 단건은 이번에 처음 측정"
     },
     {
       "requirement": "개별 배송 관리(개별 가방번호, 개별 회수여부)",
