@@ -1,63 +1,47 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { OrdersScreen } from "./product-screens";
 
 /**
- * LANDING v2(CPO 전략 보정, 2026-09-04) — v1 Hero는 "무엇을 하는 서비스인지"는
- * 전달했지만 "왜 지금 바꿔야 하는지"가 없었다. 메인 카피를 **비용 프레임**으로
- * 바꾼다: 주문이 늘어나는 건 좋은 일인데, 그때 같이 늘어나는 "관리하는 곳"이
- * 문제라는 점을 첫 문장에서 찌른다.
+ * LANDING v3(CPO 작업지시, 2026-09-05) — Hero의 주인공을 카피에서 **제품**으로
+ * 옮긴다. v2 Hero는 칩·버튼 중심이라 브랜딩 페이지처럼 읽혔다.
  *
- * 채널 표기는 자동 연동을 암시하지 않도록 "전화·메시지로 받은 주문까지"로
- * 쓴다(카카오톡 자동 연동은 없다 — FAQ에서도 명시).
+ * 데스크톱은 좌 카피 / 우 실제 앱 화면 2단이고, 화면은 오른쪽 가장자리에서
+ * 살짝 잘리게 둔다 — 액자에 담긴 예시가 아니라 "계속 이어지는 실제 화면"으로
+ * 보이게 하려는 의도다. 모바일에서는 축소판 대신 모바일 제품 뷰가 나온다.
  */
-const FLOW_STEPS = ["주문", "고객", "배송", "기사"];
-
 export function HeroSection() {
   return (
-    <section id="product" className="relative overflow-hidden bg-gradient-to-b from-primary-soft/70 via-primary-soft/20 to-background">
-      <div className="mx-auto max-w-4xl px-4 pt-14 pb-16 text-center sm:px-6 sm:pt-28 sm:pb-24">
-        <p className="text-sm font-semibold text-primary sm:text-base">주문이 여러 곳에서 들어오는 사업자를 위한 운영 도구</p>
-
-        <h1 className="mt-4 text-[2.5rem] leading-[1.15] font-bold tracking-tight text-text-strong sm:text-6xl md:text-7xl">
-          주문이 늘어도,
-          <br />
-          <span className="text-primary">관리하는 곳까지</span>
-          <br className="sm:hidden" />
-          <span className="text-primary"> 늘릴 필요는 없습니다.</span>
-        </h1>
-
-        <p className="mx-auto mt-7 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-          스마트스토어, 엑셀, 전화·메시지로 받은 주문까지.
-          <br />
-          어디서 받았든 한곳에 모아 고객과 연결하고 배송까지 이어서 처리하세요.
-        </p>
-
-        {/* 우리 제품의 핵심은 기능이 아니라 이 연결 구조 자체다. */}
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-2">
-          {FLOW_STEPS.map((step, i) => (
-            <span key={step} className="flex items-center gap-1.5">
-              <span className="rounded-full border border-primary/25 bg-surface/80 px-4 py-1.5 text-sm font-semibold text-text-strong sm:px-5 sm:text-base">
-                {step}
-              </span>
-              {i < FLOW_STEPS.length - 1 ? <ArrowRight className="size-4 shrink-0 text-primary/60" /> : null}
-            </span>
-          ))}
+    <section id="product" className="overflow-hidden border-b border-border bg-gradient-to-b from-primary-soft/40 to-background">
+      <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 pt-12 pb-14 sm:px-6 sm:pt-16 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:gap-12 lg:pt-20 lg:pb-20">
+        <div>
+          <p className="text-sm font-semibold text-primary">여러 곳의 주문을 하나의 운영 흐름으로</p>
+          <h1 className="mt-3 text-[2.25rem] leading-[1.12] font-bold tracking-tight text-text-strong sm:text-[2.75rem] xl:text-[3.25rem]">
+            주문은 어디서 받든,
+            <br />
+            <span className="text-primary">운영은 한곳에서</span> 끝내세요.
+          </h1>
+          <p className="mt-5 max-w-md text-base leading-relaxed text-muted-foreground sm:text-lg">
+            스마트스토어 엑셀, 전화·메시지로 받은 주문까지 한곳에 모아 고객을 확인하고, 배송을 정리해 기사에게 그대로 전달합니다.
+          </p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Button asChild size="lg" className="w-full gap-2 sm:w-auto">
+              <Link href="/login">
+                무료로 시작하기
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="outline" className="w-full sm:w-auto">
+              <a href="#flow">어떻게 운영되는지 보기</a>
+            </Button>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">Google 계정으로 시작합니다 · 베타 기간 동안 무료</p>
         </div>
 
-        <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Button asChild size="lg" className="w-full gap-2 sm:w-auto">
-            <Link href="/login">
-              무료로 시작하기
-              <ArrowRight className="size-4" />
-            </Link>
-          </Button>
-          <Button asChild size="lg" variant="outline" className="w-full sm:w-auto">
-            <a href="#flow">어떻게 달라지는지 보기</a>
-          </Button>
+        <div className="lg:-mr-24 xl:-mr-32">
+          <OrdersScreen />
         </div>
-
-        <p className="mt-5 text-xs text-muted-foreground">Google 계정으로 시작합니다 · 현재 베타 기간 동안 무료로 사용하실 수 있습니다</p>
       </div>
     </section>
   );
