@@ -12,8 +12,10 @@
  *   그래프/성과 수치는 만들지 않는다.
  * - 네비게이션 라벨은 `src/lib/constants/nav.ts`, 주문 컬럼은
  *   `orders/order-table.tsx`, 배송 문구는 `delivery-board.tsx`의 실제 값이다.
- * - 예시 데이터는 반찬가게 맥락으로 현실화하되, 전화번호와 상세 주소처럼
- *   개인정보로 보이는 값은 만들지 않는다(구/동 단위까지만).
+ * - 예시 데이터는 반찬가게 맥락으로 현실화하되, 개인정보로 보이는 값은 만들지
+ *   않는다 — **사람 이름은 예외 없이 `성○이름`으로 마스킹**하고(CPO 지시,
+ *   2026-09-05), 전화번호와 상세 주소는 만들지 않는다(구 단위까지만).
+ *   기사 표기(홍기사/이기사)는 이름이 아니라 호칭이라 그대로 둔다.
  *
  * 모바일은 데스크톱의 축소판이 아니다 — 사이드바를 없애고 컬럼과 행 수를 줄인
  * "모바일 제품 뷰"로 바꾼다(가로 스크롤 없음).
@@ -110,18 +112,18 @@ const TONE: Record<Tone, string> = {
 };
 
 const ORDERS: { no: string; buyer: string; item: string; date: string; qty: number; status: string; tone: Tone; mobile?: boolean }[] = [
-  { no: "20260905-0042", buyer: "김영희", item: "수제 반찬 5종 세트", date: "09.05(금)", qty: 1, status: "배송대기", tone: "wait", mobile: true },
-  { no: "20260905-0041", buyer: "박지은", item: "제육볶음 500g 외 1건", date: "09.05(금)", qty: 2, status: "배송대기", tone: "wait", mobile: true },
-  { no: "20260905-0040", buyer: "이수진", item: "주간 반찬 정기배송", date: "09.05(금)", qty: 1, status: "배송중", tone: "ing", mobile: true },
-  { no: "20260905-0039", buyer: "정민호", item: "소불고기 500g", date: "09.05(금)", qty: 1, status: "배송중", tone: "ing", mobile: true },
-  { no: "20260905-0038", buyer: "한서연", item: "깻잎장아찌 외 2건", date: "09.05(금)", qty: 3, status: "완료", tone: "done", mobile: true },
-  { no: "20260905-0037", buyer: "김영희", item: "제육볶음 500g", date: "09.05(금)", qty: 1, status: "완료", tone: "done" },
-  { no: "20260904-0036", buyer: "오세라", item: "수제 반찬 5종 세트", date: "09.04(목)", qty: 2, status: "완료", tone: "done" },
-  { no: "20260904-0035", buyer: "박지은", item: "주간 반찬 정기배송", date: "09.04(목)", qty: 1, status: "완료", tone: "done" },
-  { no: "20260904-0034", buyer: "장현우", item: "소불고기 500g 외 1건", date: "09.04(목)", qty: 2, status: "완료", tone: "done" },
-  { no: "20260904-0033", buyer: "이수진", item: "깻잎장아찌", date: "09.04(목)", qty: 1, status: "완료", tone: "done" },
-  { no: "20260904-0032", buyer: "윤가영", item: "수제 반찬 5종 세트", date: "09.04(목)", qty: 1, status: "완료", tone: "done" },
-  { no: "20260903-0031", buyer: "정민호", item: "주간 반찬 정기배송", date: "09.03(수)", qty: 1, status: "완료", tone: "done" },
+  { no: "20260905-0042", buyer: "김○희", item: "수제 반찬 5종 세트", date: "09.05(금)", qty: 1, status: "배송대기", tone: "wait", mobile: true },
+  { no: "20260905-0041", buyer: "박○은", item: "제육볶음 500g 외 1건", date: "09.05(금)", qty: 2, status: "배송대기", tone: "wait", mobile: true },
+  { no: "20260905-0040", buyer: "이○진", item: "주간 반찬 정기배송", date: "09.05(금)", qty: 1, status: "배송중", tone: "ing", mobile: true },
+  { no: "20260905-0039", buyer: "정○호", item: "소불고기 500g", date: "09.05(금)", qty: 1, status: "배송중", tone: "ing", mobile: true },
+  { no: "20260905-0038", buyer: "한○연", item: "깻잎장아찌 외 2건", date: "09.05(금)", qty: 3, status: "완료", tone: "done", mobile: true },
+  { no: "20260905-0037", buyer: "김○희", item: "제육볶음 500g", date: "09.05(금)", qty: 1, status: "완료", tone: "done" },
+  { no: "20260904-0036", buyer: "오○라", item: "수제 반찬 5종 세트", date: "09.04(목)", qty: 2, status: "완료", tone: "done" },
+  { no: "20260904-0035", buyer: "박○은", item: "주간 반찬 정기배송", date: "09.04(목)", qty: 1, status: "완료", tone: "done" },
+  { no: "20260904-0034", buyer: "장○우", item: "소불고기 500g 외 1건", date: "09.04(목)", qty: 2, status: "완료", tone: "done" },
+  { no: "20260904-0033", buyer: "이○진", item: "깻잎장아찌", date: "09.04(목)", qty: 1, status: "완료", tone: "done" },
+  { no: "20260904-0032", buyer: "윤○영", item: "수제 반찬 5종 세트", date: "09.04(목)", qty: 1, status: "완료", tone: "done" },
+  { no: "20260903-0031", buyer: "정○호", item: "주간 반찬 정기배송", date: "09.03(수)", qty: 1, status: "완료", tone: "done" },
 ];
 
 /** 실제 화면 — 주문관리. 컬럼 구성은 orders/order-table.tsx와 같다. */
@@ -163,11 +165,11 @@ export function OrdersScreen({ className }: { className?: string }) {
 }
 
 const CUSTOMER_LIST = [
-  { name: "김영희", region: "성남시 분당구", orders: 12, last: "09.05" },
-  { name: "박지은", region: "수원시 영통구", orders: 7, last: "09.05" },
-  { name: "이수진", region: "서울 강동구", orders: 5, last: "09.05" },
-  { name: "정민호", region: "용인시 수지구", orders: 4, last: "09.05" },
-  { name: "한서연", region: "성남시 수정구", orders: 2, last: "09.05" },
+  { name: "김○희", region: "성남시 분당구", orders: 12, last: "09.05" },
+  { name: "박○은", region: "수원시 영통구", orders: 7, last: "09.05" },
+  { name: "이○진", region: "서울 강동구", orders: 5, last: "09.05" },
+  { name: "정○호", region: "용인시 수지구", orders: 4, last: "09.05" },
+  { name: "한○연", region: "성남시 수정구", orders: 2, last: "09.05" },
 ];
 
 const CUSTOMER_HISTORY = [
@@ -206,7 +208,7 @@ export function CustomersScreen({ className }: { className?: string }) {
 
         <div className="rounded-lg border border-border p-2.5">
           <div className="flex items-baseline justify-between">
-            <p className="text-sm font-bold text-text-strong">김영희</p>
+            <p className="text-sm font-bold text-text-strong">김○희</p>
             <span className="text-[10px] text-muted-foreground">성남시 분당구</span>
           </div>
           <div className="mt-2 grid grid-cols-3 gap-1.5 text-center">
@@ -245,17 +247,17 @@ const DELIVERY_GROUPS = [
     group: "성남시 분당구 · 3건",
     driver: "홍기사",
     rows: [
-      { name: "김영희", item: "수제 반찬 5종 세트", bag: "12" },
-      { name: "정민호", item: "소불고기 500g", bag: "12" },
-      { name: "윤가영", item: "수제 반찬 5종 세트", bag: "13" },
+      { name: "김○희", item: "수제 반찬 5종 세트", bag: "12" },
+      { name: "정○호", item: "소불고기 500g", bag: "12" },
+      { name: "윤○영", item: "수제 반찬 5종 세트", bag: "13" },
     ],
   },
   {
     group: "수원시 영통구 · 2건",
     driver: "이기사",
     rows: [
-      { name: "박지은", item: "제육볶음 500g 외 1건", bag: "21" },
-      { name: "오세라", item: "주간 반찬 정기배송", bag: "21" },
+      { name: "박○은", item: "제육볶음 500g 외 1건", bag: "21" },
+      { name: "오○라", item: "주간 반찬 정기배송", bag: "21" },
     ],
   },
 ];
@@ -310,11 +312,11 @@ export function DriverPhone({ className }: { className?: string }) {
       <div className="space-y-1.5 p-2">
         <div className="rounded-md bg-primary-soft/50 px-2 py-1.5">
           <p className="text-[10px] text-primary">1 / 3 · 성남시 분당구</p>
-          <p className="text-[11px] font-bold text-text-strong">김영희 · 가방 12</p>
+          <p className="text-[11px] font-bold text-text-strong">김○희 · 가방 12</p>
         </div>
         {[
-          { n: "2", name: "정민호", bag: "12" },
-          { n: "3", name: "윤가영", bag: "13" },
+          { n: "2", name: "정○호", bag: "12" },
+          { n: "3", name: "윤○영", bag: "13" },
         ].map((s) => (
           <div key={s.n} className="rounded-md border border-border px-2 py-1.5">
             <p className="text-[10px] text-muted-foreground">{s.n} / 3 · 성남시 분당구</p>
