@@ -6,19 +6,28 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { logoutAction } from "@/actions/auth";
 import type { SessionPayload } from "@/lib/auth/session";
 
+/**
+ * LANDING v4(CPO 확정, 2026-09-05) — 상단 메뉴를 **랜딩 목차형에서 서비스
+ * 구조형으로** 바꾼다. "어떻게 관리되나요 / 실제 화면"은 페이지 안의 목차라
+ * 소개자료처럼 읽혔다. 메뉴만 보고도 "주문·고객·배송을 관리하는 SaaS"라는
+ * 것이 전달돼야 한다.
+ */
 const NAV_LINKS = [
-  { href: "#flow", label: "어떻게 관리되나요" },
-  { href: "#screens", label: "실제 화면" },
+  { href: "#orders", label: "주문 관리" },
+  { href: "#customers", label: "고객 관리" },
+  { href: "#delivery", label: "배송 관리" },
+  { href: "#pricing", label: "요금제" },
+  { href: "#faq", label: "FAQ" },
 ];
 
 export function SiteHeader({ session }: { session: SessionPayload | null }) {
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-surface/90 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:px-6">
         <Link href="/">
           <OrdifyLogo variant="full" className="h-8" />
         </Link>
-        <nav className="hidden flex-1 items-center gap-6 md:flex">
+        <nav className="hidden flex-1 items-center gap-5 lg:gap-6 md:flex">
           {NAV_LINKS.map((link) => (
             <a key={link.href} href={link.href} className="text-sm font-medium text-muted-foreground hover:text-foreground">
               {link.label}

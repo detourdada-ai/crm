@@ -6,7 +6,7 @@ const CRITERIA = ["자체 배송을 운영", "배송기사를 직접 관리", "�
 
 export function TargetAudience() {
   return (
-    <section className="border-y border-border bg-secondary/25 py-14 sm:py-20">
+    <section className="border-y border-border bg-secondary/25 py-12 sm:py-16">
       <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
         <h2 className="text-xl leading-snug font-bold text-text-strong sm:text-3xl">이런 사업자에게 맞습니다</h2>
         <div className="mt-6 flex flex-wrap justify-center gap-2">

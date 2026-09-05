@@ -90,7 +90,7 @@ export function FaqSection() {
   const hiddenCount = FAQS.length - INITIAL_VISIBLE_COUNT;
 
   return (
-    <section className="bg-secondary/30 py-20">
+    <section id="faq" className="bg-secondary/30 py-14 sm:py-20">
       <div className="mx-auto max-w-2xl px-4 sm:px-6">
         <h2 className="text-center text-2xl font-bold text-text-strong sm:text-3xl">자주 묻는 질문</h2>
         <div className="mt-10 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">

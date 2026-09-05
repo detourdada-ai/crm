@@ -5,6 +5,7 @@ import { ProblemSolutionSection } from "@/components/landing/problem-solution-se
 import { ProductStorySection } from "@/components/landing/product-story-section";
 import { WorkChangeSection } from "@/components/landing/work-change-section";
 import { TargetAudience } from "@/components/landing/target-audience";
+import { PricingSection } from "@/components/landing/pricing-section";
 import { FinalCtaSection } from "@/components/landing/final-cta-section";
 import { FaqSection } from "@/components/landing/faq-section";
 import { SiteFooter } from "@/components/landing/site-footer";
@@ -17,7 +18,10 @@ import { SITE_URL, SITE_NAME, SITE_TITLE, SITE_DESCRIPTION } from "@/lib/constan
 // 바꾼다:
 //   Hero(카피 좌 / 실제 주문관리 화면 우) → 문제(채널이 흩어지는 시각화)
 //   → Product Story(주문→고객→배송·기사, 화면이 스토리를 진행) → 업무 변화
-//   (흩어진 단계 vs 하나로 이어진 흐름) → 타깃 → FAQ → CTA
+//   (흩어진 단계 vs 하나로 이어진 흐름) → 타깃 → 요금제 → FAQ → CTA
+// v4(2026-09-05): 상단 메뉴를 서비스 구조형(주문/고객/배송/요금제/FAQ)으로
+// 바꾸면서 각 앵커가 가리킬 섹션 id를 Product Story 단계에 부여했고, "무료인가
+// 유료인가"에 답하는 요금제 섹션을 추가했다(가격은 만들지 않는다 — 베타 사실만).
 // 제품 흐름 설명과 화면 소개를 따로 두지 않는다 — 같은 화면을 두 번 보여주면
 // 다시 카드 나열이 된다.
 // 실제 고객 후기가 아직 없으므로 허위 후기 섹션은 넣지 않는다.
@@ -83,6 +87,7 @@ export default async function LandingPage() {
         <ProductStorySection />
         <WorkChangeSection />
         <TargetAudience />
+        <PricingSection />
         <FaqSection />
         <FinalCtaSection />
       </main>

@@ -18,7 +18,7 @@ const AFTER = ["주문 접수", "고객과 연결", "배송 단위로 정리", "
 
 export function WorkChangeSection() {
   return (
-    <section className="bg-background py-16 sm:py-24">
+    <section className="bg-background py-14 sm:py-24">
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
         <h2 className="max-w-2xl text-[1.75rem] leading-snug font-bold text-text-strong sm:text-[2.75rem]">
           같은 주문을 처리하는 데

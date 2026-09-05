@@ -9,7 +9,7 @@ const CHANNELS = ["스마트스토어 주문", "전화 주문", "메시지 주�
 
 export function ProblemSolutionSection() {
   return (
-    <section id="service" className="bg-background py-16 sm:py-24">
+    <section id="service" className="bg-background py-14 sm:py-24">
       <div className="mx-auto max-w-4xl px-4 sm:px-6">
         <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
           {CHANNELS.map((channel) => (
