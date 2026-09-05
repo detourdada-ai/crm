@@ -1,5 +1,16 @@
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, ShoppingCart, Truck, Wallet, Users, BarChart3, Settings, HelpCircle, Megaphone } from "lucide-react";
+import {
+  LayoutDashboard,
+  ShoppingCart,
+  Truck,
+  Wallet,
+  Users,
+  BarChart3,
+  Settings,
+  HelpCircle,
+  Megaphone,
+  MessageSquare,
+} from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -36,7 +47,16 @@ export const NAV_ENTRIES: NavEntry[] = [
     ],
   },
   { section: "분석", items: [{ href: "/stats", label: "통계", icon: BarChart3 }] },
-  { section: "관리", items: [{ href: "/settings", label: "설정", icon: Settings }] },
+  {
+    // STEP15-B: 메시지 관리는 아직 준비 중이라 admin에게만 보인다. adminOnly
+    // 플래그와 필터링은 nav-links.tsx에 이미 있었고(사용처가 0개였다), 여기서
+    // 처음 쓴다 — 일반 사장님 네비게이션은 전혀 바뀌지 않는다.
+    section: "관리",
+    items: [
+      { href: "/settings", label: "설정", icon: Settings },
+      { href: "/messages", label: "메시지 관리", icon: MessageSquare, adminOnly: true },
+    ],
+  },
 ];
 
 export const NAV_HELP_ENTRY: NavSection = {

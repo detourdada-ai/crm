@@ -927,6 +927,60 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["app_accounts"]["Insert"]>;
         Relationships: [];
       };
+      message_log: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          owner_username: string;
+          event_type: "ORDER_RECEIVED" | "DRIVER_ASSIGNED" | "DELIVERY_COMPLETED";
+          order_id: string | null;
+          shipment_id: string | null;
+          recipient_name: string | null;
+          recipient_phone_masked: string | null;
+          provider: string;
+          message_type: "alimtalk" | "sms" | "lms";
+          template_key: string | null;
+          status: "pending" | "processing" | "sent" | "failed" | "skipped";
+          skip_reason: string | null;
+          failure_reason: string | null;
+          provider_message_id: string | null;
+          provider_cost: number | null;
+          platform_fee: number | null;
+          tenant_charge: number | null;
+          balance_before: number | null;
+          balance_after: number | null;
+          created_at: string;
+          sent_at: string | null;
+          failed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          owner_username: string;
+          event_type: "ORDER_RECEIVED" | "DRIVER_ASSIGNED" | "DELIVERY_COMPLETED";
+          order_id?: string | null;
+          shipment_id?: string | null;
+          recipient_name?: string | null;
+          recipient_phone_masked?: string | null;
+          provider?: string;
+          message_type?: "alimtalk" | "sms" | "lms";
+          template_key?: string | null;
+          status: "pending" | "processing" | "sent" | "failed" | "skipped";
+          skip_reason?: string | null;
+          failure_reason?: string | null;
+          provider_message_id?: string | null;
+          provider_cost?: number | null;
+          platform_fee?: number | null;
+          tenant_charge?: number | null;
+          balance_before?: number | null;
+          balance_after?: number | null;
+          created_at?: string;
+          sent_at?: string | null;
+          failed_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["message_log"]["Insert"]>;
+        Relationships: [];
+      };
       app_settings: {
         Row: {
           key: string;
