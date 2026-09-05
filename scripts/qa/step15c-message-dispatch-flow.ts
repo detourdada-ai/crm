@@ -79,7 +79,11 @@ async function run() {
     settingsSnapshot[owner] = data?.value ?? null;
   }
 
-  const created: { orderIds: string[]; customerIds: string[] } = { orderIds: [], customerIds: [] };
+  const created: { orderIds: string[]; customerIds: string[]; shipmentIds: string[] } = {
+    orderIds: [],
+    customerIds: [],
+    shipmentIds: [],
+  };
 
   async function seedOrder(owner: string, opts: { recipientPhone: string | null; buyerPhone: string | null }): Promise<string> {
     const { data: tenant } = await admin.from("tenants").select("id").eq("slug", owner).maybeSingle();
@@ -112,6 +116,23 @@ async function run() {
     created.orderIds.push(orderId);
     created.customerIds.push(customerId);
     return orderId;
+  }
+
+  /** message_log.shipment_id에는 FK가 있으므로 중복 테스트에도 실제 배송건이 필요하다. */
+  async function seedShipment(owner: string, orderId: string): Promise<string> {
+    const { data: tenant } = await admin.from("tenants").select("id").eq("slug", owner).maybeSingle();
+    const shipmentId = randomUUID();
+    await admin.from("order_shipments").insert({
+      id: shipmentId,
+      order_id: orderId,
+      tenant_id: tenant!.id,
+      owner_username: owner,
+      delivery_date: kstToday(),
+      delivery_status: "배송대기" as const,
+      fulfillment_method: "delivery" as const,
+    });
+    created.shipmentIds.push(shipmentId);
+    return shipmentId;
   }
 
   try {
@@ -204,6 +225,71 @@ async function run() {
     );
     await saveTenantMessageSettings(OWNER, cur);
 
+    // ================= 중복 발송 방지 (STEP15-C 후속) =================
+    // Case B — 같은 배송건·같은 이벤트 연속 3회
+    const orderDup = await seedOrder(OWNER, { recipientPhone: "010-1234-5678", buyerPhone: null });
+    const dedupeShipment = await seedShipment(OWNER, orderDup);
+    let sendCalls = 0;
+    class CountingProvider extends FakeProvider {
+      async send() {
+        sendCalls += 1;
+        return super.send();
+      }
+    }
+    const counting = new CountingProvider("fake-count", "ok");
+    for (let i = 0; i < 3; i++) {
+      await dispatchMessageEventWith(counting, { eventType: "DELIVERY_COMPLETED", orderId: orderDup, shipmentId: dedupeShipment });
+    }
+    const dupLogs = await logsFor(orderDup);
+    record("CaseB 연속 3회 → message_log 1건", dupLogs.length === 1, `${dupLogs.length}건`);
+    record("CaseB 연속 3회 → Provider 호출 1회", sendCalls === 1, `${sendCalls}회`);
+
+    // Case D — 다른 이벤트는 각각 1건씩 정상 생성
+    await dispatchMessageEventWith(counting, { eventType: "DRIVER_ASSIGNED", orderId: orderDup, shipmentId: dedupeShipment });
+    const dLogs = await logsFor(orderDup);
+    record(
+      "CaseD 다른 이벤트는 별개로 1건씩",
+      dLogs.length === 2 && dLogs.filter((l) => l.event_type === "DRIVER_ASSIGNED").length === 1,
+      JSON.stringify(dLogs.map((l) => l.event_type))
+    );
+
+    // Case C — 거의 동시에 두 번(Promise.all)
+    const orderRace = await seedOrder(OWNER, { recipientPhone: "010-1234-5678", buyerPhone: null });
+    const raceShipment = await seedShipment(OWNER, orderRace);
+    let raceCalls = 0;
+    class RaceProvider extends FakeProvider {
+      async send() {
+        raceCalls += 1;
+        await new Promise((r) => setTimeout(r, 50));
+        return super.send();
+      }
+    }
+    const racing = new RaceProvider("fake-race", "ok");
+    await Promise.all([
+      dispatchMessageEventWith(racing, { eventType: "DELIVERY_COMPLETED", orderId: orderRace, shipmentId: raceShipment }),
+      dispatchMessageEventWith(racing, { eventType: "DELIVERY_COMPLETED", orderId: orderRace, shipmentId: raceShipment }),
+    ]);
+    const raceLogs = await logsFor(orderRace);
+    record("CaseC 동시 호출 → message_log 1건", raceLogs.length === 1, `${raceLogs.length}건`);
+    record("CaseC 동시 호출 → Provider 호출 1회", raceCalls === 1, `${raceCalls}회`);
+
+    // ORDER_RECEIVED는 배송건이 없으므로 주문 단위로 중복 판정된다.
+    const orderReceivedDup = await seedOrder(OWNER, { recipientPhone: "010-1234-5678", buyerPhone: null });
+    await dispatchMessageEventWith(okProvider, { eventType: "ORDER_RECEIVED", orderId: orderReceivedDup, shipmentId: null });
+    await dispatchMessageEventWith(okProvider, { eventType: "ORDER_RECEIVED", orderId: orderReceivedDup, shipmentId: null });
+    record("ORDER_RECEIVED 중복 방지(주문 단위)", (await logsFor(orderReceivedDup)).length === 1);
+
+    // failed는 재시도 정책이 정해지기 전이라 중복 판정 대상이 아니다(자동 재발송을 만들지 않는다).
+    const orderFailRetry = await seedOrder(OWNER, { recipientPhone: "010-1234-5678", buyerPhone: null });
+    const failShipment = await seedShipment(OWNER, orderFailRetry);
+    await dispatchMessageEventWith(new FakeProvider("fake-fail2", "fail"), {
+      eventType: "DELIVERY_COMPLETED",
+      orderId: orderFailRetry,
+      shipmentId: failShipment,
+    });
+    const failFirst = await logsFor(orderFailRetry);
+    record("failed는 pending/sent가 아니므로 자동 재발송 정책을 만들지 않았다", failFirst.length === 1 && failFirst[0].status === "failed");
+
     // ---- Case 5: 테넌트 격리 (user3 ON / user6 OFF 동시) ----
     const orderB = await seedOrder(OWNER_B, { recipientPhone: "010-7777-8888", buyerPhone: null });
     await dispatchMessageEventWith(okProvider, { eventType: "DELIVERY_COMPLETED", orderId: orderB, shipmentId: null });
@@ -219,6 +305,7 @@ async function run() {
     // message_log → orders → customers 순으로 이번 실행에서 만든 id만 정리한다.
     if (created.orderIds.length > 0) {
       await admin.from("message_log").delete().in("order_id", created.orderIds);
+      if (created.shipmentIds.length > 0) await admin.from("order_shipments").delete().in("id", created.shipmentIds);
       await admin.from("orders").delete().in("id", created.orderIds);
     }
     if (created.customerIds.length > 0) await admin.from("customers").delete().in("id", created.customerIds);

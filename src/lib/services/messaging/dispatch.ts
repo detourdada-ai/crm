@@ -6,6 +6,47 @@ import { messageLogRepository } from "./message-log.repository";
 import type { MessageEventType, MessageProvider, MessageRecipient } from "./types";
 
 /**
+ * STEP15-C 후속 — 같은 프로세스 안에서 동시에 들어온 같은 이벤트를 직렬화한다.
+ * DB 레벨 unique 제약 없이 "조회 → 없으면 INSERT" 사이의 창을 좁히기 위한
+ * 최소 장치다. 프로세스가 여러 개면 이 잠금은 인스턴스 간에는 걸리지 않으므로,
+ * 완전한 차단은 부분 unique 인덱스가 필요하다(0054, CPO 승인 전이라 미적용).
+ */
+const inFlight = new Map<string, Promise<void>>();
+
+function dedupeKey(eventType: MessageEventType, orderId: string, shipmentId: string | null): string {
+  return `${eventType}:${shipmentId ?? `order:${orderId}`}`;
+}
+
+/**
+ * 이미 같은 배송건·같은 이벤트로 발송을 시도했는지 확인한다.
+ * `pending`/`sent`만 본다 — `failed` 재시도 정책은 실제 Provider 운영 정책과
+ * 함께 정할 사항이라 여기서 자동 재발송을 만들지 않는다(작업지시 §3).
+ * `skipped`는 발송 시도가 아니므로 중복 판정 대상이 아니다.
+ */
+async function alreadyAttempted(params: {
+  eventType: MessageEventType;
+  orderId: string;
+  shipmentId: string | null;
+}): Promise<boolean> {
+  try {
+    const admin = getSupabaseAdmin();
+    let q = admin
+      .from("message_log")
+      .select("id")
+      .eq("event_type", params.eventType)
+      .in("status", ["pending", "sent"])
+      .limit(1);
+    // ORDER_RECEIVED처럼 배송건이 없는 이벤트는 주문 단위로 판정한다.
+    q = params.shipmentId ? q.eq("shipment_id", params.shipmentId) : q.eq("order_id", params.orderId).is("shipment_id", null);
+    const { data } = await q.maybeSingle();
+    return !!data;
+  } catch {
+    // 조회 자체가 실패하면 중복 판정을 포기한다 — 여기서 던지면 업무가 멈춘다.
+    return false;
+  }
+}
+
+/**
  * STEP15-C — 메시지 발송 엔진.
  *
  *   제품 이벤트 → 설정 확인 → 수신자 결정 → 발송 가능 판단
@@ -32,6 +73,27 @@ export async function dispatchMessageEvent(params: {
  * 제품 코드는 위의 `dispatchMessageEvent`만 쓴다.
  */
 export async function dispatchMessageEventWith(
+  provider: MessageProvider,
+  params: { eventType: MessageEventType; orderId: string; shipmentId: string | null }
+): Promise<void> {
+  // 공급사가 없으면 잠금도 잡지 않는다(꺼져 있을 때 부하 0).
+  if (!provider.isConfigured()) return;
+  const key = dedupeKey(params.eventType, params.orderId, params.shipmentId);
+  const running = inFlight.get(key);
+  if (running) {
+    // 같은 이벤트가 이미 처리 중이면 그것이 끝난 뒤 중복 판정을 받게 한다.
+    await running.catch(() => {});
+  }
+  const task = runDispatch(provider, params);
+  inFlight.set(key, task);
+  try {
+    await task;
+  } finally {
+    if (inFlight.get(key) === task) inFlight.delete(key);
+  }
+}
+
+async function runDispatch(
   provider: MessageProvider,
   params: { eventType: MessageEventType; orderId: string; shipmentId: string | null }
 ): Promise<void> {
@@ -75,6 +137,10 @@ export async function dispatchMessageEventWith(
       await messageLogRepository.record({ ...base, recipientPhone: null, status: "skipped", skipReason: "NO_RECIPIENT" });
       return;
     }
+
+    // 같은 배송건·같은 이벤트로 이미 시도했으면 여기서 끝낸다 — 기사앱
+    // 배송완료 연타나 같은 기사 재배정으로 고객에게 두 번 가지 않게 한다.
+    if (await alreadyAttempted(params)) return;
 
     // 발송 대상이 확정된 시점에 pending으로 먼저 남긴다 — Provider 호출 중
     // 프로세스가 죽어도 "보내려 했다"는 사실이 남는다.
