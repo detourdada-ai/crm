@@ -31,12 +31,12 @@ export interface MessageLogEntry {
 export const messageLogRepository = {
   /**
    * 기록 실패가 업무 실패로 번지면 안 되므로 **절대 throw하지 않는다.**
-   * (migration이 아직 적용되지 않은 환경에서도 안전하게 동작해야 한다.)
+   * 성공하면 로그 id를 돌려준다 — Provider 호출 뒤 결과를 이 행에 갱신한다.
    */
-  async record(entry: MessageLogEntry): Promise<void> {
+  async record(entry: MessageLogEntry): Promise<string | null> {
     try {
       const now = new Date().toISOString();
-      await getSupabaseAdmin()
+      const { data } = await getSupabaseAdmin()
         .from("message_log")
         .insert({
           tenant_id: entry.tenantId,
@@ -56,9 +56,44 @@ export const messageLogRepository = {
           provider_cost: entry.providerCost ?? null,
           sent_at: entry.status === "sent" ? now : null,
           failed_at: entry.status === "failed" ? now : null,
-        });
+        })
+        .select("id")
+        .maybeSingle();
+      return data?.id ?? null;
     } catch {
       // 기록 자체가 실패해도 조용히 넘어간다 — 여기서 던지면 배송이 멈춘다.
+      return null;
+    }
+  },
+
+  /**
+   * Provider 호출 결과를 pending 행에 반영한다. 여기서도 throw하지 않는다.
+   * 비용은 Provider가 알려준 값만 넣는다 — 가짜 단가를 만들어 채우지 않는다.
+   */
+  async markResult(
+    id: string,
+    result: {
+      status: "sent" | "failed";
+      providerMessageId?: string | null;
+      failureReason?: string | null;
+      providerCost?: number | null;
+    }
+  ): Promise<void> {
+    try {
+      const now = new Date().toISOString();
+      await getSupabaseAdmin()
+        .from("message_log")
+        .update({
+          status: result.status,
+          provider_message_id: result.providerMessageId ?? null,
+          failure_reason: result.failureReason ?? null,
+          provider_cost: result.providerCost ?? null,
+          sent_at: result.status === "sent" ? now : null,
+          failed_at: result.status === "failed" ? now : null,
+        })
+        .eq("id", id);
+    } catch {
+      // 무시 — 업무 흐름을 막지 않는다.
     }
   },
 };

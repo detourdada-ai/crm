@@ -22,3 +22,12 @@ export async function notifyCustomerDeliveryStarted(orderId: string, shipmentId:
 export async function notifyCustomerDeliveryCompleted(orderId: string, shipmentId: string): Promise<void> {
   await dispatchMessageEvent({ eventType: "DELIVERY_COMPLETED", orderId, shipmentId });
 }
+
+/**
+ * STEP15-C: 주문 생성 이벤트. 호출부는 `ordersRepository.createMany()` 한 곳뿐이다
+ * — 수동 주문(actions/orders.ts)과 엑셀 Import(import.service.ts)가 모두 이 함수를
+ * 지나므로, UI 버튼마다 따로 붙이지 않아도 전 경로가 커버된다.
+ */
+export async function notifyCustomerOrderReceived(orderId: string): Promise<void> {
+  await dispatchMessageEvent({ eventType: "ORDER_RECEIVED", orderId, shipmentId: null });
+}

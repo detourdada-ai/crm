@@ -28,14 +28,11 @@ export type MessageChannel = "alimtalk" | "sms" | "lms";
 
 export type MessageStatus = "pending" | "processing" | "sent" | "failed" | "skipped";
 
-/** 보내지 않은 이유. "실패"와 "애초에 보낼 대상이 아님"을 구분해야 실패율이 왜곡되지 않는다. */
-export type MessageSkipReason =
-  | "provider_not_configured"
-  | "tenant_disabled"
-  | "event_disabled"
-  | "no_recipient_phone"
-  | "insufficient_balance"
-  | "template_missing";
+/**
+ * 보내지 않은 이유. "실패"와 "애초에 보낼 대상이 아님"을 구분해야 실패율이 왜곡되지 않는다.
+ * 라벨은 CPO 지시(STEP15-C §4)를 그대로 쓴다.
+ */
+export type MessageSkipReason = "NO_PROVIDER" | "DISABLED" | "NO_RECIPIENT" | "INSUFFICIENT_BALANCE";
 
 export interface MessageRecipient {
   name: string | null;

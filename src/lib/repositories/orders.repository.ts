@@ -4,6 +4,7 @@ import { kstDayStartIso, kstDayEndIso } from "@/lib/utils/kst-date";
 import { digitsOnly, formatPhoneNumber } from "@/lib/utils/phone";
 import { isUuid } from "@/lib/utils/id";
 import type { Order, OrderItem, OrderSource, DeliveryStatus, FulfillmentMethod, GeocodeStatus, PaymentStatus, PaymentMethod } from "@/types/domain";
+import { notifyCustomerOrderReceived } from "@/lib/services/customer-notification.service";
 
 export interface OrderInsert {
   id?: string; // client-generated (crypto.randomUUID()) for batch import — lets order_items reference the order before the actual insert round-trip
@@ -1024,7 +1025,10 @@ export const ordersRepository = {
     if (orders.length === 0) return [];
     const { data, error } = await getSupabaseAdmin().from("orders").insert(orders).select("*");
     if (error) throw error;
-    return (data as Order[]) ?? [];
+    const created = (data as Order[]) ?? [];
+    // 알림은 실패해도 주문 등록을 되돌리지 않는다(dispatch가 예외를 흡수한다).
+    await Promise.all(created.map((o) => notifyCustomerOrderReceived(o.id)));
+    return created;
   },
 
   async createItems(items: OrderItemInsert[]): Promise<OrderItem[]> {
