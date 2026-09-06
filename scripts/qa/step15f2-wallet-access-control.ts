@@ -45,7 +45,8 @@ async function run() {
   const walletExists = !(await admin.from("message_wallet").select("id").limit(1)).error;
 
   // ---- ② 기존 테이블: 공개 키로 읽히면 안 된다 ----
-  for (const table of ["message_log", "app_settings", "orders", "customers"] as const) {
+  // STEP15-F3A: 결제 테이블도 같은 기준으로 확인한다(돈과 직결되는 데이터).
+  for (const table of ["message_log", "app_settings", "orders", "customers", "payments", "payment_events"] as const) {
     const { data, error } = await anon.from(table).select("*").limit(1);
     const blocked = !!error || (data?.length ?? 0) === 0;
     record(`anon 키로 ${table} 조회 차단`, blocked, error ? error.message.slice(0, 60) : `rows=${data?.length}`);

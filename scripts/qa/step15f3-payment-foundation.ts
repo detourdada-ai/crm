@@ -22,6 +22,7 @@ import { InMemoryPaymentStore, PaymentService } from "../../src/lib/services/pay
 import { NoopPaymentProvider, getPaymentProvider } from "../../src/lib/services/payment/noop-provider";
 import type { PaymentProvider, PaymentResult, PaymentWebhookEvent } from "../../src/lib/services/payment/types";
 import { canTransition } from "../../src/lib/services/payment/transitions";
+import { createPaymentStore } from "../../src/lib/services/payment/payment.repository";
 
 const OWNER = QA_DEFAULT_OWNER;
 const OWNER_B = QA_SECONDARY_OWNER;
@@ -85,6 +86,16 @@ class FakePaymentProvider implements PaymentProvider {
       occurredAt: new Date().toISOString(),
     };
   }
+}
+
+/** payment_events의 처리 결과 확인 — "무시했다"와 "받은 적 없다"를 구분한다. */
+async function eventResultIs(eventId: string, expected: string): Promise<boolean> {
+  const { data } = await getSupabaseAdmin()
+    .from("payment_events")
+    .select("processing_result")
+    .eq("event_id", eventId)
+    .maybeSingle();
+  return data?.processing_result === expected;
 }
 
 async function walletSnapshot() {
@@ -190,6 +201,61 @@ async function run() {
   const late = await lateSvc.handleWebhook({ providerPaymentId: ri.intent!.providerPaymentId, eventId: "evt-r2" }, {});
   record("순서 역전 — 늦게 온 pending이 confirmed를 덮지 않음", !late.ok && late.reason === "illegal_transition", JSON.stringify(late));
   record("확정 상태 유지", (await reorderStore.findById(ri.intent!.paymentId))?.status === "confirmed");
+
+  // ================= DB 저장소(0057) 검증 =================
+  const dbReady = !(await admin.from("payments").select("id").limit(1)).error;
+  if (!dbReady) {
+    console.log("⏸ migration 0057 미적용 — DB 저장소 검증은 적용 후 실행합니다.");
+  } else {
+    const dbStore = createPaymentStore();
+    const dbSvc = new PaymentService(dbStore, new FakePaymentProvider({ confirmAmount: 20_000 }));
+    const key = `qa-${Date.now()}`;
+
+    const dbCreated = await dbSvc.createPayment({ ownerUsername: OWNER, amount: 20_000, idempotencyKey: key });
+    record("DB — 결제 생성", dbCreated.ok && !!dbCreated.intent?.paymentId, JSON.stringify(dbCreated.error));
+
+    // 동시 호출 — 인메모리에서는 닫히지 않던 경쟁을 DB unique 제약이 막는다.
+    const raceKey = `qa-race-${Date.now()}`;
+    await Promise.all([
+      dbSvc.createPayment({ ownerUsername: OWNER, amount: 7_000, idempotencyKey: raceKey }),
+      dbSvc.createPayment({ ownerUsername: OWNER, amount: 7_000, idempotencyKey: raceKey }),
+    ]);
+    const { count: raceCount } = await admin
+      .from("payments")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_username", OWNER)
+      .eq("idempotency_key", raceKey);
+    record("DB — 같은 키 동시 호출은 결제 1건만(DB 제약)", raceCount === 1, `${raceCount}건`);
+
+    // webhook 멱등성 — 같은 event_id는 한 번만 처리된다.
+    const pid = dbCreated.intent!.providerPaymentId!;
+    const h1 = await dbSvc.handleWebhook({ providerPaymentId: pid, eventId: `${key}-e1` }, {});
+    const h2 = await dbSvc.handleWebhook({ providerPaymentId: pid, eventId: `${key}-e1` }, {});
+    record("DB — 정상 webhook → confirmed", h1.ok && h1.status === "confirmed", JSON.stringify(h1));
+    record("DB — 같은 event_id 재전송은 중복 처리 안 함", h2.ok && h2.reason === "duplicate_event", JSON.stringify(h2));
+    record("DB — 이벤트 처리 결과 기록(applied)", await eventResultIs(`${key}-e1`, "applied"));
+
+    // 순서 역전 — 확정 뒤 늦게 온 pending은 거부되고, 그 사실이 이벤트에 남는다.
+    const lateSvc = new PaymentService(dbStore, new FakePaymentProvider({ finalStatus: "pending", confirmAmount: 20_000 }));
+    const late = await lateSvc.handleWebhook({ providerPaymentId: pid, eventId: `${key}-e2` }, {});
+    record("DB — 순서 역전 거부", !late.ok && late.reason === "illegal_transition", JSON.stringify(late));
+    record("DB — 거부된 이벤트도 원본이 남는다(rejected)", await eventResultIs(`${key}-e2`, "rejected"));
+    const stillConfirmed = await dbStore.findById(dbCreated.intent!.paymentId);
+    record("DB — 확정 상태 유지", stillConfirmed?.status === "confirmed", stillConfirmed?.status);
+
+    // 테넌트 격리 — 같은 idempotency_key라도 소유자가 다르면 별도 결제다.
+    const bPay = await dbSvc.createPayment({ ownerUsername: OWNER_B, amount: 20_000, idempotencyKey: key });
+    record("DB — 같은 키라도 다른 사장님은 별도 결제", bPay.duplicated !== true && bPay.intent?.ownerUsername === OWNER_B);
+    const mine = await dbStore.findByIdempotencyKey(OWNER, key);
+    record("DB — 조회가 소유자별로 분리", mine?.paymentId === dbCreated.intent?.paymentId);
+
+    // cleanup — 이번 실행이 만든 결제만 지운다(이벤트는 cascade).
+    await admin.from("payments").delete().in("owner_username", [OWNER, OWNER_B]);
+    await admin.from("payment_events").delete().eq("provider", "fake-pg");
+    const { count: leftP } = await admin.from("payments").select("id", { count: "exact", head: true });
+    const { count: leftE } = await admin.from("payment_events").select("id", { count: "exact", head: true });
+    record("DB — cleanup 잔존 0", (leftP ?? 0) === 0 && (leftE ?? 0) === 0, `payments=${leftP} events=${leftE}`);
+  }
 
   // ---- ⑥ Wallet 무변경 ----
   const after = await walletSnapshot();
