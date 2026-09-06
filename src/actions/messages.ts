@@ -114,3 +114,84 @@ export async function adjustWalletAction(
     return { ok: false, error: toActionError(e, "조정하지 못했습니다.") };
   }
 }
+
+/**
+ * STEP15-F3D-2 — 단가 정책 운영(Admin 전용).
+ *
+ * 가격 정책은 플랫폼의 과금 규칙이지 사장님의 운영 데이터가 아니다. 사장님은 자기
+ * 주문·기사·배송을 관리하고, 자기에게 적용되는 단가를 스스로 바꾸지 않는다.
+ * 그래서 세 액션 모두 첫 줄에서 role을 막는다.
+ *
+ * 수정 액션은 **일부러 만들지 않는다.** 가격 변경은 UPDATE가 아니라 새 정책 생성이고
+ * (v1 retired → v2 active), 활성 정책의 단가·축은 DB 트리거가 잠근다.
+ */
+export async function createPricingPolicyAction(input: {
+  ownerUsername: string | null;
+  kind: string;
+  messageType: string;
+  provider: string;
+  unitPriceWon: number;
+  note?: string;
+}): Promise<MessageActionState> {
+  try {
+    const session = await requireSession();
+    if (session.role !== "admin") return { ok: false, error: "권한이 없습니다." };
+    if (!Number.isFinite(input.unitPriceWon) || input.unitPriceWon <= 0) {
+      return { ok: false, error: "단가를 확인해주세요." };
+    }
+    const { pricingPolicyStore } = await import("@/lib/services/messaging/pricing-policy.repository");
+    const r = await pricingPolicyStore.createPolicy({
+      scope: {
+        ownerUsername: input.ownerUsername?.trim() ? input.ownerUsername.trim() : null,
+        kind: input.kind as "transactional" | "customer_notice" | "marketing",
+        messageType: input.messageType as "alimtalk" | "sms" | "lms",
+        provider: input.provider,
+      },
+      // 화면은 원 단위, 저장은 1/100원 단위 정수다(지갑·결제와 같은 단위).
+      unitPrice: Math.round(input.unitPriceWon * 100),
+      note: input.note?.trim() || null,
+      createdBy: session.username,
+    });
+    if (!r.ok) return { ok: false, error: r.error ?? "정책을 만들지 못했습니다." };
+    revalidatePath("/messages");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "정책을 만들지 못했습니다.") };
+  }
+}
+
+export async function activatePricingPolicyAction(id: string): Promise<MessageActionState> {
+  try {
+    const session = await requireSession();
+    if (session.role !== "admin") return { ok: false, error: "권한이 없습니다." };
+    const { pricingPolicyStore } = await import("@/lib/services/messaging/pricing-policy.repository");
+    const r = await pricingPolicyStore.activatePolicy(id);
+    if (!r.ok) {
+      // 같은 범위에 이미 활성 정책이 있으면 DB 인덱스가 거부한다 — 그 사실을 그대로 알린다.
+      return {
+        ok: false,
+        error: r.error?.includes("uq_pricing_active_scope")
+          ? "같은 범위에 이미 사용 중인 정책이 있습니다. 먼저 은퇴시켜 주세요."
+          : (r.error ?? "활성화하지 못했습니다."),
+      };
+    }
+    revalidatePath("/messages");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "활성화하지 못했습니다.") };
+  }
+}
+
+export async function retirePricingPolicyAction(id: string): Promise<MessageActionState> {
+  try {
+    const session = await requireSession();
+    if (session.role !== "admin") return { ok: false, error: "권한이 없습니다." };
+    const { pricingPolicyStore } = await import("@/lib/services/messaging/pricing-policy.repository");
+    const r = await pricingPolicyStore.retirePolicy(id);
+    if (!r.ok) return { ok: false, error: r.error ?? "은퇴시키지 못했습니다." };
+    revalidatePath("/messages");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "은퇴시키지 못했습니다.") };
+  }
+}

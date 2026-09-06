@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getMessageProvider } from "./provider";
 import { canSendEvent, getTenantMessageSettings } from "./message-settings.service";
 import { messageLogRepository } from "./message-log.repository";
-import { getPricingPolicy, type MessagePricingPolicy } from "./pricing";
+import { getPricingResolver, type MessagePricingResolver } from "./pricing";
 import { walletService } from "./wallet.service";
 import type { MessageEventType, MessageProvider, MessageRecipient } from "./types";
 
@@ -69,9 +69,9 @@ export async function dispatchMessageEvent(params: {
   await dispatchMessageEventWith(getMessageProvider(), params);
 }
 
-/** QA가 단가 정책을 주입해 지갑 경로(reserve→capture/release)를 검증할 수 있게 한다. */
+/** QA가 단가 해석기를 주입해 지갑 경로(reserve→capture/release)를 검증할 수 있게 한다. */
 export interface DispatchOptions {
-  pricing?: MessagePricingPolicy;
+  pricing?: MessagePricingResolver;
 }
 
 /**
@@ -153,15 +153,24 @@ async function runDispatch(
 
     // 발송 대상이 확정된 시점에 pending으로 먼저 남긴다 — Provider 호출 중
     // 프로세스가 죽어도 "보내려 했다"는 사실이 남는다.
-    // STEP15-F2: 단가가 없으면 보내지 않는다. 가짜 가격으로 지갑을 차감하면
-    // 그 값이 원장에 남아 되돌릴 수 없다.
-    const unitPrice = (options?.pricing ?? getPricingPolicy()).getUnitPrice("delivery_notice", "alimtalk");
-    if (unitPrice === null) {
+    // STEP15-F2/F3D-2: 단가가 없으면 보내지 않는다. 가짜 가격으로 지갑을 차감하면
+    // 그 값이 원장에 남아 되돌릴 수 없다. 정책을 못 고르는 경우(미설정·조회 오류·
+    // 활성 정책 중복)는 전부 여기서 멈춘다 — 임의의 대체 가격을 만들지 않는다.
+    const pricing = await (options?.pricing ?? getPricingResolver()).resolve({
+      ownerUsername: order.owner_username,
+      kind: "delivery_notice",
+      channel: "alimtalk",
+      provider: provider.name,
+    });
+    if (pricing === null) {
       await messageLogRepository.record({ ...base, recipientPhone: recipient.phone, status: "skipped", skipReason: "PRICE_NOT_CONFIGURED" });
       return;
     }
+    const { unitPrice, policyId } = pricing;
 
-    const logId = await messageLogRepository.record({ ...base, recipientPhone: recipient.phone, status: "pending" });
+    // 적용 근거를 pending 시점에 함께 박는다. 나중에 단가가 바뀌어도 이 행은
+    // "얼마(tenant_charge) / 왜(price_policy_id)"를 둘 다 들고 있다.
+    const logId = await messageLogRepository.record({ ...base, recipientPhone: recipient.phone, status: "pending", pricePolicyId: policyId });
     // 기록에 실패했으면 **보내지 않는다.** 0054 부분 unique 인덱스가 적용된 뒤로는
     // 동시 요청 중 진 쪽의 INSERT가 DB에서 거부되는데, 그때도 발송을 진행하면
     // 중복 방지의 마지막 방어선이 무의미해진다. 추적 불가능한 발송도 만들지 않는다.

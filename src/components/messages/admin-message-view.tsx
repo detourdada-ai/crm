@@ -73,7 +73,6 @@ export function AdminMessageView({ tenants, providerName }: { tenants: AdminTena
           {[
             { label: "메시지 공급사", value: providerName === "noop" ? "미연동 (noop)" : providerName },
             { label: "실제 발송", value: "중지 (연동 전)" },
-            { label: "단가 정책", value: "미설정" },
           ].map((row) => (
             <div key={row.label} className="flex items-center justify-between border-b py-1.5 last:border-b-0">
               <span className="text-muted-foreground">{row.label}</span>

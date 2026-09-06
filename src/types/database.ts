@@ -945,6 +945,44 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["app_accounts"]["Insert"]>;
         Relationships: [];
       };
+      message_pricing_policies: {
+        Row: {
+          id: string;
+          owner_username: string | null;
+          kind: "transactional" | "customer_notice" | "marketing";
+          message_type: "alimtalk" | "sms" | "lms";
+          provider: string;
+          unit_price: number;
+          amount_unit: string;
+          provider_cost: number | null;
+          status: "draft" | "active" | "retired";
+          note: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          activated_at: string | null;
+          retired_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          owner_username?: string | null;
+          kind: "transactional" | "customer_notice" | "marketing";
+          message_type: "alimtalk" | "sms" | "lms";
+          provider: string;
+          unit_price: number;
+          amount_unit?: string;
+          provider_cost?: number | null;
+          status?: "draft" | "active" | "retired";
+          note?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          activated_at?: string | null;
+          retired_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["message_pricing_policies"]["Insert"]>;
+        Relationships: [];
+      };
       message_charge_intents: {
         Row: {
           id: string;
@@ -1137,6 +1175,7 @@ export interface Database {
           provider_cost: number | null;
           platform_fee: number | null;
           tenant_charge: number | null;
+          price_policy_id: string | null;
           balance_before: number | null;
           balance_after: number | null;
           created_at: string;
@@ -1162,6 +1201,7 @@ export interface Database {
           provider_cost?: number | null;
           platform_fee?: number | null;
           tenant_charge?: number | null;
+          price_policy_id?: string | null;
           balance_before?: number | null;
           balance_after?: number | null;
           created_at?: string;

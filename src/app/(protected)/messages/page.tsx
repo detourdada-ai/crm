@@ -8,6 +8,8 @@ import { getMessageProvider } from "@/lib/services/messaging/provider";
 import { formatAmount, walletService } from "@/lib/services/messaging/wallet.service";
 import { OwnerMessageView } from "@/components/messages/owner-message-view";
 import { AdminMessageView, type AdminTenantRow } from "@/components/messages/admin-message-view";
+import { PricingPolicyPanel, type PricingPolicyView } from "@/components/messages/pricing-policy-panel";
+import { pricingPolicyStore } from "@/lib/services/messaging/pricing-policy.repository";
 
 /**
  * STEP15-F1 — 메시지 서비스 화면. **라우트는 하나이고 role로 갈린다.**
@@ -42,6 +44,20 @@ export default async function MessagesPage() {
         reservedText: wallet ? formatAmount(wallet.reservedBalance) : null,
       });
     }
+    // STEP15-F3D-2 — 단가 정책은 플랫폼 과금 규칙이라 운영자 화면에만 둔다.
+    const policies: PricingPolicyView[] = (await pricingPolicyStore.listPolicies()).map((p) => ({
+      id: p.id,
+      scopeLabel: p.owner_username ?? "공통",
+      kind: p.kind,
+      messageType: p.message_type,
+      provider: p.provider,
+      unitPriceText: formatAmount(p.unit_price),
+      status: p.status as PricingPolicyView["status"],
+      createdAt: p.created_at.slice(0, 10),
+      activatedAt: p.activated_at?.slice(0, 10) ?? null,
+      retiredAt: p.retired_at?.slice(0, 10) ?? null,
+    }));
+
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2">
@@ -49,6 +65,7 @@ export default async function MessagesPage() {
           <Badge variant="secondary">SOON</Badge>
         </div>
         <AdminMessageView tenants={rows} providerName={getMessageProvider().name} />
+        <PricingPolicyPanel policies={policies} />
       </div>
     );
   }

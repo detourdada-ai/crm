@@ -21,7 +21,7 @@ import { getTenantMessageSettings, saveTenantMessageSettings } from "../../src/l
 import { NoopMessageProvider } from "../../src/lib/services/messaging/provider";
 import { walletService } from "../../src/lib/services/messaging/wallet.service";
 import type { MessageBalance, MessageProvider, MessageSendResult } from "../../src/lib/services/messaging/types";
-import type { MessagePricingPolicy } from "../../src/lib/services/messaging/pricing";
+import type { MessagePricingResolver, ResolvedPricing } from "../../src/lib/services/messaging/pricing";
 
 const OWNER = QA_DEFAULT_OWNER;
 const OWNER_B = QA_SECONDARY_OWNER;
@@ -36,14 +36,17 @@ const admin = getSupabaseAdmin();
  * 엔진을 검증하려면 단가를 주입해야 하고, 그러면 지갑(0055)이 필요하다.
  * migration 적용 전에는 dispatchOpts가 비어 있어 "PRICE_NOT_CONFIGURED"만 검증한다.
  */
-class FixedPricing implements MessagePricingPolicy {
+class FixedPricing implements MessagePricingResolver {
   constructor(private readonly unit: number) {}
-  getUnitPrice(): number | null {
-    return this.unit;
+  // STEP15-F3D-2로 해석기가 { policyId, unitPrice }를 돌려주게 바뀌었다. 이 스크립트는
+  // 정책 저장소가 아니라 **dispatch 엔진**을 보는 것이므로 정책 없이 단가만 주입한다
+  // (policyId=null). 정책 id 기록 자체는 step15f3d2 스크립트가 실제 정책으로 검증한다.
+  async resolve(): Promise<ResolvedPricing | null> {
+    return { policyId: null, unitPrice: this.unit };
   }
 }
 let walletReady = false;
-let dispatchOpts: { pricing?: MessagePricingPolicy } | undefined;
+let dispatchOpts: { pricing?: MessagePricingResolver } | undefined;
 
 const results: { step: string; pass: boolean; detail?: string }[] = [];
 function record(step: string, pass: boolean, detail?: string) {

@@ -46,7 +46,18 @@ async function run() {
 
   // ---- ② 기존 테이블: 공개 키로 읽히면 안 된다 ----
   // STEP15-F3A: 결제 테이블도 같은 기준으로 확인한다(돈과 직결되는 데이터).
-  for (const table of ["message_log", "app_settings", "orders", "customers", "payments", "payment_events", "message_charge_intents"] as const) {
+  for (const table of [
+    "message_log",
+    "app_settings",
+    "orders",
+    "customers",
+    "payments",
+    "payment_events",
+    "message_charge_intents",
+    // STEP15-F3D-2 — 단가 정책은 플랫폼 과금 규칙이다. 밖에서 읽히면 가격 구조가 노출되고,
+    // 쓰기가 열려 있으면 남의 발송 단가를 바꿀 수 있다.
+    "message_pricing_policies",
+  ] as const) {
     const { data, error } = await anon.from(table).select("*").limit(1);
     const blocked = !!error || (data?.length ?? 0) === 0;
     record(`anon 키로 ${table} 조회 차단`, blocked, error ? error.message.slice(0, 60) : `rows=${data?.length}`);
@@ -91,6 +102,20 @@ async function run() {
       p_performed_by: "attacker",
     });
     record("anon 키로 지급 RPC 직접 호출 차단", !!anonGrant.error, anonGrant.error?.message?.slice(0, 80));
+
+    // STEP15-F3D-2 — 테이블만 막고 쓰기 경로가 열려 있으면 의미가 없다. 네 가지를 다 찔러본다.
+    const anonPolicyInsert = await anon.from("message_pricing_policies").insert({
+      owner_username: null,
+      kind: "transactional" as const,
+      message_type: "alimtalk" as const,
+      provider: "attack",
+      unit_price: 1,
+    });
+    record("anon 키로 단가 정책 삽입 차단", !!anonPolicyInsert.error, anonPolicyInsert.error?.message?.slice(0, 60));
+    const anonPolicyUpdate = await anon.from("message_pricing_policies").update({ unit_price: 1 }).eq("status", "active");
+    record("anon 키로 단가 정책 수정 차단", !!anonPolicyUpdate.error, anonPolicyUpdate.error?.message?.slice(0, 60));
+    const anonPolicyDelete = await anon.from("message_pricing_policies").delete().eq("status", "active");
+    record("anon 키로 단가 정책 삭제 차단", !!anonPolicyDelete.error, anonPolicyDelete.error?.message?.slice(0, 60));
 
     // 서버(service_role)에서는 정상 동작해야 한다 — 잠긴 게 아니라 "밖에서만" 잠긴 것.
     const { error: adminReadError } = await admin.from("message_wallet").select("id").limit(1);

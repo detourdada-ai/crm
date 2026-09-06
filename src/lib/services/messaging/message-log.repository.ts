@@ -26,6 +26,12 @@ export interface MessageLogEntry {
   failureReason?: string | null;
   providerMessageId?: string | null;
   providerCost?: number | null;
+  /**
+   * STEP15-F3D-2 — 이 발송에 적용된 단가 정책. 금액(`tenant_charge`)만으로는
+   * "왜 그 금액이었나"를 증명할 수 없어서 근거를 함께 남긴다.
+   * 가격 정책 도입 이전 로그와 발송에 이르지 못한 skip 행은 null이다.
+   */
+  pricePolicyId?: string | null;
 }
 
 export const messageLogRepository = {
@@ -54,6 +60,7 @@ export const messageLogRepository = {
           failure_reason: entry.failureReason ?? null,
           provider_message_id: entry.providerMessageId ?? null,
           provider_cost: entry.providerCost ?? null,
+          price_policy_id: entry.pricePolicyId ?? null,
           sent_at: entry.status === "sent" ? now : null,
           failed_at: entry.status === "failed" ? now : null,
         })
