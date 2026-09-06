@@ -12,7 +12,7 @@ import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
-import { registerAnnouncementPopupHandler, dismissAnnouncementPopupIfPresent } from "./lib/qa-popup-guard";
+import { registerAnnouncementPopupHandler, dismissAnnouncementPopupIfPresent, ensureShipmentRowVisible } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -136,7 +136,12 @@ async function run() {
     await page.goto(`${BASE_URL}/delivery?${dateQs}`, { waitUntil: "networkidle" });
     await dismissAnnouncementPopupIfPresent(page);
     const { data: firstShipment } = await admin.from("order_shipments").select("id").eq("order_id", batch1Orders![0].id).maybeSingle();
-    await page.getByTestId(`shipment-row-${firstShipment!.id}`).getByRole("checkbox").click({ timeout: 5000 }).catch(() => {});
+    // 배송건은 배송그룹 안에 접혀 있어 그냥 클릭하면 보이지 않는다(B3에서 그룹이 형성됨을
+    // 확인한다). 체크박스 클릭 실패를 삼키면 일괄 적용 바가 안 뜨고 다음 줄에서 30초를
+    // 기다리다 죽는다 — 원인이 안 보이는 실패였다. 펼친 뒤 클릭하고, 실패는 드러낸다.
+    const rowVisible = await ensureShipmentRowVisible(page, firstShipment!.id);
+    record("B3-1. 대상 배송건 행 노출(그룹 펼침 포함)", rowVisible);
+    await page.getByTestId(`shipment-row-${firstShipment!.id}`).getByRole("checkbox").click({ timeout: 5000 });
     await page.getByRole("button", { name: "직접수령", exact: true }).click({ timeout: 5000 });
     await page.getByRole("button", { name: "일괄 적용", exact: false }).click({ timeout: 5000 });
     const mixedOk = await waitForCondition(async () => {
@@ -190,16 +195,20 @@ async function run() {
     record("B8. Import 전체 삭제 → 관련 주문 전부 제거", deletedOk);
     if (deletedOk) createdOrderIds.length = 0;
 
-    const { count: groupsAfterDelete } = await admin.from("delivery_groups").select("id", { count: "exact", head: true }).eq("owner_username", OWNER);
-    const ghostGroups: string[] = [];
-    if ((groupsAfterDelete ?? 0) > 0) {
+    // 그룹 정리는 주문 삭제와 같은 순간에 끝나지 않는다(재계산이 뒤따른다). 삭제 직후 한 번만
+    // 세면 아직 남아 있는 그룹을 "유령"으로 잡는다 — B3에서 그룹 **형성**을 기다린 것과 같은
+    // 이유로 **소멸**도 기다린다. 끝까지 남으면 그건 진짜 유령이므로 그때 FAIL이다.
+    async function countGhostGroups(): Promise<number> {
       const { data: gs } = await admin.from("delivery_groups").select("id").eq("owner_username", OWNER);
+      let ghosts = 0;
       for (const g of gs ?? []) {
         const { count } = await admin.from("order_shipments").select("id", { count: "exact", head: true }).eq("delivery_group_id", g.id);
-        if ((count ?? 0) === 0) ghostGroups.push(g.id);
+        if ((count ?? 0) === 0) ghosts += 1;
       }
+      return ghosts;
     }
-    record("B9. 삭제 후 유령 배송그룹(주문 0건인데 그룹만 남음) 없음", ghostGroups.length === 0, `유령그룹=${ghostGroups.length}`);
+    const ghostsGone = await waitForCondition(async () => (await countGhostGroups()) === 0, 20000);
+    record("B9. 삭제 후 유령 배송그룹(주문 0건인데 그룹만 남음) 없음", ghostsGone, `유령그룹=${await countGhostGroups()}`);
 
     // ---- 재업로드: 삭제 후 같은 파일을 다시 올리면 정상적으로 신규 등록되는지 ----
     await page.goto(`${BASE_URL}/import`, { waitUntil: "networkidle" });

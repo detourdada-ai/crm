@@ -20,6 +20,7 @@ import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { seedQaOrders, cleanupQaOrders, type QaSeedResult } from "./lib/qa-data";
 import { QA_DEFAULT_OWNER, QA_SECONDARY_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe, createQaDriver, cleanupQaDriver, makeRunTag, type QaDriverFixture } from "./lib/qa-guard";
+import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER_A = QA_DEFAULT_OWNER; // user3 — 공격자/주 tenant
@@ -145,6 +146,7 @@ async function main() {
       const context = await browser.newContext();
       await setSession(context, "admin", "admin");
       const page = await context.newPage();
+      await registerAnnouncementPopupHandler(page);
 
       await page.goto(`${BASE_URL}/customers/${customerBId}`, { waitUntil: "networkidle" });
       const custText = await waitForMainTextSettled(page);
@@ -201,6 +203,7 @@ async function main() {
       const context = await browser.newContext();
       await setSession(context, OWNER_A, "user");
       const page = await context.newPage();
+      await registerAnnouncementPopupHandler(page);
 
       // 베이스라인: 본인 데이터는 정상 조회
       await page.goto(`${BASE_URL}/customers/${customerAId}`, { waitUntil: "networkidle" });
@@ -232,6 +235,7 @@ async function main() {
       const contextA = await browser.newContext();
       await setSession(contextA, OWNER_A, "user");
       const pageA = await contextA.newPage();
+      await registerAnnouncementPopupHandler(pageA);
       await pageA.goto(`${BASE_URL}/delivery`, { waitUntil: "networkidle" });
       await pageA.waitForTimeout(1000);
 
@@ -282,6 +286,7 @@ async function main() {
       const context = await browser.newContext();
       await setSession(context, driverA.username, "driver");
       const page = await context.newPage();
+      await registerAnnouncementPopupHandler(page);
 
       await page.goto(`${BASE_URL}/driver`, { waitUntil: "networkidle" });
       const driverText = await waitForMainTextSettled(page);
@@ -302,6 +307,7 @@ async function main() {
       const contextDriverA = await browser.newContext();
       await setSession(contextDriverA, driverA.username, "driver");
       const pageDriverA = await contextDriverA.newPage();
+      await registerAnnouncementPopupHandler(pageDriverA);
       await pageDriverA.goto(`${BASE_URL}/driver`, { waitUntil: "networkidle" });
       await pageDriverA.waitForTimeout(1000);
 
@@ -368,6 +374,7 @@ async function main() {
       const context = await browser.newContext();
       await setSession(context, OWNER_A, "user");
       const page = await context.newPage();
+      await registerAnnouncementPopupHandler(page);
       await page.goto(`${BASE_URL}/delivery?filter=all`, { waitUntil: "networkidle" });
       const delText = await waitForMainTextSettled(page);
       record("Phase5-1. 사장님(user3) 배송관리 정상 조회(회귀)", delText.includes(RUN_TAG), delText.slice(0, 200));

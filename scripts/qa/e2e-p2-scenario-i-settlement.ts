@@ -17,7 +17,7 @@ import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { stubDaumPostcodeAddress } from "./lib/daum-postcode-dynamic-stub";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
-import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
+import { registerAnnouncementPopupHandler, ensureShipmentRowVisible } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -133,15 +133,19 @@ async function run() {
       .eq("owner_username", OWNER)
       .in("orders.recipient_name", allRecipients);
     for (const s of allShipments ?? []) {
+      // 배송건은 배송그룹 카드 안에 접혀 있다 — 펼쳐야 체크박스가 존재한다.
+      await ensureShipmentRowVisible(page, s.id);
       await page.getByTestId(`shipment-row-${s.id}`).getByRole("checkbox").click({ timeout: 5000 }).catch(() => {});
     }
-    await page.getByRole("button", { name: "배송기사", exact: true }).click({ timeout: 5000 });
-    await page.getByRole("combobox", { name: /담당 기사 선택|기사/ }).first().click({ timeout: 5000 }).catch(async () => {
-      await page.locator('button:has-text("담당 기사 선택")').first().click();
-    });
-    await page.getByRole("option", { name: "QA-테스트기사A-1", exact: false }).click({ timeout: 5000 });
-    await page.getByRole("button", { name: "일괄 적용", exact: false }).click({ timeout: 5000 });
-    await page.waitForTimeout(800);
+    // 일괄 배정 바는 "배송기사" 버튼 없이 담당 기사 콤보박스를 바로 노출한다(현재 UI).
+    await page.getByRole("combobox", { name: "담당 기사 선택" }).first().click({ timeout: 8000 });
+    await page.getByRole("option", { name: "QA-테스트기사A-1", exact: false }).first().click({ timeout: 5000 });
+    await page.getByRole("button", { name: "일괄 적용" }).click({ timeout: 5000 });
+    await page.waitForTimeout(500);
+    // draft 방식이라 저장까지 눌러야 DB에 반영된다.
+    const saveBtnI = page.getByRole("button", { name: "변경사항 저장" });
+    if (await saveBtnI.count()) await saveBtnI.first().click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(1500);
 
     const assignOk = await waitForCondition(async () => {
       const { count } = await admin.from("order_shipments").select("id", { count: "exact", head: true }).eq("driver_id", driverA1.id).in("order_id", (allOrders ?? []).map((o) => o.id));

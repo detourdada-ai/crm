@@ -11,7 +11,7 @@ import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { stubDaumPostcodeAddress } from "./lib/daum-postcode-dynamic-stub";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
-import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
+import { registerAnnouncementPopupHandler, ensureShipmentRowVisible } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -145,15 +145,21 @@ async function run() {
         .eq("owner_username", OWNER)
         .in("orders.recipient_name", recipients);
       for (const s of shipments ?? []) {
+        // 배송건은 배송그룹 카드 안에 접혀 있다 — 펼치지 않으면 체크박스가 아예 없고,
+        // 실패를 삼키면 다음 줄의 일괄 적용 바가 안 떠서 원인 없이 죽는다.
+        await ensureShipmentRowVisible(page, s.id);
         await page.getByTestId(`shipment-row-${s.id}`).getByRole("checkbox").click({ timeout: 5000 }).catch(() => {});
       }
-      await page.getByRole("button", { name: "배송기사", exact: true }).click({ timeout: 5000 });
-      await page.getByRole("combobox", { name: /담당 기사 선택|기사/ }).first().click({ timeout: 5000 }).catch(async () => {
-        await page.locator('button:has-text("담당 기사 선택")').first().click();
-      });
-      await page.getByRole("option", { name: driverName, exact: false }).click({ timeout: 5000 });
-      await page.getByRole("button", { name: "일괄 적용", exact: false }).click({ timeout: 5000 });
-      await page.waitForTimeout(800);
+      // 일괄 배정 바는 "배송기사" 버튼을 거치지 않고 담당 기사 콤보박스를 바로 보여준다
+      // (STEP11-13 draft 일괄저장 흐름과 동일). 이 스크립트는 그 이전 UI를 클릭하고 있었다.
+      await page.getByRole("combobox", { name: "담당 기사 선택" }).first().click({ timeout: 8000 });
+      await page.getByRole("option", { name: driverName, exact: false }).first().click({ timeout: 5000 });
+      await page.getByRole("button", { name: "일괄 적용" }).click({ timeout: 5000 });
+      await page.waitForTimeout(500);
+      // 이 화면은 즉시저장이 아니라 draft다 — 저장까지 눌러야 DB에 반영된다.
+      const saveBtn = page.getByRole("button", { name: "변경사항 저장" });
+      if (await saveBtn.count()) await saveBtn.first().click({ timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(1500);
     }
     await bulkAssign(a1Recipients, "QA-테스트기사A-1");
     await page.goto(`${BASE_URL}/delivery?${dateQs}`, { waitUntil: "networkidle" });

@@ -24,7 +24,7 @@ import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { stubDaumPostcodeAddress } from "./lib/daum-postcode-dynamic-stub";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
-import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
+import { registerAnnouncementPopupHandler, ensureShipmentRowVisible } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -134,10 +134,14 @@ async function run() {
     // 테스트 주문을 보려면 dateFilter=custom&dateFrom=dateTo=배송일이 필요하다.
     const dateQs = `dateFilter=custom&dateFrom=${deliveryDate}&dateTo=${deliveryDate}`;
     await page.goto(`${BASE_URL}/delivery?${dateQs}`, { waitUntil: "networkidle" });
+    // 두 건은 같은 주소·배송일이라 하나의 배송그룹으로 묶여 **접힌 상태**로 렌더된다
+    // (D-사전조건에서 그룹 형성을 이미 확인한다). 펼치지 않으면 화면 텍스트에도 없고
+    // 체크박스도 못 누른다 — 보드가 그룹 UI로 바뀐 뒤 이 스크립트가 따라가지 못했다.
+    const { data: shipment1 } = await admin.from("order_shipments").select("id").eq("order_id", order1!.id).maybeSingle();
+    await ensureShipmentRowVisible(page, shipment1!.id);
     let boardText = await mainText(page);
     record("D1. 배송관리 배정필요 탭에 두 건 모두 노출(방식 전환 전)", boardText.includes(d1.recipient) && boardText.includes(d2.recipient));
 
-    const { data: shipment1 } = await admin.from("order_shipments").select("id").eq("order_id", order1!.id).maybeSingle();
     await page.getByTestId(`shipment-row-${shipment1!.id}`).getByRole("checkbox").click({ timeout: 5000 }).catch((e) => console.error("checkbox click error:", e.message));
     const bulkVisible = await page.locator("text=1건 선택").isVisible().catch(() => false);
     record("D2. 체크박스 선택 시 일괄배정 바 노출", bulkVisible);
@@ -153,7 +157,15 @@ async function run() {
       record("D3. UI에서 직접수령 전환 → DB 반영(fulfillment_method)", switched, JSON.stringify(ship1After));
       record("D4. 직접수령 전환 시 driver_id 자동 null", ship1After?.driver_id === null);
       record("D5. 직접수령 전환 시 delivery_status가 즉시 '완료'로 전환(실제 배송 없이 자동완료)", ship1After?.delivery_status === "완료");
-      record("D6. 직접수령 전환 후 배송그룹에서 제외(delivery_group_id=null)", ship1After?.delivery_group_id === null, `실제값=${ship1After?.delivery_group_id}`);
+      // 그룹 해제는 전환과 같은 순간에 일어나지 않을 수 있다(그룹 재계산이 뒤따른다).
+      // 즉시 한 번만 읽고 판정하면 아직 안 끝난 상태를 결함으로 잡는다 — 수렴을 기다린 뒤
+      // 그래도 남아 있으면 그때가 진짜 결함이다.
+      const detached = await waitForCondition(async () => {
+        const { data } = await admin.from("order_shipments").select("delivery_group_id").eq("order_id", order1!.id).maybeSingle();
+        return data?.delivery_group_id === null;
+      }, 20000);
+      const { data: ship1Detach } = await admin.from("order_shipments").select("delivery_group_id").eq("order_id", order1!.id).maybeSingle();
+      record("D6. 직접수령 전환 후 배송그룹에서 제외(delivery_group_id=null)", detached, `실제값=${ship1Detach?.delivery_group_id}`);
 
       const { data: ship2After } = await admin.from("order_shipments").select("fulfillment_method, delivery_status, delivery_group_id").eq("order_id", order2!.id).maybeSingle();
       record("D7. D2(그룹 짝)는 영향받지 않고 delivery 상태 유지", ship2After?.fulfillment_method === "delivery" && ship2After?.delivery_status !== "완료", JSON.stringify(ship2After));

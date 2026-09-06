@@ -10,7 +10,7 @@ import { qaSessionToken, SESSION_COOKIE_NAME } from "./lib/qa-session";
 import { stubDaumPostcodeAddress, type DaumAddress } from "./lib/daum-postcode-dynamic-stub";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
 import { assertAllowedQaOwner, assertTenantIsQaSafe } from "./lib/qa-guard";
-import { registerAnnouncementPopupHandler } from "./lib/qa-popup-guard";
+import { registerAnnouncementPopupHandler, ensureShipmentRowVisible } from "./lib/qa-popup-guard";
 
 const BASE_URL = process.env.QA_BASE_URL ?? "https://jumunhanjang.vercel.app";
 const OWNER = QA_DEFAULT_OWNER;
@@ -223,6 +223,8 @@ async function run() {
     await page.goto(`${BASE_URL}/orders/${lockTargetOrderId}`, { waitUntil: "networkidle" });
     const dateQs = `dateFilter=custom&dateFrom=${deliveryDate}&dateTo=${deliveryDate}`;
     await page.goto(`${BASE_URL}/delivery?${dateQs}`, { waitUntil: "networkidle" });
+    // 그룹 카드가 접혀 있으면 행 자체가 렌더되지 않아 "그룹에서 분리" 버튼에 닿을 수 없다.
+    await ensureShipmentRowVisible(page, lockShipment!.id);
     const lockRow = page.getByTestId(`shipment-row-${lockShipment!.id}`);
     await lockRow.getByRole("button", { name: "그룹에서 분리", exact: false }).click({ timeout: 8000 });
     await page.getByRole("button", { name: "분리하기", exact: true }).click({ timeout: 5000 });
