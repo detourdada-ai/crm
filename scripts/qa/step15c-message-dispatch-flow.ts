@@ -290,6 +290,32 @@ async function run() {
     const failFirst = await logsFor(orderFailRetry);
     record("failed는 pending/sent가 아니므로 자동 재발송 정책을 만들지 않았다", failFirst.length === 1 && failFirst[0].status === "failed");
 
+    // 0054 부분 unique 인덱스 적용 후 확인 — failed는 인덱스 대상이 아니라 다시
+    // 시도할 수 있는 상태로 남고(자동 재발송은 만들지 않는다), 다른 이벤트는 정상 기록된다.
+    const orderIdx = await seedOrder(OWNER, { recipientPhone: "010-1234-5678", buyerPhone: null });
+    const idxShipment = await seedShipment(OWNER, orderIdx);
+    await dispatchMessageEventWith(new FakeProvider("fake-fail3", "fail"), {
+      eventType: "DELIVERY_COMPLETED",
+      orderId: orderIdx,
+      shipmentId: idxShipment,
+    });
+    await dispatchMessageEventWith(new FakeProvider("fake-fail4", "fail"), {
+      eventType: "DELIVERY_COMPLETED",
+      orderId: orderIdx,
+      shipmentId: idxShipment,
+    });
+    const idxLogs = await logsFor(orderIdx);
+    record(
+      "0054 — failed는 인덱스 대상이 아니라 재시도 가능(2건 기록)",
+      idxLogs.filter((l) => l.status === "failed").length === 2,
+      JSON.stringify(idxLogs.map((l) => l.status))
+    );
+    await dispatchMessageEventWith(okProvider, { eventType: "DRIVER_ASSIGNED", orderId: orderIdx, shipmentId: idxShipment });
+    record(
+      "0054 — 같은 배송건의 다른 이벤트는 정상 발송",
+      (await logsFor(orderIdx)).some((l) => l.event_type === "DRIVER_ASSIGNED" && l.status === "sent")
+    );
+
     // ---- Case 5: 테넌트 격리 (user3 ON / user6 OFF 동시) ----
     const orderB = await seedOrder(OWNER_B, { recipientPhone: "010-7777-8888", buyerPhone: null });
     await dispatchMessageEventWith(okProvider, { eventType: "DELIVERY_COMPLETED", orderId: orderB, shipmentId: null });

@@ -9,7 +9,7 @@ import type { MessageEventType, MessageProvider, MessageRecipient } from "./type
  * STEP15-C 후속 — 같은 프로세스 안에서 동시에 들어온 같은 이벤트를 직렬화한다.
  * DB 레벨 unique 제약 없이 "조회 → 없으면 INSERT" 사이의 창을 좁히기 위한
  * 최소 장치다. 프로세스가 여러 개면 이 잠금은 인스턴스 간에는 걸리지 않으므로,
- * 완전한 차단은 부분 unique 인덱스가 필요하다(0054, CPO 승인 전이라 미적용).
+ * 인스턴스 간 동시성은 0054 부분 unique 인덱스가 DB에서 최종 차단한다(적용 완료).
  */
 const inFlight = new Map<string, Promise<void>>();
 
@@ -145,6 +145,10 @@ async function runDispatch(
     // 발송 대상이 확정된 시점에 pending으로 먼저 남긴다 — Provider 호출 중
     // 프로세스가 죽어도 "보내려 했다"는 사실이 남는다.
     const logId = await messageLogRepository.record({ ...base, recipientPhone: recipient.phone, status: "pending" });
+    // 기록에 실패했으면 **보내지 않는다.** 0054 부분 unique 인덱스가 적용된 뒤로는
+    // 동시 요청 중 진 쪽의 INSERT가 DB에서 거부되는데, 그때도 발송을 진행하면
+    // 중복 방지의 마지막 방어선이 무의미해진다. 추적 불가능한 발송도 만들지 않는다.
+    if (!logId) return;
 
     let result: { ok: boolean; providerMessageId?: string; failureReason?: string; providerCost?: number };
     try {
@@ -165,7 +169,6 @@ async function runDispatch(
       result = { ok: false, failureReason: e instanceof Error ? e.message.slice(0, 200) : "provider_threw" };
     }
 
-    if (!logId) return;
     await messageLogRepository.markResult(logId, {
       status: result.ok ? "sent" : "failed",
       providerMessageId: result.providerMessageId ?? null,
