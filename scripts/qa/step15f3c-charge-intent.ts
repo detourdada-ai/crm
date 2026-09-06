@@ -255,8 +255,15 @@ async function run() {
     await chargeIntentService.grant(bIntent.intent!.id, "qa");
     const balB = await walletService.getBalance(OWNER_B);
     record("user6 잔액은 자기 지급분만", balB?.availableBalance === 3_000, JSON.stringify(balB));
+    // 기대값을 상수로 적으면 케이스를 추가할 때마다 어긋난다 — 이 테넌트의 granted 합계와 비교한다.
+    const { data: myGranted } = await admin
+      .from("message_charge_intents")
+      .select("total_amount")
+      .eq("owner_username", OWNER)
+      .eq("status", "granted");
+    const expectedA = (myGranted ?? []).reduce((sum, r) => sum + r.total_amount, 0);
     const balA = await walletService.getBalance(OWNER);
-    record("user3 잔액에 영향 없음", balA?.availableBalance === 500_000 + 100_000 + 1_000_000, JSON.stringify(balA));
+    record("user3 잔액 = 자기 granted 합계(다른 테넌트 지급 영향 없음)", balA?.availableBalance === expectedA, `잔액=${balA?.availableBalance} 기대=${expectedA}`);
   } finally {
     await cleanup();
   }
