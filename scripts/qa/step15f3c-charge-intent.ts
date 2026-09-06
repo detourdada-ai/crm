@@ -177,10 +177,38 @@ async function run() {
     record("다른 테넌트 Payment 연결 지급 차단", !crossGrant.ok && !!crossGrant.error?.includes("payment_owner_mismatch"), crossGrant.error);
 
     // ---- ④ 원자성: Wallet 실패 시 Intent도 granted가 되지 않는다 ----
-    // 지갑을 지워 charge가 불가능한 상태를 만들지 않고, 대신 tenant가 없는 소유자로
-    // intent를 만들 수 없으므로, 존재하지 않는 intent grant로 예외 경로를 확인한다.
     const ghost = await chargeIntentService.grant(randomUUID());
     record("없는 Intent grant는 실패", !ghost.ok && !!ghost.error?.includes("charge_intent_not_found"), ghost.error);
+
+    // Wallet RPC가 실제로 실패하는 조건을 만든다 — owner_username이 실제 tenant가 아니면
+    // 지갑 생성 단계에서 tenant_not_found 예외가 나고, 같은 트랜잭션이므로 Intent도 롤백된다.
+    const ghostOwner = `no-such-tenant-${RUN}`;
+    const ghostIntentId = randomUUID();
+    await admin.from("message_charge_intents").insert({
+      id: ghostIntentId, tenant_id: t3, owner_username: ghostOwner, kind: "admin_grant",
+      wallet_amount: 5_000, bonus_amount: 0, total_amount: 5_000, idempotency_key: `${RUN}-ghost`,
+    });
+    const atomic = await chargeIntentService.grant(ghostIntentId, "qa");
+    const afterAtomic = await chargeIntentService.findById(ghostIntentId);
+    const { count: ghostTx } = await admin
+      .from("message_wallet_transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("reference_id", ghostIntentId);
+    record("Wallet 실패 시 grant도 실패", !atomic.ok, atomic.error);
+    record("원자성 — Intent가 granted로 남지 않음", afterAtomic?.status !== "granted", afterAtomic?.status);
+    record("원자성 — Wallet 거래 0건(반쪽 상태 없음)", (ghostTx ?? 0) === 0, `${ghostTx}건`);
+    await admin.from("message_charge_intents").delete().eq("owner_username", ghostOwner);
+
+    // 동시 grant 10회 — 애플리케이션 락이 아니라 DB만으로 성립하는지 확인.
+    const race10 = await chargeIntentService.create({
+      ownerUsername: OWNER, kind: "admin_grant", walletAmount: 1_000, idempotencyKey: `${RUN}-race10`,
+    });
+    await Promise.all(Array.from({ length: 10 }, () => chargeIntentService.grant(race10.intent!.id, "qa")));
+    const { count: race10Charges } = await admin
+      .from("message_wallet_transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("reference_id", race10.intent!.id);
+    record("동시 grant 10회 — Wallet charge 1건", race10Charges === 1, `${race10Charges}건`);
 
     // ---- ⑤ granted 이후 보호 ----
     const mutate = await admin
@@ -193,6 +221,16 @@ async function run() {
       .update({ reason: "운영 메모 추가" })
       .eq("id", grantIntent.intent!.id);
     record("granted 이후에도 운영 메모는 수정 가능", !mutateReason.error, mutateReason.error?.message?.slice(0, 60));
+
+    // granted Intent가 참조하는 payment 삭제 — FK 정리(on delete set null)가 막히면 안 된다.
+    // 0055/0058에서 트리거를 넓게 걸어 정상 운영까지 막았던 실수를 여기서 잡는다.
+    const fkPayment = await seedPayment(OWNER, 2_000, "confirmed");
+    const fkIntent = await chargeIntentService.create({
+      ownerUsername: OWNER, kind: "payment", walletAmount: 2_000, paymentId: fkPayment, idempotencyKey: `${RUN}-fk`,
+    });
+    await chargeIntentService.grant(fkIntent.intent!.id, "qa");
+    const delPayment = await admin.from("payments").delete().eq("id", fkPayment);
+    record("granted Intent가 참조하는 payment 삭제 허용(FK 정리)", !delPayment.error, delPayment.error?.message?.slice(0, 60));
 
     // ---- ⑥ 정합성 ----
     const { data: grantedIntents } = await admin
