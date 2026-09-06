@@ -138,8 +138,10 @@ async function run() {
   try {
     // 이벤트 3종을 모두 켠 상태에서 시작(기본값은 OFF).
     const base3 = await getTenantMessageSettings(OWNER);
+    // STEP15-F1 이후 발송 가능 판정은 serviceStatus + 이벤트 ON 두 가지다.
     await saveTenantMessageSettings(OWNER, {
       ...base3,
+      serviceStatus: "enabled",
       enabled: true,
       events: { ORDER_RECEIVED: true, DRIVER_ASSIGNED: true, DELIVERY_COMPLETED: true },
     });

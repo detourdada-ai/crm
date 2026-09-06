@@ -3,7 +3,7 @@
  *
  * 이번 단계에는 실제 발송이 없으므로 "메시지가 잘 갔는가"를 보지 않는다.
  * 대신 작업지시 §17이 요구한 네 가지를 본다.
- *   ① 권한        — admin만 /messages 접근, 일반 사장님은 URL 직접 입력도 차단
+ *   ① 권한        — 사장님은 자기 화면만(운영자 기능 없음), admin은 운영자 화면
  *   ② 테넌트 격리  — user3의 메시지 설정이 user6에 보이지 않는다
  *   ③ 실패 격리    — dispatch가 어떤 입력에도 throw하지 않는다(배송이 멈추면 안 됨)
  *   ④ 로그 안전    — 전화번호 원문을 남기지 않는다(마스킹)
@@ -111,7 +111,14 @@ async function run() {
 
     await page.goto(`${BASE_URL}/messages`, { waitUntil: "networkidle" });
     await dismissAnnouncementPopupIfPresent(page);
-    record("일반 사장님은 /messages 직접 접근 차단", !page.url().includes("/messages"), `현재 URL=${page.url()}`);
+    // STEP15-F1에서 정책이 바뀌었다 — /messages는 이제 사장님도 쓰는 라우트다.
+    // 차단 대신 **운영자 기능 없는 안내 화면**만 보이는지로 검증한다.
+    const ownerText = await page.locator("main").innerText().catch(() => "");
+    record(
+      "사장님은 /messages에서 안내 화면만 본다(운영자 기능 없음)",
+      ownerText.includes("메시지 서비스를 준비하고 있습니다") && !ownerText.includes("테넌트 메시지 서비스"),
+      ownerText.slice(0, 100)
+    );
 
     await page.goto(`${BASE_URL}/dashboard`, { waitUntil: "networkidle" });
     await dismissAnnouncementPopupIfPresent(page);
@@ -135,9 +142,10 @@ async function run() {
     const adminText = await page.locator("main").innerText().catch(() => "");
     record("admin은 /messages 접근 가능", page.url().includes("/messages"), `현재 URL=${page.url()}`);
     record("SOON 배지 노출", adminText.includes("SOON"));
-    record("자동 알림 목록은 실제 이벤트 3개만", adminText.includes("주문 접수") && adminText.includes("기사 배정") && adminText.includes("배송 완료"));
+    // STEP15-F1에서 admin 화면은 "운영자" 화면으로 바뀌었다(이벤트 ON/OFF는 사장님 화면으로 이동).
+    record("Admin은 운영자 화면(테넌트 상태 + Provider)", adminText.includes("테넌트 메시지 서비스") && adminText.includes("Provider 상태"));
     record("존재하지 않는 상태를 그리지 않는다(배송준비 없음)", !adminText.includes("배송준비"));
-    record("아직 발송되지 않음을 명시", adminText.includes("준비 중"));
+    record("Provider 미연동 명시", adminText.includes("미연동"));
 
     await context.close();
   } finally {
