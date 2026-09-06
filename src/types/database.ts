@@ -941,6 +941,74 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["app_accounts"]["Insert"]>;
         Relationships: [];
       };
+      payments: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          owner_username: string;
+          amount: number;
+          currency: string;
+          confirmed_amount: number | null;
+          status: "created" | "pending" | "confirmed" | "failed" | "cancelled" | "expired";
+          provider: string;
+          provider_payment_id: string | null;
+          failure_reason: string | null;
+          idempotency_key: string;
+          created_at: string;
+          updated_at: string;
+          confirmed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          owner_username: string;
+          amount: number;
+          currency?: string;
+          confirmed_amount?: number | null;
+          status?: "created" | "pending" | "confirmed" | "failed" | "cancelled" | "expired";
+          provider: string;
+          provider_payment_id?: string | null;
+          failure_reason?: string | null;
+          idempotency_key: string;
+          created_at?: string;
+          updated_at?: string;
+          confirmed_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["payments"]["Insert"]>;
+        Relationships: [];
+      };
+      payment_events: {
+        Row: {
+          id: string;
+          payment_id: string | null;
+          provider: string;
+          event_id: string;
+          status: string | null;
+          raw_status: string | null;
+          amount: number | null;
+          payload: Record<string, unknown> | null;
+          processing_result: "received" | "applied" | "duplicate" | "rejected" | "error";
+          rejection_reason: string | null;
+          received_at: string;
+          processed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          payment_id?: string | null;
+          provider: string;
+          event_id: string;
+          status?: string | null;
+          raw_status?: string | null;
+          amount?: number | null;
+          payload?: Record<string, unknown> | null;
+          processing_result?: "received" | "applied" | "duplicate" | "rejected" | "error";
+          rejection_reason?: string | null;
+          received_at?: string;
+          processed_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["payment_events"]["Insert"]>;
+        Relationships: [];
+      };
       message_wallet: {
         Row: {
           id: string;

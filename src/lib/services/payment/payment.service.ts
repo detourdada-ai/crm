@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { getPaymentProvider } from "./noop-provider";
+import { canTransition } from "./transitions";
 import type { PaymentIntent, PaymentProvider, PaymentStatus, PaymentWebhookEvent } from "./types";
 
 /**
@@ -19,6 +20,18 @@ export interface PaymentStore {
   updateStatus(paymentId: string, patch: Partial<Pick<PaymentIntent, "status" | "providerPaymentId" | "confirmedAt" | "failureReason">>): Promise<void>;
   /** 같은 webhook 이벤트를 두 번 처리하지 않기 위한 기록. 이미 있으면 false. */
   markWebhookProcessed(provider: string, eventId: string): Promise<boolean>;
+  /** 이벤트 원본과 처리 결과 보존(선택 구현 — 인메모리 구현에는 없다). */
+  recordEvent?(input: {
+    provider: string;
+    eventId: string;
+    paymentId?: string | null;
+    status?: PaymentStatus | null;
+    rawStatus?: string | null;
+    amount?: number | null;
+    payload?: unknown;
+    processingResult: "received" | "applied" | "duplicate" | "rejected" | "error";
+    rejectionReason?: string | null;
+  }): Promise<void>;
 }
 
 /** F3 검증용 인메모리 구현 — 프로덕션 경로에서는 쓰지 않는다. */
@@ -63,6 +76,18 @@ export interface CreatePaymentOutcome {
   /** 같은 idempotencyKey로 이미 만든 결제를 그대로 돌려준 경우 — 실패가 아니다. */
   duplicated?: boolean;
   error?: string;
+}
+
+/** 이벤트 기록용 공통 필드. 원본 payload는 payments에 덮어쓰지 않고 여기에만 남긴다. */
+function eventBase(event: PaymentWebhookEvent, payload: unknown) {
+  return {
+    provider: event.provider,
+    eventId: event.eventId,
+    status: event.status,
+    rawStatus: event.rawStatus,
+    amount: event.amount,
+    payload,
+  };
 }
 
 export class PaymentService {
@@ -125,23 +150,48 @@ export class PaymentService {
       if (!fresh) return { ok: true, reason: "duplicate_event" };
 
       const intent = await this.store.findByProviderPaymentId(event.provider, event.providerPaymentId);
-      if (!intent) return { ok: false, reason: "unknown_payment" };
+      if (!intent) {
+        await this.store.recordEvent?.({ ...eventBase(event, payload), processingResult: "rejected", rejectionReason: "unknown_payment" });
+        return { ok: false, reason: "unknown_payment" };
+      }
 
       // Webhook 값만 믿지 않는다 — 최종 근거는 서버 대 서버 조회다.
       const verified = await this.provider.getPayment(event.providerPaymentId);
+      // 전이표에 없는 변화는 적용하지 않는다 — 늦게 도착한 pending이 confirmed를 되돌리면
+      // 충전 근거가 무너진다. 거부해도 이벤트 원본은 남긴다.
+      if (!canTransition(intent.status, verified.status)) {
+        await this.store.recordEvent?.({
+          ...eventBase(event, payload),
+          paymentId: intent.paymentId,
+          processingResult: "rejected",
+          rejectionReason: `illegal_transition:${intent.status}->${verified.status}`,
+        });
+        return { ok: false, reason: "illegal_transition" };
+      }
+
       if (verified.status === "confirmed") {
         if (verified.confirmedAmount !== intent.amount) {
-          await this.store.updateStatus(intent.paymentId, { status: "failed", failureReason: "amount_mismatch" });
+          if (canTransition(intent.status, "failed")) {
+            await this.store.updateStatus(intent.paymentId, { status: "failed", failureReason: "amount_mismatch" });
+          }
+          await this.store.recordEvent?.({
+            ...eventBase(event, payload),
+            paymentId: intent.paymentId,
+            processingResult: "rejected",
+            rejectionReason: "amount_mismatch",
+          });
           return { ok: false, reason: "amount_mismatch" };
         }
         await this.store.updateStatus(intent.paymentId, {
           status: "confirmed",
           confirmedAt: verified.confirmedAt ?? new Date().toISOString(),
         });
+        await this.store.recordEvent?.({ ...eventBase(event, payload), paymentId: intent.paymentId, processingResult: "applied" });
         return { ok: true, status: "confirmed" };
       }
 
       await this.store.updateStatus(intent.paymentId, { status: verified.status, failureReason: verified.failureReason ?? null });
+      await this.store.recordEvent?.({ ...eventBase(event, payload), paymentId: intent.paymentId, processingResult: "applied" });
       return { ok: true, status: verified.status };
     } catch {
       // 결제 처리 실패가 다른 업무로 번지지 않게 한다(메시지 dispatch와 같은 원칙).

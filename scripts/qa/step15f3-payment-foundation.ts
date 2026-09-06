@@ -21,6 +21,7 @@ import { assertAllowedQaOwner } from "./lib/qa-guard";
 import { InMemoryPaymentStore, PaymentService } from "../../src/lib/services/payment/payment.service";
 import { NoopPaymentProvider, getPaymentProvider } from "../../src/lib/services/payment/noop-provider";
 import type { PaymentProvider, PaymentResult, PaymentWebhookEvent } from "../../src/lib/services/payment/types";
+import { canTransition } from "../../src/lib/services/payment/transitions";
 
 const OWNER = QA_DEFAULT_OWNER;
 const OWNER_B = QA_SECONDARY_OWNER;
@@ -170,6 +171,25 @@ async function run() {
   const bIntent = await tenantSvc.createPayment({ ownerUsername: OWNER_B, amount: 3_000, idempotencyKey: "charge-1" });
   record("같은 키라도 다른 사장님은 별도 결제", bIntent.duplicated !== true && bIntent.intent?.ownerUsername === OWNER_B);
   record("user3 결제는 그대로", (await store.findById(created.intent!.paymentId))?.ownerUsername === OWNER);
+
+  // ---- 상태 전이표 ----
+  record("created → confirmed 허용", canTransition("created", "confirmed"));
+  record("pending → confirmed 허용", canTransition("pending", "confirmed"));
+  record("confirmed → pending 차단(늦게 온 이벤트가 확정을 되돌리지 못함)", !canTransition("confirmed", "pending"));
+  record("confirmed → failed 차단", !canTransition("confirmed", "failed"));
+  record("failed → confirmed 허용(승인 지연 재확인)", canTransition("failed", "confirmed"));
+  record("cancelled/expired는 종결", !canTransition("cancelled", "confirmed") && !canTransition("expired", "confirmed"));
+  record("같은 상태 재적용은 멱등 no-op", canTransition("confirmed", "confirmed"));
+
+  // 순서 역전 — confirmed 이후 pending 이벤트가 와도 되돌아가지 않는다.
+  const reorderStore = new InMemoryPaymentStore();
+  const reorderSvc = new PaymentService(reorderStore, new FakePaymentProvider({ confirmAmount: 7_000 }));
+  const ri = await reorderSvc.createPayment({ ownerUsername: OWNER, amount: 7_000, idempotencyKey: "reorder" });
+  await reorderSvc.handleWebhook({ providerPaymentId: ri.intent!.providerPaymentId, eventId: "evt-r1" }, {});
+  const lateSvc = new PaymentService(reorderStore, new FakePaymentProvider({ finalStatus: "pending", confirmAmount: 7_000 }));
+  const late = await lateSvc.handleWebhook({ providerPaymentId: ri.intent!.providerPaymentId, eventId: "evt-r2" }, {});
+  record("순서 역전 — 늦게 온 pending이 confirmed를 덮지 않음", !late.ok && late.reason === "illegal_transition", JSON.stringify(late));
+  record("확정 상태 유지", (await reorderStore.findById(ri.intent!.paymentId))?.status === "confirmed");
 
   // ---- ⑥ Wallet 무변경 ----
   const after = await walletSnapshot();
