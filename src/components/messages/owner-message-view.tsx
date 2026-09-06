@@ -31,10 +31,15 @@ export function OwnerMessageView({
   serviceStatus,
   events,
   logs,
+  balanceText,
+  reservedText,
 }: {
   serviceStatus: MessageServiceStatus;
   events: Record<MessageEventType, boolean>;
   logs: MessageLogRow[];
+  /** 지갑 잔액. 아직 원장이 없으면 null이고, 그때는 금액을 지어내지 않는다. */
+  balanceText: string | null;
+  reservedText: string | null;
 }) {
   const [agreed, setAgreed] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -116,8 +121,9 @@ export function OwnerMessageView({
         <CardContent className="space-y-3">
           <div className="rounded-lg border bg-secondary/30 px-4 py-4">
             <p className="text-xs text-muted-foreground">현재 사용 가능 금액</p>
-            {/* 잔액 구조(Wallet/Ledger)는 다음 단계에서 만든다 — 가짜 금액을 만들지 않는다. */}
-            <p className="mt-1 text-lg font-bold text-text-strong">준비 중</p>
+            {/* 지갑이 아직 없으면 금액을 지어내지 않는다. */}
+            <p className="mt-1 text-lg font-bold text-text-strong">{balanceText ?? "준비 중"}</p>
+            {reservedText ? <p className="mt-1 text-xs text-muted-foreground">발송 예약 중 {reservedText}</p> : null}
           </div>
           <Button variant="outline" disabled>
             충전하기 (준비 중)

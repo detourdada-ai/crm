@@ -162,6 +162,20 @@ export interface Database {
         Args: { p_ids: string[]; p_bag_numbers: (string | null)[]; p_bag_returned: boolean[] };
         Returns: void;
       };
+      message_wallet_apply_transaction: {
+        Args: {
+          p_owner_username: string;
+          p_type: string;
+          p_amount: number;
+          p_reference_type?: string;
+          p_reference_id?: string | null;
+          p_message_log_id?: string | null;
+          p_idempotency_key?: string | null;
+          p_created_by?: string;
+          p_reason?: string | null;
+        };
+        Returns: { transaction_id: string; available_balance: number; reserved_balance: number; duplicated: boolean };
+      };
       merge_customers: {
         Args: { p_candidate_id: string; p_performed_by: string };
         Returns: unknown;
@@ -925,6 +939,68 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["app_accounts"]["Insert"]>;
+        Relationships: [];
+      };
+      message_wallet: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          owner_username: string;
+          available_balance: number;
+          reserved_balance: number;
+          amount_unit: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          owner_username: string;
+          available_balance?: number;
+          reserved_balance?: number;
+          amount_unit?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["message_wallet"]["Insert"]>;
+        Relationships: [];
+      };
+      message_wallet_transactions: {
+        Row: {
+          id: string;
+          wallet_id: string;
+          owner_username: string;
+          type: "charge" | "reserve" | "capture" | "release" | "adjust";
+          amount: number;
+          reference_type: string;
+          reference_id: string | null;
+          message_log_id: string | null;
+          idempotency_key: string | null;
+          created_by: string;
+          reason: string | null;
+          metadata: Record<string, unknown> | null;
+          available_after: number;
+          reserved_after: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          wallet_id: string;
+          owner_username: string;
+          type: "charge" | "reserve" | "capture" | "release" | "adjust";
+          amount: number;
+          reference_type?: string;
+          reference_id?: string | null;
+          message_log_id?: string | null;
+          idempotency_key?: string | null;
+          created_by?: string;
+          reason?: string | null;
+          metadata?: Record<string, unknown> | null;
+          available_after: number;
+          reserved_after: number;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["message_wallet_transactions"]["Insert"]>;
         Relationships: [];
       };
       message_log: {

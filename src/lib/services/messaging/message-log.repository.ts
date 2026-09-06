@@ -77,6 +77,8 @@ export const messageLogRepository = {
       providerMessageId?: string | null;
       failureReason?: string | null;
       providerCost?: number | null;
+      /** 사장님 지갑에서 실제로 차감한 금액(1/100원 단위). capture 금액과 일치한다. */
+      tenantCharge?: number | null;
     }
   ): Promise<void> {
     try {
@@ -88,6 +90,7 @@ export const messageLogRepository = {
           provider_message_id: result.providerMessageId ?? null,
           failure_reason: result.failureReason ?? null,
           provider_cost: result.providerCost ?? null,
+          tenant_charge: result.tenantCharge ?? null,
           sent_at: result.status === "sent" ? now : null,
           failed_at: result.status === "failed" ? now : null,
         })

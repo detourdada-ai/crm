@@ -75,3 +75,42 @@ export async function setTenantServiceStatusAction(
     return { ok: false, error: toActionError(e, "상태를 변경하지 못했습니다.") };
   }
 }
+
+/**
+ * STEP15-F2 — Admin 수동 조정. 사장님 충전 기능은 아직 만들지 않는다(PG 미연동).
+ * 사유·관리자·시각이 원장에 남고, 과거 거래를 고치지 않는다(append-only).
+ */
+export async function adjustWalletAction(
+  ownerUsername: string,
+  amountUnits: number,
+  reason: string
+): Promise<MessageActionState> {
+  try {
+    const session = await requireSession();
+    if (session.role !== "admin") return { ok: false, error: "권한이 없습니다." };
+    if (!Number.isInteger(amountUnits) || amountUnits === 0) return { ok: false, error: "조정 금액을 확인해주세요." };
+    if (!reason.trim()) return { ok: false, error: "조정 사유를 입력해주세요." };
+
+    const { walletService } = await import("@/lib/services/messaging/wallet.service");
+    const result = await walletService.apply({
+      ownerUsername,
+      type: "adjust",
+      amount: amountUnits,
+      referenceType: "admin_adjustment",
+      createdBy: session.username,
+      reason: reason.trim(),
+    });
+    if (!result.ok) {
+      return {
+        ok: false,
+        error: result.error?.includes("negative_balance_not_allowed")
+          ? "잔액이 음수가 되는 조정은 할 수 없습니다."
+          : (result.error ?? "조정하지 못했습니다."),
+      };
+    }
+    revalidatePath("/messages");
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: toActionError(e, "조정하지 못했습니다.") };
+  }
+}

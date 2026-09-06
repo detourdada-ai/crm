@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { getTenantMessageSettings } from "@/lib/services/messaging/message-settings.service";
 import { listMessageLogs } from "@/lib/services/messaging/message-log.repository";
 import { getMessageProvider } from "@/lib/services/messaging/provider";
+import { formatAmount, walletService } from "@/lib/services/messaging/wallet.service";
 import { OwnerMessageView } from "@/components/messages/owner-message-view";
 import { AdminMessageView, type AdminTenantRow } from "@/components/messages/admin-message-view";
 
@@ -31,11 +32,14 @@ export default async function MessagesPage() {
     const rows: AdminTenantRow[] = [];
     for (const t of tenants ?? []) {
       const settings = await getTenantMessageSettings(t.slug);
+      const wallet = await walletService.getBalance(t.slug);
       rows.push({
         ownerUsername: t.slug,
         tenantName: t.name,
         serviceStatus: settings.serviceStatus,
         enabledEventCount: Object.values(settings.events).filter(Boolean).length,
+        availableText: wallet ? formatAmount(wallet.availableBalance) : null,
+        reservedText: wallet ? formatAmount(wallet.reservedBalance) : null,
       });
     }
     return (
@@ -51,6 +55,7 @@ export default async function MessagesPage() {
 
   const settings = await getTenantMessageSettings(session.username);
   const logs = settings.serviceStatus === "enabled" ? await listMessageLogs(session.username) : [];
+  const wallet = settings.serviceStatus === "enabled" ? await walletService.getBalance(session.username) : null;
 
   return (
     <div className="space-y-4">
@@ -58,7 +63,13 @@ export default async function MessagesPage() {
         <h1 className="text-xl font-bold text-text-strong">메시지 관리</h1>
         {settings.serviceStatus === "enabled" ? null : <Badge variant="outline">준비 중</Badge>}
       </div>
-      <OwnerMessageView serviceStatus={settings.serviceStatus} events={settings.events} logs={logs} />
+      <OwnerMessageView
+        serviceStatus={settings.serviceStatus}
+        events={settings.events}
+        logs={logs}
+        balanceText={wallet ? formatAmount(wallet.availableBalance) : null}
+        reservedText={wallet && wallet.reservedBalance > 0 ? formatAmount(wallet.reservedBalance) : null}
+      />
     </div>
   );
 }

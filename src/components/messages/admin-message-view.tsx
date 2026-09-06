@@ -1,11 +1,12 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { setTenantServiceStatusAction } from "@/actions/messages";
+import { Input } from "@/components/ui/input";
+import { adjustWalletAction, setTenantServiceStatusAction } from "@/actions/messages";
 import type { MessageServiceStatus } from "@/lib/services/messaging/message-settings.service";
 
 export interface AdminTenantRow {
@@ -13,6 +14,9 @@ export interface AdminTenantRow {
   tenantName: string;
   serviceStatus: MessageServiceStatus;
   enabledEventCount: number;
+  /** 지갑이 아직 없으면 null — 0원이라고 단정하지 않는다. */
+  availableText: string | null;
+  reservedText: string | null;
 }
 
 const STATUS_LABEL: Record<MessageServiceStatus, string> = {
@@ -28,6 +32,28 @@ const STATUS_LABEL: Record<MessageServiceStatus, string> = {
  */
 export function AdminMessageView({ tenants, providerName }: { tenants: AdminTenantRow[]; providerName: string }) {
   const [pending, startTransition] = useTransition();
+  const [adjustTarget, setAdjustTarget] = useState<string | null>(null);
+  const [amountWon, setAmountWon] = useState("");
+  const [reason, setReason] = useState("");
+
+  function submitAdjust(ownerUsername: string) {
+    const won = Number(amountWon);
+    if (!Number.isFinite(won) || won === 0) {
+      toast.error("조정 금액을 확인해주세요.");
+      return;
+    }
+    startTransition(async () => {
+      // 화면은 원 단위, 원장은 1/100원 단위 정수다.
+      const r = await adjustWalletAction(ownerUsername, Math.round(won * 100), reason);
+      if (!r.ok) toast.error(r.error ?? "조정하지 못했습니다.");
+      else {
+        toast.success("조정했습니다.");
+        setAdjustTarget(null);
+        setAmountWon("");
+        setReason("");
+      }
+    });
+  }
 
   function change(ownerUsername: string, status: MessageServiceStatus) {
     startTransition(async () => {
@@ -70,11 +96,19 @@ export function AdminMessageView({ tenants, providerName }: { tenants: AdminTena
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-text-strong">{t.tenantName}</p>
                   <p className="text-xs text-muted-foreground">
-                    {t.ownerUsername} · 켜진 알림 {t.enabledEventCount}개
+                    {t.ownerUsername} · 켜진 알림 {t.enabledEventCount}개 · 잔액 {t.availableText ?? "-"}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <Badge variant={t.serviceStatus === "enabled" ? "secondary" : "outline"}>{STATUS_LABEL[t.serviceStatus]}</Badge>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => setAdjustTarget(adjustTarget === t.ownerUsername ? null : t.ownerUsername)}
+                  >
+                    잔액 조정
+                  </Button>
                   {t.serviceStatus === "disabled" ? (
                     <Button size="sm" variant="outline" disabled={pending} onClick={() => change(t.ownerUsername, "pending")}>
                       서비스 열기
@@ -85,6 +119,27 @@ export function AdminMessageView({ tenants, providerName }: { tenants: AdminTena
                     </Button>
                   )}
                 </div>
+                {adjustTarget === t.ownerUsername ? (
+                  <div className="flex w-full flex-wrap items-center gap-2 border-t pt-2">
+                    <Input
+                      value={amountWon}
+                      onChange={(e) => setAmountWon(e.target.value)}
+                      placeholder="금액(원, 음수 가능)"
+                      className="h-8 w-40"
+                      aria-label="조정 금액"
+                    />
+                    <Input
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      placeholder="조정 사유(필수)"
+                      className="h-8 w-56"
+                      aria-label="조정 사유"
+                    />
+                    <Button size="sm" disabled={pending} onClick={() => submitAdjust(t.ownerUsername)}>
+                      조정 기록
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ))
           )}

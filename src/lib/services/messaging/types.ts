@@ -32,7 +32,13 @@ export type MessageStatus = "pending" | "processing" | "sent" | "failed" | "skip
  * 보내지 않은 이유. "실패"와 "애초에 보낼 대상이 아님"을 구분해야 실패율이 왜곡되지 않는다.
  * 라벨은 CPO 지시(STEP15-C §4)를 그대로 쓴다.
  */
-export type MessageSkipReason = "NO_PROVIDER" | "DISABLED" | "NO_RECIPIENT" | "INSUFFICIENT_BALANCE";
+export type MessageSkipReason =
+  | "NO_PROVIDER"
+  | "DISABLED"
+  | "NO_RECIPIENT"
+  | "INSUFFICIENT_BALANCE"
+  /** STEP15-F2: 단가가 아직 설정되지 않았다. 가짜 가격으로 차감하지 않기 위해 발송을 멈춘다. */
+  | "PRICE_NOT_CONFIGURED";
 
 export interface MessageRecipient {
   name: string | null;

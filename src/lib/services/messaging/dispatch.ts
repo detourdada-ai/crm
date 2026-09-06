@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getMessageProvider } from "./provider";
 import { canSendEvent, getTenantMessageSettings } from "./message-settings.service";
 import { messageLogRepository } from "./message-log.repository";
+import { getPricingPolicy, type MessagePricingPolicy } from "./pricing";
+import { walletService } from "./wallet.service";
 import type { MessageEventType, MessageProvider, MessageRecipient } from "./types";
 
 /**
@@ -67,6 +69,11 @@ export async function dispatchMessageEvent(params: {
   await dispatchMessageEventWith(getMessageProvider(), params);
 }
 
+/** QA가 단가 정책을 주입해 지갑 경로(reserve→capture/release)를 검증할 수 있게 한다. */
+export interface DispatchOptions {
+  pricing?: MessagePricingPolicy;
+}
+
 /**
  * Provider를 주입받는 형태 — QA가 성공/실패/미설정 Provider를 넣어 엔진 자체를
  * 검증할 수 있게 한다(실제 알리고 키 없이 파이프라인 전 구간 테스트).
@@ -74,7 +81,8 @@ export async function dispatchMessageEvent(params: {
  */
 export async function dispatchMessageEventWith(
   provider: MessageProvider,
-  params: { eventType: MessageEventType; orderId: string; shipmentId: string | null }
+  params: { eventType: MessageEventType; orderId: string; shipmentId: string | null },
+  options?: DispatchOptions
 ): Promise<void> {
   // 공급사가 없으면 잠금도 잡지 않는다(꺼져 있을 때 부하 0).
   if (!provider.isConfigured()) return;
@@ -84,7 +92,7 @@ export async function dispatchMessageEventWith(
     // 같은 이벤트가 이미 처리 중이면 그것이 끝난 뒤 중복 판정을 받게 한다.
     await running.catch(() => {});
   }
-  const task = runDispatch(provider, params);
+  const task = runDispatch(provider, params, options);
   inFlight.set(key, task);
   try {
     await task;
@@ -95,7 +103,8 @@ export async function dispatchMessageEventWith(
 
 async function runDispatch(
   provider: MessageProvider,
-  params: { eventType: MessageEventType; orderId: string; shipmentId: string | null }
+  params: { eventType: MessageEventType; orderId: string; shipmentId: string | null },
+  options?: DispatchOptions
 ): Promise<void> {
   try {
     // 공급사가 없으면 여기서 끝 — 로그도 남기지 않는다(설정 자체가 없는 상태를
@@ -144,11 +153,37 @@ async function runDispatch(
 
     // 발송 대상이 확정된 시점에 pending으로 먼저 남긴다 — Provider 호출 중
     // 프로세스가 죽어도 "보내려 했다"는 사실이 남는다.
+    // STEP15-F2: 단가가 없으면 보내지 않는다. 가짜 가격으로 지갑을 차감하면
+    // 그 값이 원장에 남아 되돌릴 수 없다.
+    const unitPrice = (options?.pricing ?? getPricingPolicy()).getUnitPrice("delivery_notice", "alimtalk");
+    if (unitPrice === null) {
+      await messageLogRepository.record({ ...base, recipientPhone: recipient.phone, status: "skipped", skipReason: "PRICE_NOT_CONFIGURED" });
+      return;
+    }
+
     const logId = await messageLogRepository.record({ ...base, recipientPhone: recipient.phone, status: "pending" });
     // 기록에 실패했으면 **보내지 않는다.** 0054 부분 unique 인덱스가 적용된 뒤로는
     // 동시 요청 중 진 쪽의 INSERT가 DB에서 거부되는데, 그때도 발송을 진행하면
     // 중복 방지의 마지막 방어선이 무의미해진다. 추적 불가능한 발송도 만들지 않는다.
     if (!logId) return;
+
+    // 발송 전에 예약 차감. 잔액이 모자라면 보내지 않는다(빚지지 않는다).
+    const reserved = await walletService.apply({
+      ownerUsername: order.owner_username,
+      type: "reserve",
+      amount: unitPrice,
+      referenceType: "message",
+      referenceId: logId,
+      messageLogId: logId,
+      idempotencyKey: logId,
+    });
+    if (!reserved.ok) {
+      await messageLogRepository.markResult(logId, {
+        status: "failed",
+        failureReason: reserved.error?.includes("insufficient_balance") ? "insufficient_balance" : (reserved.error ?? "wallet_error"),
+      });
+      return;
+    }
 
     let result: { ok: boolean; providerMessageId?: string; failureReason?: string; providerCost?: number };
     try {
@@ -169,12 +204,26 @@ async function runDispatch(
       result = { ok: false, failureReason: e instanceof Error ? e.message.slice(0, 200) : "provider_threw" };
     }
 
+    // 성공이면 사용 확정(capture), 실패면 예약 반환(release). 같은 logId를
+    // idempotency 키로 쓰므로 재시도해도 두 번 차감되지 않는다.
+    await walletService.apply({
+      ownerUsername: order.owner_username,
+      type: result.ok ? "capture" : "release",
+      amount: unitPrice,
+      referenceType: "message",
+      referenceId: logId,
+      messageLogId: logId,
+      idempotencyKey: logId,
+    });
+
     await messageLogRepository.markResult(logId, {
       status: result.ok ? "sent" : "failed",
       providerMessageId: result.providerMessageId ?? null,
       failureReason: result.ok ? null : (result.failureReason ?? "unknown"),
       // 공급사가 알려준 값만 기록한다. 가짜 단가를 만들어 채우지 않는다.
       providerCost: result.providerCost ?? null,
+      // 실제 차감액은 성공했을 때만 남긴다(실패는 release로 되돌아갔다).
+      tenantCharge: result.ok ? unitPrice : null,
     });
   } catch {
     // 어떤 예외도 호출부로 새어 나가지 않게 한다.
