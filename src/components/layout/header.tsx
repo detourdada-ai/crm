@@ -8,18 +8,36 @@ import { ROLE_LABELS } from "@/lib/constants/role-labels";
 import { logoutAction } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getTenantMessageSettings } from "@/lib/services/messaging/message-settings.service";
 
 /** 로그아웃과 계정명/역할이 사이드바/시트 맨 아래(스크롤 필요)에 있어
  * 불편하다는 피드백으로 상단 바로 옮겼다 — 시계는 좌측, 계정정보+로그아웃은
  * 우측. NavLinks에는 더 이상 계정정보가 남지 않는다. */
+/**
+ * STEP15-F1 — 메시지 메뉴는 테넌트가 서비스를 쓸 수 있을 때만 보인다.
+ * admin은 운영자라 항상 보이고, 사장님은 Admin이 서비스를 열어준 뒤부터 보인다
+ * (`disabled`면 숨김). CEO 실사용 테스트 중인 사장님 화면을 건드리지 않기 위한 선택이다.
+ */
+async function shouldShowMessageService(session: Awaited<ReturnType<typeof getSession>>): Promise<boolean> {
+  if (!session || session.role === "driver") return false;
+  if (session.role === "admin") return true;
+  try {
+    const settings = await getTenantMessageSettings(session.username);
+    return settings.serviceStatus !== "disabled";
+  } catch {
+    return false;
+  }
+}
+
 export async function Header() {
   const session = await getSession();
   const isDriver = session?.role === "driver";
   const isAdmin = session?.role === "admin";
+  const showMessageService = await shouldShowMessageService(session);
 
   return (
     <header className="flex h-16 items-center gap-3 border-b bg-background px-4 md:px-6">
-      <MobileHeaderSheet isDriver={isDriver} isAdmin={isAdmin} />
+      <MobileHeaderSheet isDriver={isDriver} isAdmin={isAdmin} showMessageService={showMessageService} />
 
       <Link href="/" className="md:hidden">
         <OrdifyLogo variant="mark" />

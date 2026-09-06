@@ -17,6 +17,12 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   adminOnly?: boolean;
+  /**
+   * STEP15-F1: 테넌트가 그 서비스를 쓸 수 있을 때만 보이는 항목.
+   * `adminOnly`는 role 하나로 판정되지만 이건 **테넌트 설정**에 달려 있어,
+   * 서버에서 계산한 값을 NavLinks까지 내려보내야 한다.
+   */
+  requiresMessageService?: boolean;
 }
 
 export interface NavSection {
@@ -54,7 +60,7 @@ export const NAV_ENTRIES: NavEntry[] = [
     section: "관리",
     items: [
       { href: "/settings", label: "설정", icon: Settings },
-      { href: "/messages", label: "메시지 관리", icon: MessageSquare, adminOnly: true },
+      { href: "/messages", label: "메시지 관리", icon: MessageSquare, requiresMessageService: true },
     ],
   },
 ];

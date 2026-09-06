@@ -26,12 +26,14 @@ function NavSectionBlock({
   entry,
   isActive,
   isAdmin,
+  showMessageService,
   onNavigate,
   withDivider = false,
 }: {
   entry: { section: string; items: NavItem[] };
   isActive: (href: string) => boolean;
   isAdmin: boolean;
+  showMessageService: boolean;
   onNavigate?: () => void;
   withDivider?: boolean;
 }) {
@@ -39,7 +41,7 @@ function NavSectionBlock({
     <div className={cn("mt-5 flex flex-col gap-0.5 first:mt-0", withDivider && "mt-5 border-t pt-4")}>
       <span className="px-3 pb-1 text-xs font-semibold tracking-wide text-muted-foreground/70 uppercase">{entry.section}</span>
       {entry.items
-        .filter((item) => !item.adminOnly || isAdmin)
+        .filter((item) => (!item.adminOnly || isAdmin) && (!item.requiresMessageService || showMessageService))
         .map((item) => (
           <NavLink key={item.href} item={item} isActive={isActive(item.href)} onNavigate={onNavigate} />
         ))}
@@ -51,10 +53,13 @@ export function NavLinks({
   onNavigate,
   isDriver = false,
   isAdmin = false,
+  showMessageService = false,
 }: {
   onNavigate?: () => void;
   isDriver?: boolean;
   isAdmin?: boolean;
+  /** STEP15-F1: 테넌트가 메시지 서비스를 쓸 수 있을 때만 해당 메뉴를 노출한다. */
+  showMessageService?: boolean;
 }) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
@@ -77,13 +82,27 @@ export function NavLinks({
         <div className="flex flex-col gap-1">
           {NAV_ENTRIES.map((entry) =>
             isNavSection(entry) ? (
-              <NavSectionBlock key={entry.section} entry={entry} isActive={isActive} isAdmin={isAdmin} onNavigate={onNavigate} />
+              <NavSectionBlock
+                key={entry.section}
+                entry={entry}
+                isActive={isActive}
+                isAdmin={isAdmin}
+                showMessageService={showMessageService}
+                onNavigate={onNavigate}
+              />
             ) : !entry.adminOnly || isAdmin ? (
               <NavLink key={entry.href} item={entry} isActive={isActive(entry.href)} onNavigate={onNavigate} />
             ) : null
           )}
         </div>
-        <NavSectionBlock entry={NAV_HELP_ENTRY} isActive={isActive} isAdmin={isAdmin} onNavigate={onNavigate} withDivider />
+        <NavSectionBlock
+          entry={NAV_HELP_ENTRY}
+          isActive={isActive}
+          isAdmin={isAdmin}
+          showMessageService={showMessageService}
+          onNavigate={onNavigate}
+          withDivider
+        />
       </div>
     </nav>
   );

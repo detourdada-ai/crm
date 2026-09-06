@@ -1,7 +1,7 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getMessageProvider } from "./provider";
-import { getTenantMessageSettings } from "./message-settings.service";
+import { canSendEvent, getTenantMessageSettings } from "./message-settings.service";
 import { messageLogRepository } from "./message-log.repository";
 import type { MessageEventType, MessageProvider, MessageRecipient } from "./types";
 
@@ -123,7 +123,7 @@ async function runDispatch(
     };
 
     const settings = await getTenantMessageSettings(order.owner_username);
-    if (!settings.enabled || !settings.events[params.eventType]) {
+    if (!canSendEvent(settings, params.eventType)) {
       await messageLogRepository.record({ ...base, recipientPhone: null, status: "skipped", skipReason: "DISABLED" });
       return;
     }

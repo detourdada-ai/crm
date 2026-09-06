@@ -97,3 +97,34 @@ export const messageLogRepository = {
     }
   },
 };
+
+export interface MessageLogRow {
+  id: string;
+  event_type: string;
+  status: string;
+  skip_reason: string | null;
+  failure_reason: string | null;
+  recipient_name: string | null;
+  recipient_phone_masked: string | null;
+  tenant_charge: number | null;
+  created_at: string;
+}
+
+/**
+ * STEP15-F1 — 발송 내역 조회. 사장님은 **자기 테넌트 것만** 본다.
+ * 전화번호는 이미 마스킹된 값만 저장돼 있어 화면에서 추가 처리가 필요 없다.
+ */
+export async function listMessageLogs(ownerUsername: string | undefined, limit = 50): Promise<MessageLogRow[]> {
+  try {
+    let q = getSupabaseAdmin()
+      .from("message_log")
+      .select("id, event_type, status, skip_reason, failure_reason, recipient_name, recipient_phone_masked, tenant_charge, created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data } = await q;
+    return (data as MessageLogRow[]) ?? [];
+  } catch {
+    return [];
+  }
+}
