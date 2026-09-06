@@ -282,7 +282,15 @@ export const orderShipmentsRepository = {
   /** Phase 4/S1-1 Phase 5: 배송 그룹화 대상 배송건 — 취소 제외 + 부모 주문의 좌표 확보(geocode_status='success')까지 요구한다. */
   async findEligibleForGrouping(dateStr: string, ownerUsername?: string): Promise<OrderShipmentBoardRow[]> {
     const rows = await fetchShipmentsInRange(dateStr, ownerUsername);
-    return rows.filter((r) => r.geocode_status === "success" && r.latitude !== null && r.longitude !== null);
+    return rows.filter(
+      (r) =>
+        r.geocode_status === "success" &&
+        r.latitude !== null &&
+        r.longitude !== null &&
+        // STEP17: 직접수령은 배송 경로에 들어가지 않으므로 그룹 계산 대상이 아니다.
+        // 여기서 빼야 재계산이 그 건을 다시 그룹에 넣지 않는다(전환 시점의 정리와 한 쌍).
+        r.fulfillment_method !== "direct_pickup"
+    );
   },
 
   /** 클러스터링 결과에 따라 배송건들을 그룹에 배정한다. */
@@ -541,6 +549,9 @@ export const orderShipmentsRepository = {
       previous = data ?? [];
     }
 
+    // STEP17(CPO 승인, 2026-09-07): 직접수령은 배송을 나가지 않으므로 **배송그룹에서도 빠진다.**
+    // 그동안 delivery_group_id를 그대로 둬서, 배송 안 가는 주소가 그룹의 건수(order_count)와
+    // 중심 좌표(centroid) 계산에 계속 참여했다(STEP16 발견).
     const update =
       method === "direct_pickup"
         ? {
@@ -549,14 +560,25 @@ export const orderShipmentsRepository = {
             delivery_status: "완료" as const,
             completed_at: new Date().toISOString(),
             route_order: null,
+            delivery_group_id: null,
           }
-        : { fulfillment_method: method };
-    let q = admin
-      .from("order_shipments")
-      .update(update)
-      .in("id", shipmentIds)
-      .neq("delivery_status", "완료")
-      .neq("delivery_status", "취소");
+        : {
+            // 직접수령 해제 — 자동으로 매겨졌던 "완료"를 되돌린다. 그룹은 여기서 채우지 않고
+            // 재계산에 맡긴다(주소가 바뀌었을 수도 있으므로 옛 그룹으로 되돌리면 안 된다).
+            fulfillment_method: method,
+            delivery_status: "배송대기" as const,
+            completed_at: null,
+          };
+    let q = admin.from("order_shipments").update(update).in("id", shipmentIds).neq("delivery_status", "취소");
+    if (method === "direct_pickup") {
+      // 실제로 배송을 마친 건을 직접수령으로 덮어쓰지 않는다.
+      q = q.neq("delivery_status", "완료");
+    } else {
+      // 해제는 **직접수령 건에만** 적용한다. 이 조건이 없으면 진짜 배송완료 건이
+      // "배송대기"로 되살아난다. (기존 코드는 완료 상태를 통째로 막아, 직접수령으로
+      // 완료 처리된 건은 해제 자체가 불가능했다 — 화면에는 해제 메뉴가 있었는데도.)
+      q = q.eq("fulfillment_method", "direct_pickup");
+    }
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
     const { data, error } = await q.select("id, order_id");
     if (error) throw error;

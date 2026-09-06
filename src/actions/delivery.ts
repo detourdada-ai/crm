@@ -11,6 +11,7 @@ import { buildShipmentItemSummaries, type OrderItemSummary } from "@/actions/ord
 import { toActionError } from "@/lib/utils/action-error";
 import { ownerScopeFor, requireSession, requireDriverSession } from "@/lib/auth/current-session";
 import { kstDayStrOf, kstDayDateStrOf, kstTodayIso } from "@/lib/utils/kst-date";
+import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import type { Driver, DriverShift, FulfillmentMethod, OrderItem } from "@/types/domain";
 
 export interface DeliveryBoardResult {
@@ -363,6 +364,9 @@ export async function setFulfillmentMethodAction(shipmentIds: string[], method: 
       }
     }
 
+    // 재계산에 필요한 tenant/배송일은 UPDATE 전에 읽어둔다(직접수령 전환 시 값이 바뀐다).
+    const affected = await orderShipmentsRepository.findByIds(shipmentIds);
+
     const updated = await orderShipmentsRepository.setFulfillmentMethod(
       shipmentIds,
       method,
@@ -371,6 +375,20 @@ export async function setFulfillmentMethodAction(shipmentIds: string[], method: 
     if (updated === 0) {
       return { ok: false, error: "변경할 수 있는 배송건이 없습니다. (이미 배송완료되었을 수 있습니다)" };
     }
+
+    // STEP17: 배송방식이 바뀌면 그 날짜의 그룹 구성이 달라진다 — 남은 건들의 건수·중심
+    // 좌표를 다시 계산하고, 직접수령을 해제한 건은 다시 그룹에 편입시킨다. 지금까지는
+    // 주문 생성/수정/삭제에서만 재계산이 돌아, 배송방식 전환은 그룹에 반영되지 않았다.
+    const dates = new Map<string, { tenantId: string; dateStr: string; owner: string }>();
+    for (const s of affected) {
+      if (!s.tenant_id || !s.delivery_date) continue;
+      const dateStr = kstDayDateStrOf(s.delivery_date);
+      dates.set(`${s.tenant_id}::${dateStr}`, { tenantId: s.tenant_id, dateStr, owner: s.owner_username });
+    }
+    for (const d of dates.values()) {
+      await triggerDeliveryGroupRegeneration(d.tenantId, d.dateStr, d.owner, `fulfillment_${method}`);
+    }
+
     revalidatePath("/delivery");
     revalidatePath("/orders");
     return { ok: true, error: null };
