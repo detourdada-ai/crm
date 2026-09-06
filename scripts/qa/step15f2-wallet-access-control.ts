@@ -16,6 +16,7 @@
  * 실행: NODE_OPTIONS="--conditions=react-server" npx tsx -r dotenv/config \
  *         scripts/qa/step15f2-wallet-access-control.ts dotenv_config_path=.env.local
  */
+import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "../../src/lib/supabase/admin";
 import { QA_DEFAULT_OWNER } from "./lib/qa-config";
@@ -112,10 +113,32 @@ async function run() {
       unit_price: 1,
     });
     record("anon 키로 단가 정책 삽입 차단", !!anonPolicyInsert.error, anonPolicyInsert.error?.message?.slice(0, 60));
-    const anonPolicyUpdate = await anon.from("message_pricing_policies").update({ unit_price: 1 }).eq("status", "active");
-    record("anon 키로 단가 정책 수정 차단", !!anonPolicyUpdate.error, anonPolicyUpdate.error?.message?.slice(0, 60));
-    const anonPolicyDelete = await anon.from("message_pricing_policies").delete().eq("status", "active");
-    record("anon 키로 단가 정책 삭제 차단", !!anonPolicyDelete.error, anonPolicyDelete.error?.message?.slice(0, 60));
+
+    // UPDATE/DELETE는 "에러가 났는가"로 볼 수 없다. RLS는 행을 안 보이게 하는 방식이라
+    // 대상이 0건이면 **성공으로 응답한다**(처음엔 이걸 오탐으로 잡았다). 확인해야 하는 것은
+    // 응답이 아니라 **실제로 값이 바뀌었는가**이므로, 표적을 하나 만들어 두고 대조한다.
+    const targetId = randomUUID();
+    await admin.from("message_pricing_policies").insert({
+      id: targetId,
+      owner_username: OWNER,
+      kind: "transactional" as const,
+      message_type: "alimtalk" as const,
+      provider: "qa-access",
+      unit_price: 111,
+      status: "draft" as const,
+      note: "QA-ACCESS-CONTROL",
+    });
+    try {
+      await anon.from("message_pricing_policies").update({ unit_price: 999_999 }).eq("id", targetId);
+      const { data: afterUpdate } = await admin.from("message_pricing_policies").select("unit_price").eq("id", targetId).maybeSingle();
+      record("anon 키로 단가 정책 수정 불가(값 실제 불변)", afterUpdate?.unit_price === 111, `unit_price=${afterUpdate?.unit_price}`);
+
+      await anon.from("message_pricing_policies").delete().eq("id", targetId);
+      const { data: afterDelete } = await admin.from("message_pricing_policies").select("id").eq("id", targetId).maybeSingle();
+      record("anon 키로 단가 정책 삭제 불가(행 실제 잔존)", !!afterDelete, afterDelete ? "" : "행이 사라졌다");
+    } finally {
+      await admin.from("message_pricing_policies").delete().eq("id", targetId);
+    }
 
     // 서버(service_role)에서는 정상 동작해야 한다 — 잠긴 게 아니라 "밖에서만" 잠긴 것.
     const { error: adminReadError } = await admin.from("message_wallet").select("id").limit(1);

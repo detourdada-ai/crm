@@ -338,7 +338,9 @@ async function run() {
     if (created.customerIds.length > 0) await admin.from("customers").delete().in("id", created.customerIds);
     // 로그를 먼저 지운 뒤에야 정책을 지울 수 있다(RESTRICT). 순서가 곧 설계의 증명이다.
     await admin.from("message_log").delete().eq("owner_username", OWNER).not("price_policy_id", "is", null);
-    await admin.from("message_pricing_policies").delete().eq("note", QA_PREFIX);
+    // note를 정확히 비교하면 "운영 메모 수정 허용" 케이스에서 값이 바뀐 행 하나가 남는다
+    // (실제로 1건 남았다). 접두어로 지운다.
+    await admin.from("message_pricing_policies").delete().like("note", `${QA_PREFIX}%`);
     await admin.from("message_wallet").delete().eq("owner_username", OWNER);
     await admin.from("message_wallet").delete().eq("owner_username", OWNER_B);
     for (const owner of [OWNER, OWNER_B]) {
