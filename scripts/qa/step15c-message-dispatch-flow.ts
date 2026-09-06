@@ -198,8 +198,13 @@ async function run() {
     record("수취인 우선 + 마스킹 저장", okLogs.every((l) => l.recipient_phone_masked === "010-****-5678"), JSON.stringify(okLogs.map((l) => l.recipient_phone_masked)));
     record("Noop이 아닌 실제 provider명 기록", okLogs.every((l) => l.provider === "fake-ok"));
     record(
-      "가짜 비용을 만들어 넣지 않는다(provider가 안 주면 null)",
-      okLogs.every((l) => l.provider_cost === null && l.platform_fee === null && l.tenant_charge === null)
+      "Provider가 원가를 안 주면 provider_cost는 null(가짜 값 금지)",
+      okLogs.every((l) => l.provider_cost === null && l.platform_fee === null)
+    );
+    record(
+      walletReady ? "실제 차감액(tenant_charge)이 기록된다" : "차감이 없으면 tenant_charge도 null",
+      okLogs.every((l) => (walletReady ? l.tenant_charge === 650 : l.tenant_charge === null)),
+      JSON.stringify(okLogs.map((l) => l.tenant_charge))
     );
 
     // 아래 엔진 케이스(실패 격리·중복 방지·capture/release)는 단가와 지갑이 있어야
@@ -223,11 +228,11 @@ async function run() {
     let threw = false;
     const orderThrow = await seedOrder(OWNER, { recipientPhone: "010-1234-5678", buyerPhone: null });
     try {
-      await dispatchMessageEventWith(new FakeProvider("fake-throw", "throw"), {
-        eventType: "DELIVERY_COMPLETED",
-        orderId: orderThrow,
-        shipmentId: null,
-      });
+      await dispatchMessageEventWith(
+        new FakeProvider("fake-throw", "throw"),
+        { eventType: "DELIVERY_COMPLETED", orderId: orderThrow, shipmentId: null },
+        dispatchOpts
+      );
     } catch {
       threw = true;
     }
@@ -305,8 +310,8 @@ async function run() {
     }
     const racing = new RaceProvider("fake-race", "ok");
     await Promise.all([
-      dispatchMessageEventWith(racing, { eventType: "DELIVERY_COMPLETED", orderId: orderRace, shipmentId: raceShipment }),
-      dispatchMessageEventWith(racing, { eventType: "DELIVERY_COMPLETED", orderId: orderRace, shipmentId: raceShipment }),
+      dispatchMessageEventWith(racing, { eventType: "DELIVERY_COMPLETED", orderId: orderRace, shipmentId: raceShipment }, dispatchOpts),
+      dispatchMessageEventWith(racing, { eventType: "DELIVERY_COMPLETED", orderId: orderRace, shipmentId: raceShipment }, dispatchOpts),
     ]);
     const raceLogs = await logsFor(orderRace);
     record("CaseC 동시 호출 → message_log 1건", raceLogs.length === 1, `${raceLogs.length}건`);
