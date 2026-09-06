@@ -19,7 +19,9 @@ import { assertAllowedQaOwner, assertTenantIsQaSafe, captureTenantBaseline, diff
 import { dispatchMessageEventWith } from "../../src/lib/services/messaging/dispatch";
 import { getTenantMessageSettings, saveTenantMessageSettings } from "../../src/lib/services/messaging/message-settings.service";
 import { NoopMessageProvider } from "../../src/lib/services/messaging/provider";
+import { walletService } from "../../src/lib/services/messaging/wallet.service";
 import type { MessageBalance, MessageProvider, MessageSendResult } from "../../src/lib/services/messaging/types";
+import type { MessagePricingPolicy } from "../../src/lib/services/messaging/pricing";
 
 const OWNER = QA_DEFAULT_OWNER;
 const OWNER_B = QA_SECONDARY_OWNER;
@@ -28,6 +30,20 @@ assertAllowedQaOwner(OWNER_B);
 const RUN_TAG = String(Date.now());
 const QA_PREFIX = `QA-STEP15C-${RUN_TAG}-`;
 const admin = getSupabaseAdmin();
+
+/**
+ * STEP15-F2 이후: 단가가 없으면 dispatch가 발송하지 않는다(가짜 가격 금지).
+ * 엔진을 검증하려면 단가를 주입해야 하고, 그러면 지갑(0055)이 필요하다.
+ * migration 적용 전에는 dispatchOpts가 비어 있어 "PRICE_NOT_CONFIGURED"만 검증한다.
+ */
+class FixedPricing implements MessagePricingPolicy {
+  constructor(private readonly unit: number) {}
+  getUnitPrice(): number | null {
+    return this.unit;
+  }
+}
+let walletReady = false;
+let dispatchOpts: { pricing?: MessagePricingPolicy } | undefined;
 
 const results: { step: string; pass: boolean; detail?: string }[] = [];
 function record(step: string, pass: boolean, detail?: string) {
@@ -135,6 +151,17 @@ async function run() {
     return shipmentId;
   }
 
+  // 지갑 준비 여부에 따라 단가 주입 여부가 갈린다.
+  const walletProbe = await admin.from("message_wallet").select("id").limit(1);
+  walletReady = !walletProbe.error;
+  if (walletReady) {
+    dispatchOpts = { pricing: new FixedPricing(650) };
+    await admin.from("message_wallet").delete().eq("owner_username", OWNER);
+    await walletService.apply({ ownerUsername: OWNER, type: "charge", amount: 1_000_000, idempotencyKey: `step15c-${Date.now()}` });
+  } else {
+    console.log("⏸ migration 0055 미적용 — 단가 주입 없이 PRICE_NOT_CONFIGURED 경로만 검증합니다.");
+  }
+
   try {
     // 이벤트 3종을 모두 켠 상태에서 시작(기본값은 OFF).
     const base3 = await getTenantMessageSettings(OWNER);
@@ -148,18 +175,22 @@ async function run() {
 
     // ---- Case 2: Provider 미설정 → 로그도 남기지 않고 업무만 성공 ----
     const orderNoProvider = await seedOrder(OWNER, { recipientPhone: "010-1111-2222", buyerPhone: "010-3333-4444" });
-    await dispatchMessageEventWith(new NoopMessageProvider(), { eventType: "ORDER_RECEIVED", orderId: orderNoProvider, shipmentId: null });
+    await dispatchMessageEventWith(new NoopMessageProvider(), { eventType: "ORDER_RECEIVED", orderId: orderNoProvider, shipmentId: null }, dispatchOpts);
     record("Case2 Provider 미설정 — 배송/주문 경로에 로그·부하 없음", (await logsFor(orderNoProvider)).length === 0);
 
     // ---- 이벤트 3종 정상 발송(Mock 성공) ----
     const okProvider = new FakeProvider("fake-ok", "ok");
     const orderOk = await seedOrder(OWNER, { recipientPhone: "010-1234-5678", buyerPhone: "010-9999-9999" });
     for (const eventType of ["ORDER_RECEIVED", "DRIVER_ASSIGNED", "DELIVERY_COMPLETED"] as const) {
-      await dispatchMessageEventWith(okProvider, { eventType, orderId: orderOk, shipmentId: null });
+      await dispatchMessageEventWith(okProvider, { eventType, orderId: orderOk, shipmentId: null }, dispatchOpts);
     }
     const okLogs = await logsFor(orderOk);
     record("이벤트 3종 각각 1건씩 기록", okLogs.length === 3, `기록 ${okLogs.length}건`);
-    record("3종 모두 sent", okLogs.every((l) => l.status === "sent"), JSON.stringify(okLogs.map((l) => l.status)));
+    const expected = walletReady ? "sent" : "skipped";
+    record(`3종 모두 ${expected}`, okLogs.every((l) => l.status === expected), JSON.stringify(okLogs.map((l) => l.status)));
+    if (!walletReady) {
+      record("단가 미설정이면 발송하지 않는다", okLogs.every((l) => l.skip_reason === "PRICE_NOT_CONFIGURED"), JSON.stringify(okLogs.map((l) => l.skip_reason)));
+    }
     record(
       "이벤트 타입 정확",
       ["ORDER_RECEIVED", "DRIVER_ASSIGNED", "DELIVERY_COMPLETED"].every((e) => okLogs.some((l) => l.event_type === e))
@@ -171,13 +202,19 @@ async function run() {
       okLogs.every((l) => l.provider_cost === null && l.platform_fee === null && l.tenant_charge === null)
     );
 
+    // 아래 엔진 케이스(실패 격리·중복 방지·capture/release)는 단가와 지갑이 있어야
+    // 의미가 있다. 0055 적용 전에는 실행하지 않고 그 사실을 알린다 — 기준을 완화하는
+    // 것이 아니라, 환경이 갖춰졌을 때 같은 기준으로 다시 돌린다.
+    if (!walletReady) {
+      console.log("⏸ migration 0055 미적용 — 발송 엔진 케이스(실패 격리·중복 방지·지갑 차감)는 지갑 적용 후 검증합니다.");
+    } else {
     // ---- Case 1: Provider 오류 → 업무는 성공, 메시지만 failed ----
     const orderFail = await seedOrder(OWNER, { recipientPhone: "010-1234-5678", buyerPhone: null });
     await dispatchMessageEventWith(new FakeProvider("fake-fail", "fail"), {
       eventType: "DELIVERY_COMPLETED",
       orderId: orderFail,
       shipmentId: null,
-    });
+    }, dispatchOpts);
     const failLogs = await logsFor(orderFail);
     record("Case1 Provider 실패 → failed 기록", failLogs.length === 1 && failLogs[0].status === "failed", JSON.stringify(failLogs));
     record("실패 사유 기록", failLogs[0]?.failure_reason === "provider_rejected", String(failLogs[0]?.failure_reason));
@@ -200,7 +237,7 @@ async function run() {
 
     // ---- Case 3: 수신자 없음 ----
     const orderNoPhone = await seedOrder(OWNER, { recipientPhone: null, buyerPhone: null });
-    await dispatchMessageEventWith(okProvider, { eventType: "DELIVERY_COMPLETED", orderId: orderNoPhone, shipmentId: null });
+    await dispatchMessageEventWith(okProvider, { eventType: "DELIVERY_COMPLETED", orderId: orderNoPhone, shipmentId: null }, dispatchOpts);
     const noPhoneLogs = await logsFor(orderNoPhone);
     record(
       "Case3 수신자 없음 → skipped/NO_RECIPIENT",
@@ -210,7 +247,7 @@ async function run() {
 
     // 수취인 번호가 없으면 구매자 번호로 fallback 된다.
     const orderFallback = await seedOrder(OWNER, { recipientPhone: null, buyerPhone: "010-5555-6666" });
-    await dispatchMessageEventWith(okProvider, { eventType: "DELIVERY_COMPLETED", orderId: orderFallback, shipmentId: null });
+    await dispatchMessageEventWith(okProvider, { eventType: "DELIVERY_COMPLETED", orderId: orderFallback, shipmentId: null }, dispatchOpts);
     const fbLogs = await logsFor(orderFallback);
     record("수취인 없으면 구매자 fallback 발송", fbLogs[0]?.status === "sent" && fbLogs[0]?.recipient_phone_masked === "010-****-6666", JSON.stringify(fbLogs));
 
@@ -218,7 +255,7 @@ async function run() {
     const cur = await getTenantMessageSettings(OWNER);
     await saveTenantMessageSettings(OWNER, { ...cur, events: { ...cur.events, DELIVERY_COMPLETED: false } });
     const orderOff = await seedOrder(OWNER, { recipientPhone: "010-1234-5678", buyerPhone: null });
-    await dispatchMessageEventWith(okProvider, { eventType: "DELIVERY_COMPLETED", orderId: orderOff, shipmentId: null });
+    await dispatchMessageEventWith(okProvider, { eventType: "DELIVERY_COMPLETED", orderId: orderOff, shipmentId: null }, dispatchOpts);
     const offLogs = await logsFor(orderOff);
     record(
       "Case4 이벤트 OFF → skipped/DISABLED",
@@ -240,14 +277,14 @@ async function run() {
     }
     const counting = new CountingProvider("fake-count", "ok");
     for (let i = 0; i < 3; i++) {
-      await dispatchMessageEventWith(counting, { eventType: "DELIVERY_COMPLETED", orderId: orderDup, shipmentId: dedupeShipment });
+      await dispatchMessageEventWith(counting, { eventType: "DELIVERY_COMPLETED", orderId: orderDup, shipmentId: dedupeShipment }, dispatchOpts);
     }
     const dupLogs = await logsFor(orderDup);
     record("CaseB 연속 3회 → message_log 1건", dupLogs.length === 1, `${dupLogs.length}건`);
     record("CaseB 연속 3회 → Provider 호출 1회", sendCalls === 1, `${sendCalls}회`);
 
     // Case D — 다른 이벤트는 각각 1건씩 정상 생성
-    await dispatchMessageEventWith(counting, { eventType: "DRIVER_ASSIGNED", orderId: orderDup, shipmentId: dedupeShipment });
+    await dispatchMessageEventWith(counting, { eventType: "DRIVER_ASSIGNED", orderId: orderDup, shipmentId: dedupeShipment }, dispatchOpts);
     const dLogs = await logsFor(orderDup);
     record(
       "CaseD 다른 이벤트는 별개로 1건씩",
@@ -277,8 +314,8 @@ async function run() {
 
     // ORDER_RECEIVED는 배송건이 없으므로 주문 단위로 중복 판정된다.
     const orderReceivedDup = await seedOrder(OWNER, { recipientPhone: "010-1234-5678", buyerPhone: null });
-    await dispatchMessageEventWith(okProvider, { eventType: "ORDER_RECEIVED", orderId: orderReceivedDup, shipmentId: null });
-    await dispatchMessageEventWith(okProvider, { eventType: "ORDER_RECEIVED", orderId: orderReceivedDup, shipmentId: null });
+    await dispatchMessageEventWith(okProvider, { eventType: "ORDER_RECEIVED", orderId: orderReceivedDup, shipmentId: null }, dispatchOpts);
+    await dispatchMessageEventWith(okProvider, { eventType: "ORDER_RECEIVED", orderId: orderReceivedDup, shipmentId: null }, dispatchOpts);
     record("ORDER_RECEIVED 중복 방지(주문 단위)", (await logsFor(orderReceivedDup)).length === 1);
 
     // failed는 재시도 정책이 정해지기 전이라 중복 판정 대상이 아니다(자동 재발송을 만들지 않는다).
@@ -288,7 +325,7 @@ async function run() {
       eventType: "DELIVERY_COMPLETED",
       orderId: orderFailRetry,
       shipmentId: failShipment,
-    });
+    }, dispatchOpts);
     const failFirst = await logsFor(orderFailRetry);
     record("failed는 pending/sent가 아니므로 자동 재발송 정책을 만들지 않았다", failFirst.length === 1 && failFirst[0].status === "failed");
 
@@ -300,19 +337,19 @@ async function run() {
       eventType: "DELIVERY_COMPLETED",
       orderId: orderIdx,
       shipmentId: idxShipment,
-    });
+    }, dispatchOpts);
     await dispatchMessageEventWith(new FakeProvider("fake-fail4", "fail"), {
       eventType: "DELIVERY_COMPLETED",
       orderId: orderIdx,
       shipmentId: idxShipment,
-    });
+    }, dispatchOpts);
     const idxLogs = await logsFor(orderIdx);
     record(
       "0054 — failed는 인덱스 대상이 아니라 재시도 가능(2건 기록)",
       idxLogs.filter((l) => l.status === "failed").length === 2,
       JSON.stringify(idxLogs.map((l) => l.status))
     );
-    await dispatchMessageEventWith(okProvider, { eventType: "DRIVER_ASSIGNED", orderId: orderIdx, shipmentId: idxShipment });
+    await dispatchMessageEventWith(okProvider, { eventType: "DRIVER_ASSIGNED", orderId: orderIdx, shipmentId: idxShipment }, dispatchOpts);
     record(
       "0054 — 같은 배송건의 다른 이벤트는 정상 발송",
       (await logsFor(orderIdx)).some((l) => l.event_type === "DRIVER_ASSIGNED" && l.status === "sent")
@@ -320,7 +357,7 @@ async function run() {
 
     // ---- Case 5: 테넌트 격리 (user3 ON / user6 OFF 동시) ----
     const orderB = await seedOrder(OWNER_B, { recipientPhone: "010-7777-8888", buyerPhone: null });
-    await dispatchMessageEventWith(okProvider, { eventType: "DELIVERY_COMPLETED", orderId: orderB, shipmentId: null });
+    await dispatchMessageEventWith(okProvider, { eventType: "DELIVERY_COMPLETED", orderId: orderB, shipmentId: null }, dispatchOpts);
     const bLogs = await logsFor(orderB);
     record(
       "Case5 user6는 OFF라 skipped(user3 ON의 영향 없음)",
@@ -329,6 +366,7 @@ async function run() {
     );
     const { data: bRow } = await admin.from("message_log").select("owner_username").eq("order_id", orderB).maybeSingle();
     record("로그가 소유 테넌트로 기록됨", bRow?.owner_username === OWNER_B, String(bRow?.owner_username));
+    }
   } finally {
     // message_log → orders → customers 순으로 이번 실행에서 만든 id만 정리한다.
     if (created.orderIds.length > 0) {
