@@ -44,10 +44,14 @@ export interface ApplyResult {
   error?: string;
 }
 
-/** 1/100원 단위 정수를 화면용 원 문자열로. */
+/**
+ * 1/100원 단위 정수를 화면용 원 문자열로.
+ * 소수점 이하 불필요한 0은 떼어낸다 — 650은 "6.50원"이 아니라 "6.5원"이 자연스럽다.
+ */
 export function formatAmount(units: number): string {
   const won = units / AMOUNT_UNIT_PER_KRW;
-  return `${Number.isInteger(won) ? won.toLocaleString() : won.toFixed(2)}원`;
+  if (Number.isInteger(won)) return `${won.toLocaleString()}원`;
+  return `${won.toFixed(2).replace(/0+$/, "")}원`;
 }
 
 export const walletService = {

@@ -380,6 +380,8 @@ async function run() {
       await admin.from("orders").delete().in("id", created.orderIds);
     }
     if (created.customerIds.length > 0) await admin.from("customers").delete().in("id", created.customerIds);
+    // 이 스크립트가 단가 검증을 위해 만든 QA 지갑도 되돌린다(원장은 cascade로 함께 사라진다).
+    if (walletReady) await admin.from("message_wallet").delete().eq("owner_username", OWNER);
     for (const owner of [OWNER, OWNER_B]) {
       const before = settingsSnapshot[owner];
       if (before === null) await admin.from("app_settings").delete().eq("key", `message_settings:${owner}`);
