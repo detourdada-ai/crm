@@ -162,6 +162,10 @@ export interface Database {
         Args: { p_ids: string[]; p_bag_numbers: (string | null)[]; p_bag_returned: boolean[] };
         Returns: void;
       };
+      message_charge_intent_grant: {
+        Args: { p_intent_id: string; p_performed_by?: string };
+        Returns: { intent_id: string; status: string; duplicated: boolean; wallet?: unknown };
+      };
       message_wallet_apply_transaction: {
         Args: {
           p_owner_username: string;
@@ -939,6 +943,48 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["app_accounts"]["Insert"]>;
+        Relationships: [];
+      };
+      message_charge_intents: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          owner_username: string;
+          kind: "payment" | "admin_grant" | "promotion" | "compensation";
+          status: "created" | "pending" | "granted" | "cancelled" | "failed" | "expired";
+          wallet_amount: number;
+          bonus_amount: number;
+          total_amount: number;
+          amount_unit: string;
+          payment_id: string | null;
+          policy_snapshot: Record<string, unknown> | null;
+          reason: string | null;
+          idempotency_key: string;
+          granted_at: string | null;
+          granted_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          owner_username: string;
+          kind: "payment" | "admin_grant" | "promotion" | "compensation";
+          status?: "created" | "pending" | "granted" | "cancelled" | "failed" | "expired";
+          wallet_amount: number;
+          bonus_amount?: number;
+          total_amount: number;
+          amount_unit?: string;
+          payment_id?: string | null;
+          policy_snapshot?: Record<string, unknown> | null;
+          reason?: string | null;
+          idempotency_key: string;
+          granted_at?: string | null;
+          granted_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["message_charge_intents"]["Insert"]>;
         Relationships: [];
       };
       payments: {

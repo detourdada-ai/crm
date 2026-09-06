@@ -46,7 +46,7 @@ async function run() {
 
   // ---- ② 기존 테이블: 공개 키로 읽히면 안 된다 ----
   // STEP15-F3A: 결제 테이블도 같은 기준으로 확인한다(돈과 직결되는 데이터).
-  for (const table of ["message_log", "app_settings", "orders", "customers", "payments", "payment_events"] as const) {
+  for (const table of ["message_log", "app_settings", "orders", "customers", "payments", "payment_events", "message_charge_intents"] as const) {
     const { data, error } = await anon.from(table).select("*").limit(1);
     const blocked = !!error || (data?.length ?? 0) === 0;
     record(`anon 키로 ${table} 조회 차단`, blocked, error ? error.message.slice(0, 60) : `rows=${data?.length}`);
@@ -84,6 +84,13 @@ async function run() {
       p_amount: 999999,
     });
     record("anon 키로 지갑 RPC 직접 호출 차단", !!anonRpc.error, anonRpc.error?.message?.slice(0, 80));
+
+    // STEP15-F3C: 지급 RPC도 같은 기준으로 본다 — 테이블만 막고 함수가 열려 있으면 뚫린다.
+    const anonGrant = await anon.rpc("message_charge_intent_grant", {
+      p_intent_id: "00000000-0000-0000-0000-000000000000",
+      p_performed_by: "attacker",
+    });
+    record("anon 키로 지급 RPC 직접 호출 차단", !!anonGrant.error, anonGrant.error?.message?.slice(0, 80));
 
     // 서버(service_role)에서는 정상 동작해야 한다 — 잠긴 게 아니라 "밖에서만" 잠긴 것.
     const { error: adminReadError } = await admin.from("message_wallet").select("id").limit(1);
