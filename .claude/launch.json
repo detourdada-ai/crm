@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3104,
       "autoPort": true
+    },
+    {
+      "name": "prod-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start", "--", "-p", "3105"],
+      "port": 3105,
+      "autoPort": true
     }
   ]
 }

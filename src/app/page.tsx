@@ -7,6 +7,7 @@ import { WorkChangeSection } from "@/components/landing/work-change-section";
 import { TargetAudience } from "@/components/landing/target-audience";
 import { PricingSection } from "@/components/landing/pricing-section";
 import { FinalCtaSection } from "@/components/landing/final-cta-section";
+import { TestimonialsSection } from "@/components/landing/testimonials-section";
 import { FaqSection } from "@/components/landing/faq-section";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { getSession } from "@/lib/auth/current-session";
@@ -24,7 +25,10 @@ import { SITE_URL, SITE_NAME, SITE_TITLE, SITE_DESCRIPTION } from "@/lib/constan
 // 유료인가"에 답하는 요금제 섹션을 추가했다(가격은 만들지 않는다 — 베타 사실만).
 // 제품 흐름 설명과 화면 소개를 따로 두지 않는다 — 같은 화면을 두 번 보여주면
 // 다시 카드 나열이 된다.
-// 실제 고객 후기가 아직 없으므로 허위 후기 섹션은 넣지 않는다.
+// v5(2026-09-07, CEO 승인 개선 1건): ① Hero 제품 화면 1장 → 4장 슬라이드
+// ② 중간 설명 문구 압축 ③ Q&A 위에 실사용 후기 카드 슬라이드 추가.
+// 후기 섹션은 **실제 후기가 있을 때만** 렌더된다 — 데이터가 비면 스스로
+// 사라진다(lib/constants/testimonials.ts). 가공한 후기는 넣지 않는다.
 //
 // STEP-6: explicitly force-dynamic (never statically cached/prerendered) so
 // a browser or intermediary can never serve a stale snapshot of this page
@@ -88,6 +92,7 @@ export default async function LandingPage() {
         <WorkChangeSection />
         <TargetAudience />
         <PricingSection />
+        <TestimonialsSection />
         <FaqSection />
         <FinalCtaSection />
       </main>

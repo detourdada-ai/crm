@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { OrdersScreen } from "./product-screens";
+import { ProductShowcase } from "./product-showcase";
 
 /**
- * LANDING v3(CPO 작업지시, 2026-09-05) — Hero의 주인공을 카피에서 **제품**으로
- * 옮긴다. v2 Hero는 칩·버튼 중심이라 브랜딩 페이지처럼 읽혔다.
+ * LANDING v3 → v5(CEO 승인 개선, 2026-09-07) — Hero의 주인공은 카피가 아니라
+ * **제품**이다. 데스크톱은 좌 카피 / 우 실제 앱 화면 2단이고, 화면은 오른쪽
+ * 가장자리에서 살짝 잘리게 둔다 — 액자에 담긴 예시가 아니라 "계속 이어지는
+ * 실제 화면"으로 보이게 하려는 의도다.
  *
- * 데스크톱은 좌 카피 / 우 실제 앱 화면 2단이고, 화면은 오른쪽 가장자리에서
- * 살짝 잘리게 둔다 — 액자에 담긴 예시가 아니라 "계속 이어지는 실제 화면"으로
- * 보이게 하려는 의도다. 모바일에서는 축소판 대신 모바일 제품 뷰가 나온다.
+ * v5에서 오른쪽을 **4장 슬라이드**로 바꿨다(주문/고객/배송/기사). 한 장만
+ * 보여주면 첫 화면만 본 사람에게 "주문 목록 도구"로 읽힌다. 카피도 함께
+ * 줄였다 — 설명이 길수록 "뭔가 많은 걸 하는 프로그램"처럼 보이는데, 그건
+ * "복잡한 주문, 한 장으로"라는 방향과 반대다.
  */
 export function HeroSection() {
   return (
@@ -23,7 +26,7 @@ export function HeroSection() {
             <span className="text-primary">운영은 한곳에서</span> 끝내세요.
           </h1>
           <p className="mt-5 max-w-md text-base leading-relaxed text-muted-foreground sm:text-lg">
-            스마트스토어 엑셀, 전화·메시지로 받은 주문까지 한곳에 모아 고객을 확인하고, 배송을 정리해 기사에게 그대로 전달합니다.
+            받고 → 확인하고 → 보내고. 주문부터 배송까지 한 화면에서 끝납니다.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button asChild size="lg" className="w-full gap-2 sm:w-auto">
@@ -40,7 +43,7 @@ export function HeroSection() {
         </div>
 
         <div className="lg:-mr-24 xl:-mr-32">
-          <OrdersScreen />
+          <ProductShowcase />
         </div>
       </div>
     </section>

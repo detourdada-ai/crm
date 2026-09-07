@@ -16,7 +16,7 @@ export function TargetAudience() {
             </span>
           ))}
         </div>
-        <p className="mt-6 text-sm text-muted-foreground">반찬·도시락, 꽃·화환, 케이크·답례품 등 자체 배송을 하는 사장님들과 함께 검증하고 있습니다.</p>
+        <p className="mt-6 text-sm text-muted-foreground">반찬·도시락, 꽃·화환, 케이크 등 자체 배송을 하는 사장님들과 함께 검증하고 있습니다.</p>
       </div>
     </section>
   );

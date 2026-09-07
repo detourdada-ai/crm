@@ -21,9 +21,7 @@ export function WorkChangeSection() {
     <section className="bg-background py-14 sm:py-24">
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
         <h2 className="max-w-2xl text-[1.75rem] leading-snug font-bold text-text-strong sm:text-[2.75rem]">
-          같은 주문을 처리하는 데
-          <br />
-          <span className="text-primary">해야 할 일이 줄어듭니다.</span>
+          같은 주문인데 <span className="text-primary">할 일이 줄어듭니다.</span>
         </h2>
 
         <div className="mt-12 grid gap-10 md:grid-cols-2 md:gap-16">
@@ -36,7 +34,7 @@ export function WorkChangeSection() {
                 </li>
               ))}
             </ul>
-            <p className="mt-6 text-xs text-muted-foreground">단계마다 다른 도구를 열어야 합니다.</p>
+            <p className="mt-6 text-xs text-muted-foreground">단계마다 다른 도구를 엽니다.</p>
           </div>
 
           <div className="relative">
@@ -49,7 +47,7 @@ export function WorkChangeSection() {
                 </div>
               ))}
             </div>
-            <p className="mt-6 text-xs text-muted-foreground">한 화면에서 다음 단계로 이어집니다.</p>
+            <p className="mt-6 text-xs text-muted-foreground">한 화면에서 이어집니다.</p>
           </div>
         </div>
       </div>
