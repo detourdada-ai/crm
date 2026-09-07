@@ -159,7 +159,7 @@ export function OrdersScreen({ className }: { className?: string }) {
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-[10px] text-muted-foreground">엑셀 업로드로 들어온 주문과 직접 등록한 주문이 같은 목록에 있습니다.</p>
+      <p className="mt-2 text-[10px] break-keep text-muted-foreground">엑셀 업로드로 들어온 주문과 직접 등록한 주문이 한 목록에 있습니다.</p>
     </AppFrame>
   );
 }

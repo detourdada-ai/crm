@@ -20,7 +20,7 @@ export function WorkChangeSection() {
   return (
     <section className="bg-background py-14 sm:py-24">
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
-        <h2 className="max-w-2xl text-[1.75rem] leading-snug font-bold text-text-strong sm:text-[2.75rem]">
+        <h2 className="max-w-2xl text-[1.75rem] leading-snug font-bold break-keep text-text-strong sm:text-[2.75rem]">
           같은 주문인데 <span className="text-primary">할 일이 줄어듭니다.</span>
         </h2>
 

@@ -78,7 +78,7 @@ function FaqRow({ q, a }: { q: string; a: string }) {
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <p className="px-5 pb-4 text-sm text-muted-foreground">{a}</p>
+        <p className="px-5 pb-4 text-sm break-keep text-muted-foreground">{a}</p>
       </CollapsibleContent>
     </Collapsible>
   );
@@ -92,7 +92,7 @@ export function FaqSection() {
   return (
     <section id="faq" className="bg-secondary/30 py-14 sm:py-20">
       <div className="mx-auto max-w-2xl px-4 sm:px-6">
-        <h2 className="text-center text-2xl font-bold text-text-strong sm:text-3xl">자주 묻는 질문</h2>
+        <h2 className="text-center text-2xl font-bold break-keep text-text-strong sm:text-3xl">자주 묻는 질문</h2>
         <div className="mt-10 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           {visibleFaqs.map((faq) => (
             <FaqRow key={faq.q} q={faq.q} a={faq.a} />

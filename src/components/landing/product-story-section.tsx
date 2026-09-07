@@ -65,14 +65,14 @@ function StepHead({ step }: { step: StoryStep }) {
         <span className="text-3xl font-bold text-primary/25 sm:text-4xl">{step.n}</span>
         <span className="text-sm font-semibold text-primary">{step.label}</span>
       </div>
-      <p className="mt-3 text-xl leading-snug font-bold text-text-strong sm:text-2xl">{step.situation}</p>
+      <p className="mt-3 text-xl leading-snug font-bold break-keep text-text-strong sm:text-2xl">{step.situation}</p>
       {step.quote ? (
         <blockquote className="mt-4 border-l-2 border-primary/40 pl-4 text-sm leading-relaxed text-text-strong sm:text-base">
           {step.quote}
           {step.attribution ? <footer className="mt-1.5 text-xs text-muted-foreground">— {step.attribution}</footer> : null}
         </blockquote>
       ) : null}
-      <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">{step.body}</p>
+      <p className="mt-3 text-sm leading-relaxed break-keep text-muted-foreground sm:text-base">{step.body}</p>
     </div>
   );
 }
@@ -81,8 +81,13 @@ export function ProductStorySection() {
   return (
     <section id="flow" className="overflow-hidden border-y border-border bg-secondary/25 py-16 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <h2 className="max-w-2xl text-[1.75rem] leading-snug font-bold text-text-strong sm:text-[2.75rem]">
-          주문이 들어오면 <span className="text-primary">받고 · 확인하고 · 보내고</span>, 끝.
+        {/* 2줄 구성은 의도한 것이다(작업지시 §3) — 화면 폭에 따라 "끝." 한 조각만
+            떨어지는 일이 없도록 줄바꿈 지점을 직접 잡고, 나머지는 break-keep으로
+            단어 중간에서 끊기지 않게 한다. nowrap으로 강제하지 않는다. */}
+        <h2 className="max-w-2xl text-[1.75rem] leading-snug font-bold break-keep text-text-strong sm:text-[2.75rem]">
+          주문이 들어오면 <span className="text-primary">받고</span>
+          <br />
+          <span className="text-primary">· 확인하고 · 보내고</span>, 끝.
         </h2>
 
         {/* 01 주문 — 화면 좌 / 설명 우 */}
@@ -110,8 +115,15 @@ export function ProductStorySection() {
           <div className="grid gap-6 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] lg:items-end lg:gap-14">
             <div>
               <StepHead step={STEPS.delivery} />
-              <p className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-primary">
-                배송그룹 <ArrowRight className="size-3.5" /> 기사 배정 <ArrowRight className="size-3.5" /> 기사 앱
+              {/* v5.1: 좁은 폭에서 "기사 앱"만 다음 줄로 떨어지지 않게 flex-wrap 대신
+                  한 덩어리로 감싸고, 넘칠 때는 묶음 단위로 줄바꿈되게 한다. */}
+              <p className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-primary">
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                  배송그룹 <ArrowRight className="size-3.5" /> 기사 배정
+                </span>
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                  <ArrowRight className="size-3.5" /> 기사 앱
+                </span>
               </p>
             </div>
             <div className="relative">

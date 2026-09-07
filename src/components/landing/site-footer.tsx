@@ -35,7 +35,8 @@ export function SiteFooter() {
                 </a>
               </li>
               <li>
-                <a href="#start" className="hover:text-foreground">
+                {/* v5.1: 시작 버튼을 요금제 섹션 하나로 통일했으므로 링크도 그쪽을 가리킨다. */}
+                <a href="#pricing" className="hover:text-foreground">
                   무료로 시작하기
                 </a>
               </li>

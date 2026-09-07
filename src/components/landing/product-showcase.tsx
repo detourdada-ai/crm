@@ -5,7 +5,7 @@ import { CustomersScreen, DeliveryScreen, DriverPhone, OrdersScreen } from "./pr
 import { cn } from "@/lib/utils";
 
 /**
- * LANDING v5(CEO 승인 개선 1건, 2026-09-07) — Hero의 제품 화면을 1장에서
+ * LANDING v5(CEO 승인 개선, 2026-09-07) — Hero의 제품 화면을 1장에서
  * **4장 슬라이드**로 바꾼다.
  *
  * v3~v4 Hero는 주문관리 화면 하나만 보여줘서, 첫 화면만 본 사람에게는 "주문
@@ -16,6 +16,19 @@ import { cn } from "@/lib/utils";
  * 화면을 그대로 재현한 기존 컴포넌트(product-screens.tsx)이고, 이름은 예외 없이
  * `성○이름`으로 마스킹돼 있다. 우리 제품의 가장 강한 신뢰 요소는 "실제로 이런
  * 프로그램이구나"이므로 없는 기능을 그려 넣지 않는다.
+ *
+ * v5.1(2026-09-07) — 두 가지를 고친다.
+ *
+ * ① **표시 프레임을 고정한다.** 네 화면은 실제 컴포넌트라 콘텐츠 높이가 서로
+ *    다르고, 그대로 두면 슬라이드가 바뀔 때마다 컨테이너 높이가 출렁여
+ *    아래 문단까지 밀린다(layout shift). 화면을 다시 디자인하는 대신 **모든
+ *    슬라이드를 같은 높이의 프레임 안에 절대배치**하고, 넘치는 부분은 위쪽
+ *    정렬로 잘라 "계속 이어지는 실제 화면"처럼 보이게 한다. 높이가 상수이므로
+ *    전환 중 점프가 구조적으로 생기지 않는다.
+ * ② **기사관리는 기사 화면만 보여주지 않는다.** 사장님 입장에서 필요한 건
+ *    "기사에게 넘어간 뒤 어떻게 관리되는가"이므로, 뒤에 실제 배송관리 화면을
+ *    두고 그 앞에 기사 휴대폰 화면을 겹친다(사장님이 순서를 정리 → 기사가
+ *    자기 배송을 확인). 가짜 지도 그래픽은 만들지 않는다.
  *
  * 자동 전환은 하되 ① 탭을 누르면 자동 전환을 멈추고(사용자 의도 우선)
  * ② `prefers-reduced-motion`이면 처음부터 자동 전환하지 않는다.
@@ -28,10 +41,14 @@ const SLIDES = [
   {
     key: "driver",
     tab: "기사관리",
-    caption: "기사에게 그대로 전달하고 배송까지",
+    caption: "사장님이 순서를 정리하면, 기사 화면에 그대로",
     render: () => (
-      <div className="flex justify-center py-2">
-        <DriverPhone />
+      // 배경 = 사장님의 배송관리 화면, 전경 = 기사 휴대폰. 둘의 관계가 한 장에 보이게 한다.
+      <div className="relative">
+        <DeliveryScreen />
+        <div className="absolute right-2 -bottom-1 sm:right-4 sm:bottom-2">
+          <DriverPhone className="w-[150px] sm:w-[180px]" />
+        </div>
       </div>
     ),
   },
@@ -61,15 +78,15 @@ export function ProductShowcase() {
 
   return (
     <div>
-      {/* 화면 자체. 높이가 다른 화면들이 서로 밀지 않도록 겹쳐 두고 투명도로 바꾼다. */}
-      <div className="relative">
+      {/* 고정 높이 프레임 — 어떤 슬라이드가 와도 이 박스 크기는 변하지 않는다. */}
+      <div className="relative h-[380px] overflow-hidden sm:h-[460px] lg:h-[500px]">
         {SLIDES.map((slide, i) => (
           <div
             key={slide.key}
             aria-hidden={i !== index}
             className={cn(
-              "transition-opacity duration-500",
-              i === index ? "opacity-100" : "pointer-events-none absolute inset-0 opacity-0"
+              "absolute inset-x-0 top-0 transition-opacity duration-500",
+              i === index ? "opacity-100" : "pointer-events-none opacity-0"
             )}
           >
             {slide.render()}
@@ -78,7 +95,7 @@ export function ProductShowcase() {
       </div>
 
       <div className="mt-5 lg:mr-24 xl:mr-32">
-        <p className="text-center text-sm font-medium text-text-strong lg:text-left">{SLIDES[index].caption}</p>
+        <p className="text-center text-sm font-medium break-keep text-text-strong lg:text-left">{SLIDES[index].caption}</p>
         <div className="mt-3 flex flex-wrap justify-center gap-1.5 lg:justify-start">
           {SLIDES.map((slide, i) => (
             <button

@@ -28,7 +28,7 @@ export function ProblemSolutionSection() {
           <ArrowDown className="size-4" />
         </div>
 
-        <p className="mt-10 text-center text-[1.75rem] leading-snug font-bold text-text-strong sm:text-[2.75rem]">
+        <p className="mt-10 text-center text-[1.75rem] leading-snug font-bold break-keep text-text-strong sm:text-[2.75rem]">
           주문이 늘어난 게 아니라,
           <br />
           <span className="text-primary">관리할 곳이 늘어나고 있습니다.</span>
