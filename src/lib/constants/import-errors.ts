@@ -8,10 +8,12 @@ import type { ImportErrorCode, ImportRowError } from "@/types/domain";
  * "무엇이 몇 건"인지**만 보여준다.
  */
 export const IMPORT_ERROR_LABELS: Record<ImportErrorCode, string> = {
-  missing_contact_info: "전화번호·주소가 모두 비어 있음",
+  // 이 코드는 전화번호와 주소가 **둘 다** 비었을 때만 나온다("연락처 없음"만으로 적으면
+  // 주소만 있으면 실패한 것처럼 읽혀서, 사장님이 엉뚱한 칸을 고치게 된다).
+  missing_contact_info: "연락처·주소 정보 없음",
   missing_order_number: "주문번호 없음",
   order_number_conflict: "주문번호 충돌",
-  identity_conflict: "같은 주문번호에 다른 고객 정보가 섞임",
+  identity_conflict: "같은 주문번호에 다른 고객 정보",
   repeat_confirm_needed: "같은 주문번호 반복 — 확인 필요",
   processing_error: "처리 중 오류",
 };

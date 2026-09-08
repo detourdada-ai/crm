@@ -94,7 +94,7 @@ export function ImportErrorSummary({
         <ul className="space-y-1 text-sm text-muted-foreground">
           {summary.map((item) => (
             <li key={item.label}>
-              • {item.label}: {item.count}건
+              {item.label} · {item.count}건
             </li>
           ))}
         </ul>

@@ -138,15 +138,11 @@ async function main() {
     record("T4. 팝오버에 실패 건수가 나온다", popText.includes("실패 3건"), popText.split("\n")[0]);
     record(
       "T5. 유형별로 접혀서 나온다 — 같은 사유 2건이 '2건'으로 묶인다",
-      popText.includes("전화번호·주소가 모두 비어 있음: 2건"),
-      popText.replace(/\s+/g, " ").slice(0, 120)
+      popText.includes("연락처·주소 정보 없음 · 2건"),
+      popText.replace(/\s+/g, " ").slice(0, 140)
     );
-    record(
-      "T6. 다른 유형도 함께 나온다",
-      popText.includes("같은 주문번호에 다른 고객 정보가 섞임: 1건"),
-      ""
-    );
-    record("T7. 건수가 많은 유형이 위에 온다", popText.indexOf("전화번호") < popText.indexOf("같은 주문번호"));
+    record("T6. 다른 유형도 함께 나온다", popText.includes("같은 주문번호에 다른 고객 정보 · 1건"));
+    record("T7. 건수가 많은 유형이 위에 온다", popText.indexOf("연락처·주소") < popText.indexOf("같은 주문번호"));
 
     // ── ★ 개인정보가 새지 않는가 ───────────────────────────────────
     const html = await page.content();
