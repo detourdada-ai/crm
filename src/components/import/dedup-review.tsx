@@ -9,6 +9,7 @@ import type {
   DedupOrderSnapshot,
   DedupProductOrderItem,
   ImportDateFilterInput,
+  ImportRefreshPreview,
 } from "@/types/excel";
 
 /** STEP14: 이 결과가 "어떤 범위로 만들어진 결과인지"를 숫자 옆에서 바로 확인시킨다. */
@@ -197,11 +198,14 @@ function PartialGroupCard({ group }: { group: DedupGroupResult }) {
 export function DedupReview({
   analysis,
   dateFilter,
+  refreshPreview,
   onConfirm,
   isSubmitting,
 }: {
   analysis: DedupAnalysis;
   dateFilter?: ImportDateFilterInput;
+  /** STEP22: 최신화 모드에서만 전달된다. */
+  refreshPreview?: ImportRefreshPreview;
   onConfirm: (approvedGroupKeys: string[]) => void;
   isSubmitting: boolean;
 }) {
@@ -395,8 +399,43 @@ export function DedupReview({
           </details>
         ) : null}
 
+        {/* STEP22 최신화: 숫자를 보지 않고 취소가 일어나면 안 된다. 확정 전에 반드시 보여준다. */}
+        {refreshPreview ? (
+          <div
+            className={`space-y-1.5 rounded-md border p-3 text-sm ${
+              refreshPreview.blockedReason ? "border-destructive bg-destructive/5" : "border-amber-300 bg-amber-50"
+            }`}
+          >
+            <p className="font-medium text-text-strong">당일 배송 최신화 — {refreshPreview.deliveryDate}</p>
+            {refreshPreview.blockedReason ? (
+              <p className="text-destructive">{refreshPreview.blockedReason}</p>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-between text-amber-900">
+                  <span>이 배송일의 기존 배송건</span>
+                  <span className="font-medium">{refreshPreview.existingShipments.toLocaleString()}건</span>
+                </div>
+                <div className="flex items-baseline justify-between text-amber-900">
+                  <span className="font-medium">배송 대상에서 제외 예정</span>
+                  <span className="font-semibold">{refreshPreview.toExcludeCount.toLocaleString()}건</span>
+                </div>
+                {refreshPreview.inProgressCount > 0 ? (
+                  <p className="pt-1 text-xs text-amber-900">
+                    배송중인데 파일에서 확인되지 않는 배송건 {refreshPreview.inProgressCount.toLocaleString()}건 —{" "}
+                    <strong>자동 취소하지 않습니다. 확인이 필요합니다.</strong>
+                  </p>
+                ) : null}
+                <p className="pt-1 text-xs text-amber-800">
+                  제외된 배송건은 삭제되지 않고 배송 대상에서만 빠집니다. 다른 배송일·직접 입력한 주문·배송완료 건은
+                  영향을 받지 않습니다.
+                </p>
+              </>
+            )}
+          </div>
+        ) : null}
+
         <div className="flex justify-end pt-2">
-          <Button disabled={isSubmitting} onClick={() => onConfirm([...approved])}>
+          <Button disabled={isSubmitting || !!refreshPreview?.blockedReason} onClick={() => onConfirm([...approved])}>
             {isSubmitting ? "등록 중..." : "신규 주문 등록하기"}
           </Button>
         </div>

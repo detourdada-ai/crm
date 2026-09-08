@@ -2,9 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { MAPPABLE_FIELDS } from "@/types/excel";
-import type { ColumnMapping, MappableField, ParsedSheet, ImportDateFilterInput, ImportDateFilterField, ImportDateFilterMode } from "@/types/excel";
+import type {
+  ColumnMapping,
+  MappableField,
+  ParsedSheet,
+  ImportDateFilterInput,
+  ImportDateFilterField,
+  ImportDateFilterMode,
+  ImportIntakeInput,
+  ImportIntakeMode,
+} from "@/types/excel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +48,27 @@ const SCOPE_OPTIONS: { mode: ImportDateFilterMode; title: string; lines: string[
   },
 ];
 
+/**
+ * STEP22 접수 방식 — `가져올 주문 범위`(입력 필터)와는 다른 축이다.
+ * 순서상 "누적 등록"이 먼저이고 기본값이다: 기존 사장님이 아무것도 고르지 않아도
+ * 지금과 똑같이 동작해야 한다.
+ */
+const INTAKE_OPTIONS: { mode: ImportIntakeMode; title: string; lines: string[] }[] = [
+  {
+    mode: "accumulate",
+    title: "누적 등록",
+    lines: ["이번 파일의 주문을 기존 주문에 추가합니다.", "파일에 없는 기존 주문은 그대로 유지됩니다."],
+  },
+  {
+    mode: "refresh_delivery_date",
+    title: "당일 배송 최신화",
+    lines: [
+      "선택한 배송일의 배송 목록을 이번 파일 기준으로 최신화합니다.",
+      "그 배송일에서 이번 파일에 없는 배송건은 배송 대상에서 제외됩니다.",
+    ],
+  },
+];
+
 function labelOf(field: ImportDateFilterField): string {
   return MAPPABLE_FIELDS.find((f) => f.key === field)?.label ?? field;
 }
@@ -64,7 +95,12 @@ export function ColumnMappingForm({
   unrecognizedHeaders: string[];
   /** 이 사업장이 저장해둔 기본 주문 범위. 미설정이면 null — 추측해서 채우지 않는다. */
   defaultScope: ImportDateFilterMode | null;
-  onConfirm: (mapping: ColumnMapping, dateFilter: ImportDateFilterInput, saveAsDefault: boolean) => void;
+  onConfirm: (
+    mapping: ColumnMapping,
+    dateFilter: ImportDateFilterInput,
+    saveAsDefault: boolean,
+    intake: ImportIntakeInput
+  ) => void;
   isSubmitting: boolean;
 }) {
   const [mapping, setMapping] = useState<ColumnMapping>(initialMapping);
@@ -88,13 +124,22 @@ export function ColumnMappingForm({
   const [dateFilterField, setDateFilterField] = useState<ImportDateFilterField>(availableDateFields[0] ?? "delivery_date");
   const [specificDate, setSpecificDate] = useState(kstTodayIso());
 
+  // STEP22(CPO 승인, 2026-09-08): 접수 방식. **계정에 저장하지 않는다** — 잘못 기억되면
+  // 사장님이 인지하지 못한 채 매번 기존 배송 대상이 제외된다. 항상 "누적 등록"에서 시작한다.
+  const [intakeMode, setIntakeMode] = useState<ImportIntakeMode>("accumulate");
+  const [refreshDate, setRefreshDate] = useState(kstTodayIso());
+
   function handleConfirm() {
     const dateFilter: ImportDateFilterInput = {
       mode: dateFilterMode,
       field: dateFilterField,
       date: dateFilterMode === "specific_date" ? specificDate : undefined,
     };
-    onConfirm(mapping, dateFilter, saveAsDefault && dateFilterMode !== defaultScope);
+    const intake: ImportIntakeInput = {
+      mode: intakeMode,
+      deliveryDate: intakeMode === "refresh_delivery_date" ? refreshDate : undefined,
+    };
+    onConfirm(mapping, dateFilter, saveAsDefault && dateFilterMode !== defaultScope, intake);
   }
 
   return (
@@ -181,6 +226,68 @@ export function ColumnMappingForm({
           </div>
         </div>
       ) : null}
+
+      {/* STEP22: 접수 방식 — "이 파일로 기존 주문을 어떻게 할지". 위에 두는 이유는
+          "무엇을 할지"를 먼저 정하고 "어떤 행을 가져올지"를 나중에 고르는 것이
+          사고 순서와 맞기 때문이다. 기본값은 항상 누적 등록(= 기존 동작 그대로). */}
+      <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+        <p className="text-sm font-medium text-text-strong">접수 방식</p>
+        <div className="space-y-2" role="radiogroup" aria-label="접수 방식">
+          {INTAKE_OPTIONS.map((option) => {
+            const selected = intakeMode === option.mode;
+            return (
+              <button
+                key={option.mode}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setIntakeMode(option.mode)}
+                className={`w-full rounded-md border p-3 text-left transition ${
+                  selected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-input hover:bg-muted/40"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span
+                    className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${
+                      selected ? "border-primary" : "border-muted-foreground/40"
+                    }`}
+                  >
+                    {selected ? <span className="size-2 rounded-full bg-primary" /> : null}
+                  </span>
+                  <span className="text-sm font-medium text-text-strong">{option.title}</span>
+                </span>
+                {option.lines.map((line) => (
+                  <span key={line} className="mt-1 block pl-6 text-xs text-muted-foreground">
+                    {line}
+                  </span>
+                ))}
+              </button>
+            );
+          })}
+        </div>
+
+        {intakeMode === "refresh_delivery_date" ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="refresh-delivery-date" className="text-xs text-muted-foreground">
+                최신화할 배송일
+              </Label>
+              <Input
+                id="refresh-delivery-date"
+                type="date"
+                value={refreshDate}
+                onChange={(e) => setRefreshDate(e.target.value)}
+                className="h-8 w-40"
+              />
+            </div>
+            <p className="rounded-md bg-amber-50 px-2.5 py-2 text-xs leading-relaxed text-amber-800">
+              ⚠️ 선택한 배송일({refreshDate})의 배송건 중 <strong>이번 파일에 없는 건은 배송 대상에서 제외</strong>됩니다.
+              <br />
+              다른 배송일, 직접 입력한 주문, 배송완료·배송중 건은 영향을 받지 않습니다.
+            </p>
+          </div>
+        ) : null}
+      </div>
 
       {availableDateFields.length > 0 ? (
         <div className="space-y-3 rounded-md border bg-muted/20 p-3">

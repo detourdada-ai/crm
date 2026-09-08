@@ -7,6 +7,7 @@ import { getSavedColumnMapping, saveColumnMapping } from "@/lib/services/import-
 import { getDefaultImportScope, saveDefaultImportScope } from "@/lib/services/import-scope-settings.service";
 import { runImport, deleteImport, deleteAllImports } from "@/lib/services/import.service";
 import { classifyDuplicates } from "@/lib/services/import-dedup.service";
+import { computeRefreshTargets } from "@/lib/services/import-refresh.service";
 import { importsRepository } from "@/lib/repositories/imports.repository";
 import { ordersRepository } from "@/lib/repositories/orders.repository";
 import { orderShipmentsRepository } from "@/lib/repositories/order-shipments.repository";
@@ -27,6 +28,8 @@ import type {
   DedupAnalysis,
   ImportDateFilterInput,
   ImportDateFilterMode,
+  ImportIntakeInput,
+  ImportRefreshPreview,
 } from "@/types/excel";
 import type { ImportRecord, ImportSummary, ImportRowError } from "@/types/domain";
 
@@ -72,6 +75,8 @@ export async function analyzeImportFileAction(
 export interface AnalyzeDuplicatesResult {
   ok: true;
   analysis: DedupAnalysis;
+  /** STEP22: 최신화 모드에서만 채워진다. 누적 등록이면 undefined. */
+  refreshPreview?: ImportRefreshPreview;
 }
 export interface AnalyzeDuplicatesError {
   ok: false;
@@ -104,12 +109,33 @@ export async function saveDefaultImportScopeAction(
 export async function analyzeDuplicatesAction(
   parsed: ParsedSheet,
   mapping: ColumnMapping,
-  dateFilter?: ImportDateFilterInput
+  dateFilter?: ImportDateFilterInput,
+  intake?: ImportIntakeInput
 ): Promise<AnalyzeDuplicatesResult | AnalyzeDuplicatesError> {
   try {
     const session = await requireSession();
     const analysis = await classifyDuplicates({ parsed, mapping, ownerUsername: session.username, dateFilter });
-    return { ok: true, analysis };
+
+    // STEP22: 최신화 모드일 때만, 확정 전에 보여줄 "제외 예정" 요약을 함께 계산한다.
+    // 누적 등록(기본)에서는 아무것도 계산하지 않는다 — 기존 경로와 완전히 동일하다.
+    let refreshPreview: ImportRefreshPreview | undefined;
+    if (intake?.mode === "refresh_delivery_date" && intake.deliveryDate) {
+      const t = await computeRefreshTargets({
+        parsed,
+        mapping,
+        ownerUsername: session.username,
+        deliveryDate: intake.deliveryDate,
+      });
+      refreshPreview = {
+        deliveryDate: intake.deliveryDate,
+        fileRowsOnDate: t.fileRowsOnDate,
+        existingShipments: t.existingShipments,
+        toExcludeCount: t.toExcludeShipmentIds.length,
+        inProgressCount: t.inProgressShipmentIds.length,
+        blockedReason: t.blockedReason,
+      };
+    }
+    return { ok: true, analysis, refreshPreview };
   } catch (e) {
     return { ok: false, error: toActionError(e, "중복 확인 중 오류가 발생했습니다.") };
   }
@@ -120,6 +146,8 @@ export interface ConfirmImportResult {
   importId: string;
   summary: ImportSummary;
   errors: ImportRowError[];
+  /** STEP22 최신화로 배송 대상에서 제외된 배송건 수. 누적 등록이면 0. */
+  excludedShipments?: number;
 }
 export interface ConfirmImportError {
   ok: false;
@@ -138,7 +166,8 @@ export async function confirmImportAction(
   mapping: ColumnMapping,
   approvedCandidateGroupKeys?: string[],
   dateFilter?: ImportDateFilterInput,
-  originalFileData?: FormData
+  originalFileData?: FormData,
+  intake?: ImportIntakeInput
 ): Promise<ConfirmImportResult | ConfirmImportError> {
   try {
     const session = await requireSession();
@@ -154,10 +183,44 @@ export async function confirmImportAction(
       dateFilter,
       originalFileBytes,
     });
+
+    // STEP22 최신화: **등록이 끝난 뒤에** 계산한다 — 이번 파일로 새로 생긴 배송건이
+    // 제외 대상에 잘못 걸리지 않도록. 브라우저가 보낸 미리보기 숫자를 믿지 않고
+    // 서버가 다시 계산한다(기존 중복판정과 같은 원칙).
+    let excludedShipments = 0;
+    if (intake?.mode === "refresh_delivery_date" && intake.deliveryDate) {
+      const targets = await computeRefreshTargets({
+        parsed,
+        mapping,
+        ownerUsername: session.username,
+        deliveryDate: intake.deliveryDate,
+      });
+      if (targets.blockedReason) {
+        return { ok: false, error: targets.blockedReason };
+      }
+      if (targets.toExcludeShipmentIds.length > 0) {
+        // cancelMany는 UPDATE만 하고 완료/이미취소 건은 스스로 제외한다(STEP22-0).
+        const cancelled = await orderShipmentsRepository.cancelMany(targets.toExcludeShipmentIds, session.username);
+        excludedShipments = cancelled.length;
+        const tenant = await tenantsRepository.findByUsername(session.username);
+        if (tenant) {
+          await triggerDeliveryGroupRegeneration(
+            tenant.id,
+            intake.deliveryDate,
+            session.username,
+            "excel_refresh_delivery_date"
+          );
+        }
+      }
+    }
     // STD-4: 다음 업로드부터 같은 헤더는 자동매핑되도록 저장 — import는 이미
     // 끝났으므로 저장 실패로 이번 확정 자체를 실패시키지 않는다(best-effort).
     saveColumnMapping(session.username, mapping).catch(() => {});
-    return { ok: true, importId, summary, errors };
+    if (excludedShipments > 0) {
+      revalidatePath("/delivery");
+      revalidatePath("/orders");
+    }
+    return { ok: true, importId, summary, errors, excludedShipments };
   } catch (e) {
     return { ok: false, error: toActionError(e, "가져오기 중 오류가 발생했습니다.") };
   }

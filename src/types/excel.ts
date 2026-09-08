@@ -124,6 +124,40 @@ export interface ImportDateFilterInput {
   date?: string;
 }
 
+/**
+ * STEP22 최종(CPO 승인, 2026-09-08) — **접수 방식**. `가져올 주문 범위`와는 다른 축이다.
+ *
+ *   가져올 주문 범위 = 이 파일에서 **어떤 행을 등록할지**(입력 필터)
+ *   접수 방식        = 이 파일로 **기존 주문을 어떻게 할지**
+ *
+ * 두 의미를 한 컨트롤에 겹쳐 실으면 기존 사장님이 아무것도 바꾸지 않았는데 동작이
+ * 달라진다. 그래서 별도 축으로 둔다.
+ *
+ * `accumulate`(기본)는 **현재 동작과 100% 동일** — 파일에 없는 기존 주문을 건드리지 않는다.
+ * 계정에 저장하지 않는다(CPO 확정): 잘못 기억되면 사장님이 인지하지 못한 채 매번
+ * 기존 배송 대상이 제외된다.
+ */
+export type ImportIntakeMode = "accumulate" | "refresh_delivery_date";
+
+export interface ImportIntakeInput {
+  mode: ImportIntakeMode;
+  /** mode === "refresh_delivery_date"일 때만 의미를 갖는다. KST 캘린더일(YYYY-MM-DD). */
+  deliveryDate?: string;
+}
+
+/** 최신화 확정 전에 보여줄 요약 — 숫자를 보지 않고 취소가 일어나면 안 된다. */
+export interface ImportRefreshPreview {
+  deliveryDate: string;
+  /** 파일 안에서 그 배송일에 해당하는 상품주문 행 수. 0이면 차단한다. */
+  fileRowsOnDate: number;
+  existingShipments: number;
+  /** 파일에 없어 제외될 배송건 수(배송대기만). */
+  toExcludeCount: number;
+  /** 파일에 없지만 배송중이라 자동 취소하지 않는 배송건 수 — 확인 필요로만 표시. */
+  inProgressCount: number;
+  blockedReason: string | null;
+}
+
 export interface ColumnMapping {
   // Maps our internal field key -> the source column header found in the uploaded file
   [key: string]: string | undefined;

@@ -16,6 +16,8 @@ import type {
   DedupAnalysis,
   ImportDateFilterInput,
   ImportDateFilterMode,
+  ImportIntakeInput,
+  ImportRefreshPreview,
 } from "@/types/excel";
 import type { ImportSummary, ImportRowError } from "@/types/domain";
 import { ImportDropzone } from "./import-dropzone";
@@ -46,6 +48,9 @@ type Stage =
       mapping: ColumnMapping;
       analysis: DedupAnalysis;
       dateFilter: ImportDateFilterInput;
+      intake: ImportIntakeInput;
+      /** STEP22: 최신화 모드일 때만 채워진다. 확정 전에 제외 예정 건수를 보여주기 위한 것. */
+      refreshPreview?: ImportRefreshPreview;
     }
   | { step: "done"; importId: string; summary: ImportSummary; errors: ImportRowError[] };
 
@@ -106,7 +111,12 @@ export function ImportWorkspace() {
   // §CPO 작업지시(누적 표준 엑셀 중복방지, 2026-08): 컬럼 매핑 확정 →
   // 즉시 등록이 아니라 중복 분석(읽기 전용)을 먼저 거친다. 사용자가 검토
   // 화면에서 확인한 뒤에만 실제 등록(handleFinalConfirm)이 실행된다.
-  function handleCheckDuplicates(mapping: ColumnMapping, dateFilter: ImportDateFilterInput, saveAsDefault: boolean) {
+  function handleCheckDuplicates(
+    mapping: ColumnMapping,
+    dateFilter: ImportDateFilterInput,
+    saveAsDefault: boolean,
+    intake: ImportIntakeInput
+  ) {
     if (stage.step !== "mapping") return;
     const { fileName, file, parsed } = stage;
     startCheckingDuplicates(async () => {
@@ -121,12 +131,22 @@ export function ImportWorkspace() {
           toast.error(saved.error);
         }
       }
-      const result = await analyzeDuplicatesAction(parsed, mapping, dateFilter);
+      const result = await analyzeDuplicatesAction(parsed, mapping, dateFilter, intake);
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      setStage({ step: "review", fileName, file, parsed, mapping, analysis: result.analysis, dateFilter });
+      setStage({
+        step: "review",
+        fileName,
+        file,
+        parsed,
+        mapping,
+        analysis: result.analysis,
+        dateFilter,
+        intake,
+        refreshPreview: result.refreshPreview,
+      });
     });
   }
 
@@ -143,13 +163,18 @@ export function ImportWorkspace() {
         stage.mapping,
         approvedCandidateGroupKeys,
         stage.dateFilter,
-        originalFileData
+        originalFileData,
+        stage.intake
       );
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      toast.success("엑셀 업로드가 완료되었습니다.");
+      toast.success(
+        result.excludedShipments
+          ? `엑셀 업로드가 완료되었습니다. 배송 대상에서 ${result.excludedShipments}건이 제외되었습니다.`
+          : "엑셀 업로드가 완료되었습니다."
+      );
       setStage({ step: "done", importId: result.importId, summary: result.summary, errors: result.errors });
       router.refresh();
     });
@@ -176,6 +201,7 @@ export function ImportWorkspace() {
         <DedupReview
           analysis={stage.analysis}
           dateFilter={stage.dateFilter}
+          refreshPreview={stage.refreshPreview}
           onConfirm={handleFinalConfirm}
           isSubmitting={isConfirming}
         />
