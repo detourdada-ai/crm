@@ -87,6 +87,21 @@ async function seedImport(label: string, ageDays: number, withFile: boolean, ten
   return fixture;
 }
 
+/**
+ * /import 화면의 텍스트를 **렌더가 끝난 뒤에** 읽는다.
+ * domcontentloaded 직후 innerText를 읽으면 이력 카드가 아직 붙기 전이라
+ * "이력이 안 보인다"는 오탐이 난다(실제로 이 스크립트에서 T1/T3가 그렇게 깨졌다).
+ * 이력 카드 제목이 보일 때까지 기다린 뒤 읽는다.
+ */
+async function readImportPageText(page: import("playwright").Page): Promise<string> {
+  await page.goto(`${BASE_URL}/import`, { waitUntil: "domcontentloaded" });
+  await dismissAnnouncementPopupIfPresent(page);
+  await page.getByText("엑셀 Import 이력").first().waitFor({ state: "visible", timeout: 30000 });
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await dismissAnnouncementPopupIfPresent(page);
+  return page.locator("body").innerText();
+}
+
 async function rowExists(id: string): Promise<boolean> {
   const { data } = await admin.from("imports").select("id").eq("id", id).maybeSingle();
   return !!data;
@@ -127,9 +142,7 @@ async function main() {
     ]);
     const ownerPage = await ownerCtx.newPage();
     await registerAnnouncementPopupHandler(ownerPage);
-    await ownerPage.goto(`${BASE_URL}/import`, { waitUntil: "domcontentloaded" });
-    await dismissAnnouncementPopupIfPresent(ownerPage);
-    const ownerText = await ownerPage.locator("body").innerText();
+    const ownerText = await readImportPageText(ownerPage);
 
     record("T1. 7일 이내(3일) 이력은 사장님 화면에 보인다", ownerText.includes(fresh.fileName));
     record("T2. 7일 이전(10일) 이력은 사장님 화면에 보이지 않는다", !ownerText.includes(stale.fileName));
@@ -154,9 +167,7 @@ async function main() {
     ]);
     const adminPage = await adminCtx.newPage();
     await registerAnnouncementPopupHandler(adminPage);
-    await adminPage.goto(`${BASE_URL}/import`, { waitUntil: "domcontentloaded" });
-    await dismissAnnouncementPopupIfPresent(adminPage);
-    const adminText = await adminPage.locator("body").innerText();
+    const adminText = await readImportPageText(adminPage);
     record("T4. Admin 화면에는 7일 이전(10일) 이력도 보인다", adminText.includes(stale.fileName));
 
     // ── Admin 원본 다운로드 회귀 + 테넌트 격리 ──────────────────────
