@@ -236,10 +236,15 @@ async function main() {
     // ---- 이력을 삭제하면 보관된 원본도 함께 사라지는가 ----
     // 행만 지우고 파일이 남으면, 사장님이 이력을 지워도 고객 개인정보가 든 엑셀이
     // 참조 없이 버킷에 남는다(첫 회귀 실행에서 실제로 orphan이 남아 발견된 항목).
-    await page.getByRole("button", { name: /삭제/ }).first().click({ timeout: 15000 }).catch(async () => {
-      await page.locator("button.text-destructive").first().click({ timeout: 15000 });
-    });
-    await page.getByRole("button", { name: "삭제", exact: true }).last().click({ timeout: 15000 });
+    // "전체 삭제"가 아니라 **이 업로드 행의** 휴지통 버튼을 정확히 집는다
+    // (전체 삭제 버튼도 /삭제/에 걸리므로 행으로 범위를 좁혀야 한다).
+    await page
+      .locator("tr", { hasText: UPLOAD_NAME })
+      .locator("button.text-destructive")
+      .first()
+      .click({ timeout: 15000 });
+    const dialog = page.getByRole("dialog").filter({ hasText: "업로드 삭제" });
+    await dialog.getByRole("button", { name: "삭제", exact: true }).click({ timeout: 15000 });
     await page.getByText(/삭제했습니다/).first().waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
 
     const stillThere = filePath

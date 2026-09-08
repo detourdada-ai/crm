@@ -247,7 +247,16 @@ async function run() {
         if (error) console.error(`[cleanup] customer ${id} 삭제 실패:`, error.message);
       }
     }
+    // STEP19: 이력 행을 직접 지우면 제품 경로(deleteImport)를 타지 않아, 보관된 원본
+    // 엑셀이 버킷에 orphan으로 남는다 — 경로를 먼저 읽어 오브젝트까지 함께 지운다.
+    const { data: cleanupImports } = await admin
+      .from("imports")
+      .select("file_path")
+      .eq("owner_username", OWNER)
+      .ilike("file_name", `std-template-%${RUN_TAG}%`);
     await admin.from("imports").delete().eq("owner_username", OWNER).ilike("file_name", `std-template-%${RUN_TAG}%`);
+    const orphanPaths = (cleanupImports ?? []).map((r) => r.file_path).filter((p): p is string => !!p);
+    if (orphanPaths.length > 0) await admin.storage.from("import-originals").remove(orphanPaths);
     const { data: ownerGroups } = await admin.from("delivery_groups").select("id").eq("owner_username", OWNER);
     for (const g of ownerGroups ?? []) {
       const { count } = await admin.from("order_shipments").select("id", { count: "exact", head: true }).eq("delivery_group_id", g.id);
