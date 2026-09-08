@@ -102,7 +102,13 @@ async function main() {
     ]);
     const page = await ctx.newPage();
     await registerAnnouncementPopupHandler(page);
+    // domcontentloaded 직후 setInputFiles를 하면 아직 하이드레이션 전이라 React의
+    // onChange가 붙어 있지 않아 아무 일도 일어나지 않는다(그 뒤 "컬럼 매핑 확인"을
+    // 기다리다 타임아웃). 이력 카드가 보일 때까지 기다려 렌더/하이드레이션을 확인한 뒤 올린다.
     await page.goto(`${BASE_URL}/import`, { waitUntil: "domcontentloaded" });
+    await dismissAnnouncementPopupIfPresent(page);
+    await page.getByText("엑셀 Import 이력").first().waitFor({ state: "visible", timeout: 30000 });
+    await page.waitForLoadState("networkidle").catch(() => {});
     await dismissAnnouncementPopupIfPresent(page);
 
     await page.locator('input[type="file"]').setInputFiles({
