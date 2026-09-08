@@ -1,6 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ImportDeleteButton } from "./import-delete-button";
+import { ImportErrorSummary } from "./import-error-summary";
+import { summarizeImportErrors } from "@/lib/constants/import-errors";
 import { formatDateTime } from "@/lib/constants/order-status";
 import type { ImportRecord } from "@/types/domain";
 
@@ -46,6 +48,7 @@ export function ImportHistoryTable({
             // 행 수"를 담고 있다(고객 수가 아님) — success_rows는 이미 등록되어
             // 건너뛴 행까지 포함하므로 "실제 등록건수"로 쓰면 부풀려진다.
             const actuallyRegistered = imp.new_customers + imp.existing_customers;
+            const errorSummary = summarizeImportErrors(imp.error_log);
             return (
               <TableRow key={imp.id}>
                 <TableCell className="font-medium">{imp.file_name}</TableCell>
@@ -53,7 +56,19 @@ export function ImportHistoryTable({
                 <TableCell className="text-right">{imp.total_rows}</TableCell>
                 <TableCell className="text-right">{actuallyRegistered}</TableCell>
                 <TableCell className="text-right">
-                  {imp.failed_rows > 0 ? <Badge variant="destructive">{imp.failed_rows}</Badge> : imp.failed_rows}
+                  {/* STEP14: 실패 건수만 보여주면 "뭐가 실패했는데?"를 알 수 없다. 사유는 이미
+                      error_log에 있으므로 유형별로 접어 보여준다. 집계는 서버(이 컴포넌트)에서
+                      끝내고 요약만 넘긴다 — error_log의 raw에는 고객 개인정보가 들어 있다.
+                      실패 0건이거나 사유 기록이 없으면 기존처럼 숫자만 표시한다. */}
+                  {imp.failed_rows > 0 ? (
+                    errorSummary.length > 0 ? (
+                      <ImportErrorSummary failedRows={imp.failed_rows} summary={errorSummary} />
+                    ) : (
+                      <Badge variant="destructive">{imp.failed_rows}</Badge>
+                    )
+                  ) : (
+                    imp.failed_rows
+                  )}
                 </TableCell>
                 <TableCell>
                   <Badge
