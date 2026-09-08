@@ -8,6 +8,8 @@ export interface ImportInsert {
   total_rows?: number;
   owner_username: string;
   tenant_id: string;
+  /** STEP19: 원본 엑셀 storage 경로. 보관에 실패했거나 이 기능 이전 건이면 null. */
+  file_path?: string | null;
 }
 
 export interface ImportUpdate {

@@ -4,7 +4,16 @@ import { ImportDeleteButton } from "./import-delete-button";
 import { formatDateTime } from "@/lib/constants/order-status";
 import type { ImportRecord } from "@/types/domain";
 
-export function ImportHistoryTable({ imports, showOwner = false }: { imports: ImportRecord[]; showOwner?: boolean }) {
+export function ImportHistoryTable({
+  imports,
+  showOwner = false,
+  canDownloadOriginal = false,
+}: {
+  imports: ImportRecord[];
+  showOwner?: boolean;
+  /** STEP19: 원본 엑셀 다운로드는 Admin 전용(운영/테스트 지원). 서버 라우트에서도 다시 검증한다. */
+  canDownloadOriginal?: boolean;
+}) {
   if (imports.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">아직 업로드 이력이 없습니다.</p>;
   }
@@ -26,6 +35,7 @@ export function ImportHistoryTable({ imports, showOwner = false }: { imports: Im
             <TableHead className="text-right">실패건수</TableHead>
             <TableHead>상태</TableHead>
             {showOwner ? <TableHead>업로드한 계정</TableHead> : null}
+            {canDownloadOriginal ? <TableHead className="w-28">원본 엑셀</TableHead> : null}
             <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
@@ -61,6 +71,22 @@ export function ImportHistoryTable({ imports, showOwner = false }: { imports: Im
                   ) : null}
                 </TableCell>
                 {showOwner ? <TableCell className="text-muted-foreground">{imp.owner_username}</TableCell> : null}
+                {canDownloadOriginal ? (
+                  <TableCell>
+                    {imp.file_path ? (
+                      <a
+                        href={`/api/import/${imp.id}/original`}
+                        className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                      >
+                        원본 다운로드
+                      </a>
+                    ) : (
+                      <span className="text-xs text-muted-foreground" title="원본 보관 기능(2026-09-08) 이전에 등록된 건이라 원본이 없습니다">
+                        미보관
+                      </span>
+                    )}
+                  </TableCell>
+                ) : null}
                 <TableCell>
                   <ImportDeleteButton importId={imp.id} fileName={imp.file_name} />
                 </TableCell>

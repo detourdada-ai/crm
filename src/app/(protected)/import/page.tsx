@@ -39,7 +39,11 @@ export default async function ImportPage() {
           <ImportDeleteAllButton disabled={imports.length === 0} />
         </CardHeader>
         <CardContent>
-          <ImportHistoryTable imports={imports} showOwner={session.role === "admin"} />
+          <ImportHistoryTable
+            imports={imports}
+            showOwner={session.role === "admin"}
+            canDownloadOriginal={session.role === "admin"}
+          />
         </CardContent>
       </Card>
     </div>

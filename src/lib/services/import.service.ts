@@ -14,6 +14,7 @@ import { parseDeliveryDateFromOption, parseDeliveryAreaFromOption } from "@/lib/
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { geocodeBatch, type GeocodeFields } from "@/lib/services/geocoding.service";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
+import { storeImportOriginal } from "@/lib/services/import-file-storage.service";
 import { kstDayDateStrOf, kstTodayIso } from "@/lib/utils/kst-date";
 import { DEFAULT_PAYMENT_STATUS, isPaymentStatus, isPaymentMethod } from "@/lib/constants/payment";
 import type { ParsedSheet, ColumnMapping, ImportDateFilterInput } from "@/types/excel";
@@ -54,6 +55,12 @@ export interface RunImportInput {
   approvedCandidateGroupKeys?: string[];
   /** STEP11-2 Phase4(2026-08 CPO 작업지시): 날짜 기준 Import 정책 — 생략하거나 mode="all"이면 기존과 완전히 동일하게 동작한다. */
   dateFilter?: ImportDateFilterInput;
+  /**
+   * STEP19(2026-09-08): 업로드된 엑셀 **원본 바이트**. 있으면 private 버킷에 보관하고
+   * 경로를 imports.file_path에 남긴다 — Admin이 나중에 같은 파일로 테스트하기 위한 것이다.
+   * 생략하면 기존과 완전히 동일하게 동작한다(보관 없이 등록만).
+   */
+  originalFileBytes?: ArrayBuffer;
 }
 
 export interface RunImportResult {
@@ -333,6 +340,7 @@ export async function runImport({
   ownerUsername,
   approvedCandidateGroupKeys,
   dateFilter,
+  originalFileBytes,
 }: RunImportInput): Promise<RunImportResult> {
   const approvedGroupKeys = new Set(approvedCandidateGroupKeys ?? []);
   const tenant = await tenantsRepository.findByUsername(ownerUsername);
@@ -345,12 +353,18 @@ export async function runImport({
   const aliasEntries = await productAliasesRepository.listAll(ownerUsername);
   const productIdByAliasName = new Map(aliasEntries.map((a) => [a.alias_name, a.product_id]));
 
+  // STEP19: 원본 보관은 import 레코드를 만들기 **전에** 끝낸다 — 경로를 create에 함께
+  // 넣으면 추가 UPDATE 왕복이 없고, 이후 등록이 실패해 status=failed로 끝나더라도
+  // "그때 올라온 파일"은 그대로 남아 재현에 쓸 수 있다. 실패해도 null일 뿐 등록은 계속된다.
+  const filePath = originalFileBytes ? await storeImportOriginal(tenant.id, fileName, originalFileBytes) : null;
+
   const importRecord = await importsRepository.create({
     file_name: fileName,
     status: "processing",
     total_rows: parsed.rows.length,
     owner_username: ownerUsername,
     tenant_id: tenant.id,
+    file_path: filePath,
   });
 
   const errors: ImportRowError[] = [];

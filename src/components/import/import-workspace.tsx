@@ -31,6 +31,8 @@ type Stage =
   | {
       step: "mapping";
       fileName: string;
+      /** STEP19: 등록 확정 시 원본을 함께 올리기 위해 선택한 파일을 그대로 들고 간다. */
+      file: File;
       parsed: ParsedSheet;
       mapping: ColumnMapping;
       unmapped: MappableField[];
@@ -39,6 +41,7 @@ type Stage =
   | {
       step: "review";
       fileName: string;
+      file: File;
       parsed: ParsedSheet;
       mapping: ColumnMapping;
       analysis: DedupAnalysis;
@@ -90,6 +93,7 @@ export function ImportWorkspace() {
       setStage({
         step: "mapping",
         fileName: result.fileName,
+        file,
         parsed: result.parsed,
         mapping: result.mapping,
         unmapped: result.unmapped,
@@ -104,7 +108,7 @@ export function ImportWorkspace() {
   // 화면에서 확인한 뒤에만 실제 등록(handleFinalConfirm)이 실행된다.
   function handleCheckDuplicates(mapping: ColumnMapping, dateFilter: ImportDateFilterInput, saveAsDefault: boolean) {
     if (stage.step !== "mapping") return;
-    const { fileName, parsed } = stage;
+    const { fileName, file, parsed } = stage;
     startCheckingDuplicates(async () => {
       // 기본값 저장은 체크박스를 켠 경우에만 — 실패해도 이번 업로드는 계속
       // 진행한다(설정 저장 실패로 접수를 막지 않는다).
@@ -122,19 +126,24 @@ export function ImportWorkspace() {
         toast.error(result.error);
         return;
       }
-      setStage({ step: "review", fileName, parsed, mapping, analysis: result.analysis, dateFilter });
+      setStage({ step: "review", fileName, file, parsed, mapping, analysis: result.analysis, dateFilter });
     });
   }
 
   function handleFinalConfirm(approvedCandidateGroupKeys: string[]) {
     if (stage.step !== "review") return;
+    // STEP19: 등록이 확정되는 이 시점에만 원본을 함께 보낸다(분석만 하고 나간
+    // 파일은 보관하지 않는다). 원본 보관은 서버에서 best-effort라 실패해도 등록은 진행된다.
+    const originalFileData = new FormData();
+    originalFileData.append("file", stage.file);
     startConfirming(async () => {
       const result = await confirmImportAction(
         stage.fileName,
         stage.parsed,
         stage.mapping,
         approvedCandidateGroupKeys,
-        stage.dateFilter
+        stage.dateFilter,
+        originalFileData
       );
       if (!result.ok) {
         toast.error(result.error);

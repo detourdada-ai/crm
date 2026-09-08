@@ -435,6 +435,11 @@ export interface ImportRecord {
   already_imported_rows: number;
   column_mapping: Record<string, string> | null;
   error_log: ImportRowError[] | null;
+  /**
+   * STEP19: 업로드된 엑셀 원본의 storage 경로. 이 기능(2026-09-08) 이전에 등록된
+   * 건은 원본이 애초에 없으므로 null이며, 소급 복구하지 않는다. Admin만 다운로드한다.
+   */
+  file_path: string | null;
   owner_username: string;
   tenant_id: UUID;
   created_at: ISODateString;

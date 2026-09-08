@@ -120,15 +120,25 @@ export interface ConfirmImportError {
   error: string;
 }
 
+/**
+ * STEP19(2026-09-08): `originalFileData`는 업로드 원본을 담은 FormData(`file` 키)다.
+ * 분석 단계에서 이미 한 번 보낸 파일을 확정 시점에 한 번 더 받는 이유는, **실제로
+ * 등록된 건의 원본만** 보관하기 위해서다 — 분석만 하고 되돌아간 파일까지 보관하면
+ * 아무도 참조하지 않는 개인정보 파일이 버킷에 쌓인다. 생략하면 기존과 동일하게 동작한다.
+ */
 export async function confirmImportAction(
   fileName: string,
   parsed: ParsedSheet,
   mapping: ColumnMapping,
   approvedCandidateGroupKeys?: string[],
-  dateFilter?: ImportDateFilterInput
+  dateFilter?: ImportDateFilterInput,
+  originalFileData?: FormData
 ): Promise<ConfirmImportResult | ConfirmImportError> {
   try {
     const session = await requireSession();
+    const original = originalFileData?.get("file");
+    const originalFileBytes =
+      original instanceof File && original.size > 0 ? await original.arrayBuffer() : undefined;
     const { importId, summary, errors } = await runImport({
       fileName,
       parsed,
@@ -136,6 +146,7 @@ export async function confirmImportAction(
       ownerUsername: session.username,
       approvedCandidateGroupKeys,
       dateFilter,
+      originalFileBytes,
     });
     // STD-4: 다음 업로드부터 같은 헤더는 자동매핑되도록 저장 — import는 이미
     // 끝났으므로 저장 실패로 이번 확정 자체를 실패시키지 않는다(best-effort).

@@ -801,6 +801,8 @@ export interface Database {
           already_imported_rows: number;
           column_mapping: Record<string, string> | null;
           error_log: unknown | null;
+          /** 0061: 원본 엑셀 storage 경로. 이 기능 이전 건은 null. */
+          file_path: string | null;
           owner_username: string;
           tenant_id: string;
           created_at: string;
@@ -818,6 +820,7 @@ export interface Database {
           already_imported_rows?: number;
           column_mapping?: Record<string, string> | null;
           error_log?: unknown | null;
+          file_path?: string | null;
           owner_username?: string;
           tenant_id: string;
           created_at?: string;
