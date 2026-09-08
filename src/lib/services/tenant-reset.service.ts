@@ -1,5 +1,6 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { removeImportOriginal } from "@/lib/services/import-file-storage.service";
 
 export interface TenantUsageCount {
   customers: number;
@@ -153,12 +154,18 @@ export async function resetTenantTestData(tenantId: string): Promise<TenantReset
     .select("id");
   if (productErr) throw productErr;
 
+  // STEP19: 테넌트를 비울 때 보관된 원본 엑셀도 함께 지운다 — 행만 지우면 고객
+  // 개인정보가 든 파일이 참조 없는 채로 버킷에 남는다. 경로는 삭제 전에 읽는다.
+  const { data: importsToDelete } = await db.from("imports").select("file_path").eq("tenant_id", tenantId);
   const { data: deletedImports, error: importErr } = await db
     .from("imports")
     .delete()
     .eq("tenant_id", tenantId)
     .select("id");
   if (importErr) throw importErr;
+  for (const row of importsToDelete ?? []) {
+    if (row.file_path) await removeImportOriginal(row.file_path);
+  }
 
   const { data: deletedDuplicates, error: dupErr } = await db
     .from("duplicate_candidates")

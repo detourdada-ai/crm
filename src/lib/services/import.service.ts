@@ -14,7 +14,7 @@ import { parseDeliveryDateFromOption, parseDeliveryAreaFromOption } from "@/lib/
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { geocodeBatch, type GeocodeFields } from "@/lib/services/geocoding.service";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
-import { storeImportOriginal } from "@/lib/services/import-file-storage.service";
+import { storeImportOriginal, removeImportOriginal } from "@/lib/services/import-file-storage.service";
 import { kstDayDateStrOf, kstTodayIso } from "@/lib/utils/kst-date";
 import { DEFAULT_PAYMENT_STATUS, isPaymentStatus, isPaymentMethod } from "@/lib/constants/payment";
 import type { ParsedSheet, ColumnMapping, ImportDateFilterInput } from "@/types/excel";
@@ -1266,7 +1266,13 @@ export async function deleteImport(importId: string, ownerUsername?: string): Pr
     }
   }
 
+  // STEP19: 이력을 지우면 보관된 **원본 엑셀도 함께 지운다.** 행만 지우고 파일을 남기면
+  // 사장님이 업로드 이력을 삭제해도 고객 이름·주소·연락처가 든 파일이 버킷에 그대로
+  // 남고, 참조하는 행이 사라져 아무도 그 존재를 알 수 없게 된다(E2E 회귀에서 실제로
+  // orphan 3건이 남는 것을 확인하고 추가). 경로는 삭제 전에 읽어야 한다.
+  const record = await importsRepository.findById(importId);
   await importsRepository.delete(importId, ownerUsername);
+  if (record?.file_path) await removeImportOriginal(record.file_path);
 
   return { deletedOrders: orders.length, deletedCustomers };
 }

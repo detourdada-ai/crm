@@ -55,6 +55,20 @@ export async function storeImportOriginal(
   }
 }
 
+/**
+ * 이력 삭제 시 원본도 함께 지운다. 실패해도 예외를 던지지 않는다 — 파일 정리 실패로
+ * 이력 삭제 자체를 되돌리면 사장님 입장에서 "삭제가 안 되는" 더 나쁜 상태가 된다.
+ * 다만 개인정보 파일이 남는 것이므로 로그에는 남겨 추적 가능하게 한다.
+ */
+export async function removeImportOriginal(objectPath: string): Promise<void> {
+  try {
+    const { error } = await getSupabaseAdmin().storage.from(IMPORT_ORIGINALS_BUCKET).remove([objectPath]);
+    if (error) console.error("[import-original] 원본 삭제 실패(이력 삭제는 완료됨):", objectPath, error.message);
+  } catch (e) {
+    console.error("[import-original] 원본 삭제 중 예외(이력 삭제는 완료됨):", objectPath, e);
+  }
+}
+
 /** Admin 다운로드용. 오브젝트 바이트를 서버에서 직접 읽는다(서명 URL을 브라우저로 내보내지 않는다). */
 export async function readImportOriginal(objectPath: string): Promise<ArrayBuffer | null> {
   const { data, error } = await getSupabaseAdmin().storage.from(IMPORT_ORIGINALS_BUCKET).download(objectPath);
