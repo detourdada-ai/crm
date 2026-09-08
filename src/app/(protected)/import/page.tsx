@@ -7,6 +7,7 @@ import { ImportDeleteAllButton } from "@/components/import/import-delete-all-but
 import { PageHeader } from "@/components/common/page-header";
 import { listRecentImportsAction } from "@/actions/import";
 import { requireSession } from "@/lib/auth/current-session";
+import { IMPORT_HISTORY_VISIBILITY_NOTICE } from "@/lib/constants/import-retention";
 
 export default async function ImportPage() {
   const [session, imports] = await Promise.all([requireSession(), listRecentImportsAction()]);
@@ -34,6 +35,9 @@ export default async function ImportPage() {
             <CardTitle>엑셀 Import 이력</CardTitle>
             <CardDescription>
               {imports.length === 0 ? "업로드 이력이 없습니다." : `최근 업로드 ${imports.length}건 (최대 20건 표시)`}
+              {session.role === "admin" ? null : (
+                <span className="mt-1 block">{IMPORT_HISTORY_VISIBILITY_NOTICE}</span>
+              )}
             </CardDescription>
           </div>
           <ImportDeleteAllButton disabled={imports.length === 0} />

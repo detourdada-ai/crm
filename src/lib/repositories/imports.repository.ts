@@ -44,12 +44,43 @@ export const importsRepository = {
     return data as ImportRecord | null;
   },
 
-  async listRecent(limit = 20, ownerUsername?: string): Promise<ImportRecord[]> {
+  /**
+   * STEP19 후속: `sinceIso`를 주면 그 시각 이후 이력만 돌려준다(사장님 화면 7일 노출).
+   * 생략하면 기존과 동일하게 기간 제한 없이 최근 N건이다.
+   */
+  async listRecent(limit = 20, ownerUsername?: string, sinceIso?: string): Promise<ImportRecord[]> {
     let q = getSupabaseAdmin().from("imports").select("*");
     if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    if (sinceIso) q = q.gte("created_at", sinceIso);
     const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
     if (error) throw error;
     return (data as ImportRecord[]) ?? [];
+  },
+
+  /**
+   * STEP19 후속: 보관기간이 지난 이력. cron은 전 테넌트를 대상으로 호출한다.
+   * `ownerUsername`은 QA가 자기 테넌트로 범위를 좁혀 검증하기 위한 것 —
+   * 운영 데이터를 건드리지 않고 경계 조건을 확인할 수 있게 한다.
+   */
+  async listExpired(beforeIso: string, ownerUsername?: string): Promise<Pick<ImportRecord, "id" | "file_path">[]> {
+    let q = getSupabaseAdmin().from("imports").select("id, file_path").lt("created_at", beforeIso);
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data as Pick<ImportRecord, "id" | "file_path">[]) ?? [];
+  },
+
+  /**
+   * STEP19 후속: 이력 행만 지운다 — **주문/고객은 건드리지 않는다.**
+   * `orders.import_id`/`customers.created_by_import_id`는 `on delete set null`이라
+   * 연결만 끊기고 데이터는 그대로 남는다. 보관기간이 끝났다고 사장님의 실제 주문을
+   * 지우는 일은 절대 없어야 하므로, 주문까지 지우는 `deleteImport()`와 분리해 둔다.
+   */
+  async deleteRowsOnly(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const { data, error } = await getSupabaseAdmin().from("imports").delete().in("id", ids).select("id");
+    if (error) throw error;
+    return (data ?? []).length;
   },
 
   /** P10-3: F15-1 패턴과 동일하게 repository 레벨에도 소유권 필터를 건다 — action 레벨 사전 체크에만 의존하지 않는 이중 검증. */

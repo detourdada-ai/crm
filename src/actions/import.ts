@@ -13,6 +13,7 @@ import { orderShipmentsRepository } from "@/lib/repositories/order-shipments.rep
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { toActionError } from "@/lib/utils/action-error";
+import { IMPORT_HISTORY_VISIBLE_DAYS, daysAgoIso } from "@/lib/constants/import-retention";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type {
   ColumnMapping,
@@ -204,9 +205,15 @@ export async function bulkAssignDeliveryDateAction(
   }
 }
 
+/**
+ * STEP19 후속 정책(CPO 확정, 2026-09-08): 사장님 화면에는 **최근 7일** 이력만 보인다.
+ * Admin은 기간 제한 없이 본다 — 운영/테스트 재현을 위해 30일 보관분의 원본을
+ * 내려받아야 하기 때문이다(30일이 지난 건은 cleanup이 지우므로 실질 상한은 30일).
+ */
 export async function listRecentImportsAction(limit = 20): Promise<ImportRecord[]> {
   const session = await requireSession();
-  return importsRepository.listRecent(limit, ownerScopeFor(session));
+  const since = session.role === "admin" ? undefined : daysAgoIso(IMPORT_HISTORY_VISIBLE_DAYS);
+  return importsRepository.listRecent(limit, ownerScopeFor(session), since);
 }
 
 export interface DeleteImportActionState {

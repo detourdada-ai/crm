@@ -69,6 +69,27 @@ export async function removeImportOriginal(objectPath: string): Promise<void> {
   }
 }
 
+/**
+ * `removeImportOriginal`과 같은 삭제지만 **성공 여부를 돌려준다.** 보관기간 cleanup은
+ * "파일이 확실히 지워졌을 때만 이력 행을 지운다"를 지켜야 해서, 실패를 삼키면 안 된다.
+ *
+ * 이미 없는 오브젝트를 지우는 것은 성공으로 본다(멱등) — 앞선 실행이 파일만 지우고
+ * 행을 못 지운 채 끝났을 때 다음 실행이 영원히 막히면 안 되기 때문이다.
+ */
+export async function removeImportOriginalStrict(objectPath: string): Promise<boolean> {
+  try {
+    const { error } = await getSupabaseAdmin().storage.from(IMPORT_ORIGINALS_BUCKET).remove([objectPath]);
+    if (error) {
+      console.error("[import-original] 보관기간 삭제 실패(이력 행 유지, 다음 실행 재시도):", objectPath, error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[import-original] 보관기간 삭제 중 예외(이력 행 유지):", objectPath, e);
+    return false;
+  }
+}
+
 /** Admin 다운로드용. 오브젝트 바이트를 서버에서 직접 읽는다(서명 URL을 브라우저로 내보내지 않는다). */
 export async function readImportOriginal(objectPath: string): Promise<ArrayBuffer | null> {
   const { data, error } = await getSupabaseAdmin().storage.from(IMPORT_ORIGINALS_BUCKET).download(objectPath);
