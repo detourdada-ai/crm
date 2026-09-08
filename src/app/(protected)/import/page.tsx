@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ImportWorkspace } from "@/components/import/import-workspace";
 import { ImportHistoryTable } from "@/components/import/import-history-table";
 import { ImportDeleteAllButton } from "@/components/import/import-delete-all-button";
+import { ImportOwnerFilter } from "@/components/import/import-owner-filter";
+import { listAccounts } from "@/lib/auth/credentials";
 import { PageHeader } from "@/components/common/page-header";
 import { listRecentImportsAction } from "@/actions/import";
 import { requireSession } from "@/lib/auth/current-session";
@@ -13,8 +15,19 @@ import {
   IMPORT_HISTORY_ADMIN_LIMIT,
 } from "@/lib/constants/import-retention";
 
-export default async function ImportPage() {
-  const [session, imports] = await Promise.all([requireSession(), listRecentImportsAction()]);
+export default async function ImportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ owner?: string }>;
+}) {
+  const [session, { owner }] = await Promise.all([requireSession(), searchParams]);
+  const isAdmin = session.role === "admin";
+  const ownerFilter = isAdmin && owner ? owner : undefined;
+  const [imports, accounts] = await Promise.all([
+    listRecentImportsAction(undefined, ownerFilter),
+    isAdmin ? listAccounts() : Promise.resolve([]),
+  ]);
+  const accountUsernames = accounts.filter((a) => a.role !== "driver").map((a) => a.username);
 
   return (
     <div className="space-y-6">
@@ -39,20 +52,23 @@ export default async function ImportPage() {
             <CardTitle>엑셀 Import 이력</CardTitle>
             <CardDescription>
               {imports.length === 0
-                ? "업로드 이력이 없습니다."
-                : `최근 업로드 ${imports.length}건 (최대 ${session.role === "admin" ? IMPORT_HISTORY_ADMIN_LIMIT : IMPORT_HISTORY_OWNER_LIMIT}건 표시)`}
-              {session.role === "admin" ? null : (
-                <span className="mt-1 block">{IMPORT_HISTORY_VISIBILITY_NOTICE}</span>
-              )}
+                ? ownerFilter
+                  ? `${ownerFilter} 계정의 업로드 이력이 없습니다.`
+                  : "업로드 이력이 없습니다."
+                : `최근 업로드 ${imports.length}건 (최대 ${isAdmin ? IMPORT_HISTORY_ADMIN_LIMIT : IMPORT_HISTORY_OWNER_LIMIT}건 표시)`}
+              {isAdmin ? null : <span className="mt-1 block">{IMPORT_HISTORY_VISIBILITY_NOTICE}</span>}
             </CardDescription>
           </div>
-          <ImportDeleteAllButton disabled={imports.length === 0} />
+          <div className="flex items-end gap-3">
+            {isAdmin ? <ImportOwnerFilter accountUsernames={accountUsernames} value={ownerFilter} /> : null}
+            <ImportDeleteAllButton disabled={imports.length === 0} />
+          </div>
         </CardHeader>
         <CardContent>
           <ImportHistoryTable
             imports={imports}
-            showOwner={session.role === "admin"}
-            canDownloadOriginal={session.role === "admin"}
+            showOwner={isAdmin && !ownerFilter}
+            canDownloadOriginal={isAdmin}
           />
         </CardContent>
       </Card>

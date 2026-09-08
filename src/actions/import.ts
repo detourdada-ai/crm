@@ -215,12 +215,16 @@ export async function bulkAssignDeliveryDateAction(
  * Admin은 기간 제한 없이 본다 — 운영/테스트 재현을 위해 30일 보관분의 원본을
  * 내려받아야 하기 때문이다(30일이 지난 건은 cleanup이 지우므로 실질 상한은 30일).
  */
-export async function listRecentImportsAction(limit?: number): Promise<ImportRecord[]> {
+export async function listRecentImportsAction(limit?: number, ownerFilter?: string): Promise<ImportRecord[]> {
   const session = await requireSession();
   const isAdmin = session.role === "admin";
   const since = isAdmin ? undefined : daysAgoIso(IMPORT_HISTORY_VISIBLE_DAYS);
   const effectiveLimit = limit ?? (isAdmin ? IMPORT_HISTORY_ADMIN_LIMIT : IMPORT_HISTORY_OWNER_LIMIT);
-  return importsRepository.listRecent(effectiveLimit, ownerScopeFor(session), since);
+  // 계정 필터는 **Admin에게만** 의미가 있다. 사장님 세션에서 owner 쿼리를 붙여도
+  // ownerScopeFor가 본인 계정으로 고정하므로 남의 이력을 볼 수 없다 —
+  // 필터가 권한 경계를 넓히지 않도록 admin일 때만 적용한다(권한 정책 변경 없음).
+  const scope = isAdmin ? ownerFilter : ownerScopeFor(session);
+  return importsRepository.listRecent(effectiveLimit, scope, since);
 }
 
 export interface DeleteImportActionState {
