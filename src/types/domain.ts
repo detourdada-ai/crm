@@ -367,6 +367,13 @@ export interface OrderItem {
   // Full original excel row (header -> value), preserved so nothing from
   // the source file is lost even where we don't model a column explicitly.
   extra: Record<string, unknown>;
+  /**
+   * STEP22-1: 이 상품주문번호가 **마지막으로 등장한 import**.
+   * null은 "파일에서 사라졌다"가 아니라 **"모른다"** 이다 — 이 기능 이전에 등록된 건이거나,
+   * 그 import가 30일 보관기간 만료로 파기된 경우다(FK on delete set null).
+   * 취소 판정에서 null을 사라진 것으로 취급하면 정상 주문이 대량 오취소된다.
+   */
+  last_seen_import_id: UUID | null;
   created_at: ISODateString;
 }
 

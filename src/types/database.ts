@@ -678,6 +678,8 @@ export interface Database {
           unit_price: number;
           amount: number;
           extra: Record<string, unknown>;
+          /** 0062(STEP22-1): 이 상품주문번호가 마지막으로 등장한 import. null = 기록 없음. */
+          last_seen_import_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -694,6 +696,7 @@ export interface Database {
           unit_price?: number;
           amount?: number;
           extra?: Record<string, unknown>;
+          last_seen_import_id?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["order_items"]["Insert"]>;

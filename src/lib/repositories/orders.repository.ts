@@ -170,6 +170,8 @@ export interface OrderItemInsert {
   unit_price: number;
   amount: number;
   extra?: Record<string, unknown>;
+  /** STEP22-1: 이 행이 등장한 import. 신규 등록 시 그 import를 그대로 기록한다. */
+  last_seen_import_id?: string | null;
 }
 
 export const ordersRepository = {
@@ -281,6 +283,35 @@ export const ordersRepository = {
       found.push(...((data as OrderItem[]) ?? []));
     }
     return found;
+  },
+
+  /**
+   * STEP22-1(CPO 승인, 2026-09-08): 이번 파일에 등장한 상품주문번호에
+   * "마지막으로 본 import" 도장을 찍는다.
+   *
+   * 이미 등록된 행은 import가 **완전한 no-op으로 건너뛰기** 때문에 그 행이 오늘
+   * 파일에도 있었다는 사실이 어디에도 남지 않았다. 이 UPDATE가 그 기록을 만든다.
+   * **상태·수량·금액 등 다른 값은 건드리지 않는다** — 도장 컬럼 하나만 갱신한다.
+   *
+   * 대상은 tenant 범위로 제한한다(다른 사장님의 같은 번호에 도장이 찍히면 안 된다).
+   * 반환값은 실제로 갱신된 행 수 — 호출부가 검증/로그에 쓴다.
+   */
+  async stampLastSeenImport(productOrderNumbers: string[], tenantId: string, importId: string): Promise<number> {
+    if (productOrderNumbers.length === 0) return 0;
+    const CHUNK_SIZE = 300;
+    let stamped = 0;
+    for (let i = 0; i < productOrderNumbers.length; i += CHUNK_SIZE) {
+      const chunk = productOrderNumbers.slice(i, i + CHUNK_SIZE);
+      const { data, error } = await getSupabaseAdmin()
+        .from("order_items")
+        .update({ last_seen_import_id: importId })
+        .eq("tenant_id", tenantId)
+        .in("product_order_number", chunk)
+        .select("id");
+      if (error) throw error;
+      stamped += (data ?? []).length;
+    }
+    return stamped;
   },
 
   /**

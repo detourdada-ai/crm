@@ -1116,7 +1116,33 @@ export async function runImport({
       }
     }
     if (newItemInserts.length > 0) {
-      await ordersRepository.createItems(newItemInserts);
+      // STEP22-1: 신규 행은 만들어지는 시점에 바로 "이번 import에서 봤다"를 기록한다.
+      await ordersRepository.createItems(
+        newItemInserts.map((item) => ({ ...item, last_seen_import_id: importRecord.id }))
+      );
+    }
+
+    // STEP22-1(CPO 승인, 2026-09-08): 이번 파일에 **등장한** 상품주문번호 전체에
+    // 마지막 확인 도장을 찍는다.
+    //
+    // 신규 행은 위에서 이미 찍혔고, 여기서 중요한 대상은 **이미 등록돼 건너뛴 행**이다.
+    // 그 경로는 완전한 no-op이라 "오늘 파일에도 있었다"는 사실이 지금까지 어디에도
+    // 남지 않았다 — 2단계 취소 판정의 근거가 되는 기록이 바로 이것이다.
+    //
+    // 날짜 필터로 이번에 처리하지 않은 행까지 포함한다. 처리 여부와 무관하게
+    // "파일에는 있었다"는 사실은 같기 때문이다. 여기서 빼면 '오늘만 등록' 모드로
+    // 올린 날 과거 주문이 전부 "사라진 것"으로 보여 2단계에서 오취소가 난다.
+    //
+    // 이 단계에서는 **기록만 한다.** 취소 판정·상태 변경은 하지 않는다.
+    const seenProductOrderNumbers = Array.from(
+      new Set(
+        parsed.rows
+          .map((row) => cellToString(getMapped(row, mapping, "product_order_number")))
+          .filter((v): v is string => !!v)
+      )
+    );
+    if (seenProductOrderNumbers.length > 0) {
+      await ordersRepository.stampLastSeenImport(seenProductOrderNumbers, tenant.id, importRecord.id);
     }
     if (newDuplicateInserts.length > 0) {
       const created = await duplicatesRepository.createMany(newDuplicateInserts);
