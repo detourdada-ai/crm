@@ -843,6 +843,52 @@ export const orderShipmentsRepository = {
     if (error) throw error;
   },
 
+  /**
+   * STEP22-0(CPO 승인, 2026-09-08): 주문 취소를 **배송건까지 전파**한다.
+   *
+   * 이전에는 `orders.delivery_status`만 '취소'가 되고 배송건은 '배송대기'로 남았다.
+   * 배송보드·배송그룹·기사앱은 전부 배송건 기준으로 조회하므로 **취소한 주문이 계속
+   * 배송 대상에 남아 있었다**(운영 취소 건수가 0이라 드러나지 않았을 뿐이다).
+   *
+   * **완료된 배송건은 대상에서 제외한다** — 이미 배송이 끝난 사실을 취소로 덮지 않는다.
+   * 이미 취소된 건도 제외해 `cancelled_at`이 재취소로 갱신되지 않게 한다.
+   * 행을 지우지 않고 상태만 바꾸며 `driver_id`·`delivery_group_id`는 **보존한다** —
+   * 조회 쿼리가 '취소'를 제외하므로 배송 대상에서 빠지는 데 문제가 없고, 배정 이력을
+   * 지워버리면 취소 해제 시 되돌릴 수 없기 때문이다.
+   */
+  async cancelMany(shipmentIds: string[], ownerUsername?: string): Promise<OrderShipment[]> {
+    if (shipmentIds.length === 0) return [];
+    let q = getSupabaseAdmin()
+      .from("order_shipments")
+      .update({ delivery_status: "취소", cancelled_at: new Date().toISOString() })
+      .in("id", shipmentIds)
+      .neq("delivery_status", "완료")
+      .neq("delivery_status", "취소");
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("*");
+    if (error) throw error;
+    const rows = (data as OrderShipment[]) ?? [];
+    // orders는 배송건에서 파생되는 스냅샷이다 — 여기서 맞춰주면 주문 목록/상세도 함께 정확해진다.
+    await syncOrdersFromShipments(rows.map((s) => s.order_id));
+    return rows;
+  },
+
+  /** STEP22-0: cancelMany의 역방향 — '취소'인 배송건만 배송대기로 되돌린다(완료 건은 애초에 취소되지 않았다). */
+  async uncancelMany(shipmentIds: string[], ownerUsername?: string): Promise<OrderShipment[]> {
+    if (shipmentIds.length === 0) return [];
+    let q = getSupabaseAdmin()
+      .from("order_shipments")
+      .update({ delivery_status: "배송대기", cancelled_at: null })
+      .in("id", shipmentIds)
+      .eq("delivery_status", "취소");
+    if (ownerUsername) q = q.eq("owner_username", ownerUsername);
+    const { data, error } = await q.select("*");
+    if (error) throw error;
+    const rows = (data as OrderShipment[]) ?? [];
+    await syncOrdersFromShipments(rows.map((s) => s.order_id));
+    return rows;
+  },
+
   /** STEP12-8B: 배정 해제(unassignDriver)된 배송건의 override 마커를 함께 지운다 — driver_id는 이미 null이라 override_driver_id를 남겨두면 다음 그룹 기본기사 배정 때 혼란을 준다. */
   async clearOverrideMarkers(shipmentIds: string[]): Promise<void> {
     if (shipmentIds.length === 0) return;

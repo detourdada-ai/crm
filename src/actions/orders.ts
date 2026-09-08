@@ -11,6 +11,7 @@ import { createCustomerDirect } from "@/lib/services/customer.service";
 import { allocateOrderNumbers } from "@/lib/services/order-number.service";
 import { geocodeAddress } from "@/lib/services/geocoding.service";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
+import { cancelOrderWithShipments, uncancelOrderWithShipments } from "@/lib/services/order-cancel.service";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import { aggregateProductSummary, type ProductSummaryEntry } from "@/lib/utils/product-summary";
 import { extraDisplayEntries } from "@/lib/constants/order-extra";
@@ -707,7 +708,8 @@ export async function cancelOrderAction(orderId: string): Promise<OrderCancelAct
   }
 
   try {
-    await ordersRepository.cancelOrder(orderId, session.role === "admin" ? undefined : session.username);
+    // STEP22-0: orders만 바꾸면 배송건은 '배송대기'로 남아 배송보드·기사앱에 계속 뜬다.
+    await cancelOrderWithShipments(orderId, session.role === "admin" ? undefined : session.username);
     // P15-A: 취소된 주문은 배송그룹 대상에서 빠져야 하므로 그 배송일만 재계산.
     if (order.delivery_date) {
       await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username, "order_cancel");
@@ -732,7 +734,7 @@ export async function uncancelOrderAction(orderId: string): Promise<OrderCancelA
   }
 
   try {
-    await ordersRepository.uncancelOrder(orderId, session.role === "admin" ? undefined : session.username);
+    await uncancelOrderWithShipments(orderId, session.role === "admin" ? undefined : session.username);
     // P15-A: 취소 해제된 주문은 다시 배송그룹 대상이 될 수 있으므로 그 배송일만 재계산.
     if (order.delivery_date) {
       await triggerDeliveryGroupRegeneration(order.tenant_id, kstDayDateStrOf(order.delivery_date), order.owner_username, "order_uncancel");
