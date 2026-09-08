@@ -13,7 +13,12 @@ import { orderShipmentsRepository } from "@/lib/repositories/order-shipments.rep
 import { tenantsRepository } from "@/lib/repositories/tenants.repository";
 import { triggerDeliveryGroupRegeneration } from "@/lib/services/delivery-group-regeneration.service";
 import { toActionError } from "@/lib/utils/action-error";
-import { IMPORT_HISTORY_VISIBLE_DAYS, daysAgoIso } from "@/lib/constants/import-retention";
+import {
+  IMPORT_HISTORY_VISIBLE_DAYS,
+  IMPORT_HISTORY_OWNER_LIMIT,
+  IMPORT_HISTORY_ADMIN_LIMIT,
+  daysAgoIso,
+} from "@/lib/constants/import-retention";
 import { ownerScopeFor, requireSession } from "@/lib/auth/current-session";
 import type {
   ColumnMapping,
@@ -210,10 +215,12 @@ export async function bulkAssignDeliveryDateAction(
  * Admin은 기간 제한 없이 본다 — 운영/테스트 재현을 위해 30일 보관분의 원본을
  * 내려받아야 하기 때문이다(30일이 지난 건은 cleanup이 지우므로 실질 상한은 30일).
  */
-export async function listRecentImportsAction(limit = 20): Promise<ImportRecord[]> {
+export async function listRecentImportsAction(limit?: number): Promise<ImportRecord[]> {
   const session = await requireSession();
-  const since = session.role === "admin" ? undefined : daysAgoIso(IMPORT_HISTORY_VISIBLE_DAYS);
-  return importsRepository.listRecent(limit, ownerScopeFor(session), since);
+  const isAdmin = session.role === "admin";
+  const since = isAdmin ? undefined : daysAgoIso(IMPORT_HISTORY_VISIBLE_DAYS);
+  const effectiveLimit = limit ?? (isAdmin ? IMPORT_HISTORY_ADMIN_LIMIT : IMPORT_HISTORY_OWNER_LIMIT);
+  return importsRepository.listRecent(effectiveLimit, ownerScopeFor(session), since);
 }
 
 export interface DeleteImportActionState {

@@ -10,6 +10,19 @@
 export const IMPORT_HISTORY_VISIBLE_DAYS = 7;
 export const IMPORT_ORIGINAL_RETENTION_DAYS = 30;
 
+/**
+ * 사장님 화면 표시 건수. 7일치라 20건이면 충분하다.
+ */
+export const IMPORT_HISTORY_OWNER_LIMIT = 20;
+
+/**
+ * Admin 화면 표시 건수. Admin은 **전 테넌트**를 한 목록에서 보므로, 20건이면 사업장이
+ * 몇 곳만 돼도 최근 며칠치로 가득 차 **30일 보관분 원본에 도달하지 못한다**(실제로
+ * STEP19-B 검증에서 10일 된 이력이 21위로 밀려 화면에서 사라졌다). 보관기간이 30일로
+ * 상한이 잡혀 있으니 목록도 그 범위를 덮을 만큼 늘린다.
+ */
+export const IMPORT_HISTORY_ADMIN_LIMIT = 200;
+
 export const IMPORT_HISTORY_VISIBILITY_NOTICE =
   `엑셀 등록 이력은 최근 ${IMPORT_HISTORY_VISIBLE_DAYS}일만 확인할 수 있습니다.`;
 
